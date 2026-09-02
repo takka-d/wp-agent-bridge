@@ -1,0 +1,56 @@
+name: External tester kit
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/external-tester-kit.yml'
+      - 'docs/EXTERNAL_TEST_GUIDE_JA.md'
+      - 'docs/EXTERNAL_TEST_RESULT.md'
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download verified RC1 plugin ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tester-kit
+          curl -fL --retry 3 \
+            https://github.com/takka-d/wp-agent-bridge/releases/download/v1.0.0-rc1/wp-agent-bridge-1.0.0.zip \
+            -o tester-kit/wp-agent-bridge-1.0.0.zip
+          echo 'f4fbb8c00b45fb01c0ceeba7d8342a40fed51039cb7ff5350e6a28cab4a061fa  tester-kit/wp-agent-bridge-1.0.0.zip' | sha256sum -c -
+
+      - name: Add Japanese test guide and result sheet
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp docs/EXTERNAL_TEST_GUIDE_JA.md tester-kit/01_テスト手順.md
+          cp docs/EXTERNAL_TEST_RESULT.md tester-kit/02_テスト結果記入.md
+          printf '%s  %s\n' \
+            'f4fbb8c00b45fb01c0ceeba7d8342a40fed51039cb7ff5350e6a28cab4a061fa' \
+            'wp-agent-bridge-1.0.0.zip' \
+            > tester-kit/SHA256SUMS
+          cat > tester-kit/最初に読んでください.txt <<'EOF'
+          WP Agent Bridge 1.0.0 RC1 外部テストセット
+
+          1. まず「01_テスト手順.md」を読んでください。
+          2. WordPressへ入れるファイルは「wp-agent-bridge-1.0.0.zip」です。
+          3. 結果は「02_テスト結果記入.md」に記録してください。
+          4. GitHubのsecret、token、private key、Webhook secret等は誰にも送らないでください。
+          5. エラーが出たら同じ操作を繰り返さず、その画面と手順番号を残してください。
+          EOF
+
+      - name: Upload external tester kit
+        uses: actions/upload-artifact@v4
+        with:
+          name: wp-agent-bridge-external-tester-kit-1.0.0-rc1
+          path: tester-kit/
+          if-no-files-found: error
+          retention-days: 30
