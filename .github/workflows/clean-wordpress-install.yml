@@ -1,0 +1,98 @@
+name: Clean WordPress package test
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/clean-wordpress-install.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: wordpress
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - name: Install WP-CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o /tmp/wp
+          chmod +x /tmp/wp
+          /tmp/wp --info
+
+      - name: Install clean WordPress 7.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/wp-agent-bridge-test
+          /tmp/wp core download --version=7.1 --path=/tmp/wp-agent-bridge-test
+          /tmp/wp config create \
+            --path=/tmp/wp-agent-bridge-test \
+            --dbname=wordpress \
+            --dbuser=root \
+            --dbpass=root \
+            --dbhost=127.0.0.1:3306 \
+            --skip-check
+          /tmp/wp core install \
+            --path=/tmp/wp-agent-bridge-test \
+            --url=http://wp-agent-bridge.test \
+            --title='WP Agent Bridge clean test' \
+            --admin_user=admin \
+            --admin_password='Temporary-Test-Password-2026!' \
+            --admin_email=admin@example.test \
+            --skip-email
+          /tmp/wp core version --path=/tmp/wp-agent-bridge-test
+
+      - name: Download release-candidate plugin ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 \
+            https://github.com/takka-d/wp-agent-bridge/releases/download/v1.0.0-rc1/wp-agent-bridge-1.0.0.zip \
+            -o /tmp/wp-agent-bridge-1.0.0.zip
+          echo 'f4fbb8c00b45fb01c0ceeba7d8342a40fed51039cb7ff5350e6a28cab4a061fa  /tmp/wp-agent-bridge-1.0.0.zip' | sha256sum -c -
+
+      - name: Install and activate packaged plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/wp plugin install /tmp/wp-agent-bridge-1.0.0.zip \
+            --activate \
+            --path=/tmp/wp-agent-bridge-test
+          /tmp/wp plugin get wp-agent-bridge \
+            --fields=name,status,version \
+            --format=json \
+            --path=/tmp/wp-agent-bridge-test
+
+      - name: Verify packaged bootstrap and onboarding route
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/wp eval '
+            if (!class_exists("TakKa_WordPress_Bridge_Onboarding")) {
+                fwrite(STDERR, "Onboarding class was not loaded.\n");
+                exit(1);
+            }
+            do_action("rest_api_init");
+            $routes = rest_get_server()->get_routes();
+            if (!isset($routes["/takka-bridge-onboarding/v1/complete"])) {
+                fwrite(STDERR, "Onboarding completion REST route is missing.\n");
+                exit(1);
+            }
+            echo "WP Agent Bridge packaged plugin loaded and onboarding route registered.\n";
+          ' --path=/tmp/wp-agent-bridge-test
