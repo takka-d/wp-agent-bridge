@@ -59,6 +59,8 @@ require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v088.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v089-secure.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v090-secure-status.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v093-public-readiness.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-github.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-runtime.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-onboarding.php';
 
 TakKa_WordPress_Bridge_Envelope::init();
@@ -85,4 +87,5 @@ TakKa_WordPress_Bridge_V088::init();
 TakKa_WordPress_Bridge_V089_Secure::init();
 TakKa_WordPress_Bridge_V090_Secure_Status::init();
 TakKa_WordPress_Bridge_V093_Public_Readiness::init();
+TakKa_WordPress_Bridge_Direct_Runtime::init();
 TakKa_WordPress_Bridge_Onboarding::init();
