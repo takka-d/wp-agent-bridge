@@ -16,10 +16,10 @@ final class TakKa_WordPress_Bridge_Onboarding
     private const OPTION_LEGACY_CONNECTION = 'takka_bridge_github_connection_v1';
     private const OPTION_SECRET = 'takka_bridge_secret';
     private const OPTION_USER_ID = 'takka_bridge_user_id';
-    private const TRANSIENT_PREFIX = 'takka_bridge_direct_onboarding_';
+    private const OPTION_PENDING_SETUP = 'takka_bridge_direct_onboarding_pending_v1';
     private const NAMESPACE = 'wp-agent-bridge-onboarding/v2';
     private const RUNTIME_BRANCH = 'wp-agent-bridge-runtime';
-    private const MAX_SETUP_AGE = HOUR_IN_SECONDS;
+    private const MAX_SETUP_AGE = 2 * HOUR_IN_SECONDS;
 
     public static function init(): void
     {
@@ -176,7 +176,7 @@ final class TakKa_WordPress_Bridge_Onboarding
             'organization' => $organization,
             'stage' => 'manifest',
         ];
-        set_transient(self::TRANSIENT_PREFIX . $state, $pending, self::MAX_SETUP_AGE);
+        self::store_pending($pending);
 
         // A reconnect starts a new site-specific App. Never carry credentials
         // from an abandoned manifest attempt into a new connection attempt.
@@ -186,7 +186,7 @@ final class TakKa_WordPress_Bridge_Onboarding
         $manifest = self::manifest($state);
         $manifest_json = wp_json_encode($manifest, JSON_UNESCAPED_SLASHES);
         if (!is_string($manifest_json)) {
-            delete_transient(self::TRANSIENT_PREFIX . $state);
+            self::clear_pending();
             wp_die('Could not encode GitHub App manifest.', '', ['response' => 500]);
         }
 
@@ -307,7 +307,7 @@ final class TakKa_WordPress_Bridge_Onboarding
         $pending['slug'] = $slug;
         $pending['owner_login'] = $owner_login;
         $pending['owner_type'] = $owner_type;
-        set_transient(self::TRANSIENT_PREFIX . $state, $pending, self::remaining_ttl($pending));
+        self::store_pending($pending);
 
         $install_url = 'https://github.com/apps/' . rawurlencode($slug) . '/installations/new?state=' . rawurlencode($state);
         return self::redirect_response($install_url);
@@ -409,7 +409,7 @@ final class TakKa_WordPress_Bridge_Onboarding
         // The legacy central-relay connection is not used by the direct runtime.
         // Remove it only after the new direct connection is fully initialized.
         delete_option(self::OPTION_LEGACY_CONNECTION);
-        delete_transient(self::TRANSIENT_PREFIX . $state);
+        self::clear_pending();
 
         $return_url = add_query_arg('takka_bridge_setup', 'complete', admin_url('tools.php?page=takka-wordpress-bridge-connect'));
         return self::redirect_response($return_url);
@@ -445,7 +445,7 @@ final class TakKa_WordPress_Bridge_Onboarding
         if (!preg_match('/^[a-f0-9]{64}$/', $state)) {
             return new WP_Error('takka_direct_state', 'Invalid setup state.', ['status' => 400]);
         }
-        $pending = get_transient(self::TRANSIENT_PREFIX . $state);
+        $pending = get_option(self::OPTION_PENDING_SETUP, []);
         if (!is_array($pending)
             || !isset($pending['state'])
             || !hash_equals((string) $pending['state'], $state)
@@ -456,10 +456,14 @@ final class TakKa_WordPress_Bridge_Onboarding
         return $pending;
     }
 
-    private static function remaining_ttl(array $pending): int
+    private static function store_pending(array $pending): void
     {
-        $created = (int) ($pending['created_at'] ?? time());
-        return max(60, self::MAX_SETUP_AGE - max(0, time() - $created));
+        update_option(self::OPTION_PENDING_SETUP, $pending, false);
+    }
+
+    private static function clear_pending(): void
+    {
+        delete_option(self::OPTION_PENDING_SETUP);
     }
 
     private static function initialize_runtime_repository(string $token, string $full_name)
@@ -490,8 +494,8 @@ final class TakKa_WordPress_Bridge_Onboarding
                 return $default_ref;
             }
             if ($default_ref === null) {
-                // GitHub documents that Contents API can initialize an empty
-                // repository. Do so without adding Actions/workflow files.
+                // GitHub's git-ref API returns 409 while the repository is empty.
+                // Initialize it through the Contents API without adding Actions/workflow files.
                 $init = TakKa_WordPress_Bridge_Direct_GitHub::github_api(
                     'PUT',
                     $repo_path . '/contents/README.md',
@@ -548,7 +552,8 @@ final class TakKa_WordPress_Bridge_Onboarding
         $response = TakKa_WordPress_Bridge_Direct_GitHub::github_api('GET', $endpoint, $token);
         if (is_wp_error($response)) {
             $data = $response->get_error_data();
-            if (is_array($data) && (int) ($data['status'] ?? 0) === 404) {
+            $status = is_array($data) ? (int) ($data['status'] ?? 0) : 0;
+            if (in_array($status, [404, 409], true)) {
                 return null;
             }
             return $response;
