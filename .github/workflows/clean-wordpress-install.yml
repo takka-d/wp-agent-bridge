@@ -96,3 +96,119 @@ jobs:
             }
             echo "WP Agent Bridge packaged plugin loaded and onboarding route registered.\n";
           ' --path=/tmp/wp-agent-bridge-test
+
+      - name: Verify packaged stale-write, protection, and rollback guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/wp-agent-bridge-guards.php <<'PHP'
+          <?php
+          wp_set_current_user(1);
+
+          function bridge_fail(string $message): void {
+              fwrite(STDERR, $message . "\n");
+              exit(1);
+          }
+
+          function bridge_data($response): array {
+              if (is_wp_error($response)) {
+                  bridge_fail('Unexpected WP_Error: ' . $response->get_error_code() . ' ' . $response->get_error_message());
+              }
+              $response = rest_ensure_response($response);
+              $data = $response->get_data();
+              if (!is_array($data)) bridge_fail('Expected array response data.');
+              return $data;
+          }
+
+          function bridge_execute(string $action, array $params = []) {
+              $request = new WP_REST_Request('POST', '/takka-bridge/v1/execute');
+              $request->set_param('action', $action);
+              $request->set_param('params', $params);
+              return TakKa_WordPress_Bridge::execute($request);
+          }
+
+          function bridge_v04(string $action, array $params = []) {
+              $payload = base64_encode(wp_json_encode(['action' => $action, 'params' => $params]));
+              $request = new WP_REST_Request('POST', '/takka-bridge/v1/manage');
+              $request->set_header('content-type', 'application/json');
+              $request->set_body(wp_json_encode(['payload_b64' => $payload]));
+              return TakKa_WordPress_Bridge_V04::manage($request);
+          }
+
+          // Content preview/apply must reject a stale before-hash.
+          $post_id = wp_insert_post([
+              'post_type' => 'post',
+              'post_status' => 'draft',
+              'post_title' => 'WP Agent Bridge guard test',
+              'post_content' => 'alpha beta gamma',
+          ], true);
+          if (is_wp_error($post_id)) bridge_fail('Could not create guard-test post.');
+
+          $preview = bridge_data(TakKa_WordPress_Bridge_V084_Post_Content::preview([
+              'post_id' => $post_id,
+              'find' => 'beta',
+              'replace' => 'BETA',
+              'expected_matches' => 1,
+          ]));
+          wp_update_post(['ID' => $post_id, 'post_content' => 'alpha beta gamma external-change']);
+          $stale = TakKa_WordPress_Bridge_V084_Post_Content::apply([
+              'post_id' => $post_id,
+              'find' => 'beta',
+              'replace' => 'BETA',
+              'expected_matches' => 1,
+              'confirm' => true,
+              'expected_before_sha256' => $preview['before_sha256'],
+              'expected_plan_hash' => $preview['plan_hash'],
+          ]);
+          if (!is_wp_error($stale) || $stale->get_error_code() !== 'takka_bridge_post_content_changed') {
+              bridge_fail('Stale content write was not rejected as expected.');
+          }
+
+          // The running plugin and active theme must not be deletable.
+          $plugin_delete = bridge_v04('plugin.delete', [
+              'file' => 'wp-agent-bridge/takka-wordpress-bridge.php',
+              'confirm' => true,
+          ]);
+          if (!is_wp_error($plugin_delete) || $plugin_delete->get_error_code() !== 'takka_bridge_plugin_active_delete_blocked') {
+              bridge_fail('Active plugin deletion was not blocked.');
+          }
+          $theme_delete = bridge_v04('theme.manage.delete', [
+              'stylesheet' => get_stylesheet(),
+              'confirm' => true,
+          ]);
+          if (!is_wp_error($theme_delete) || $theme_delete->get_error_code() !== 'takka_bridge_active_theme_delete_blocked') {
+              bridge_fail('Active theme deletion was not blocked.');
+          }
+
+          // Bridge/security credential options must remain unreadable through option tooling.
+          $sensitive = TakKa_WordPress_Bridge_V08_Options::get(['name' => 'takka_bridge_secret']);
+          if (!is_wp_error($sensitive) || $sensitive->get_error_code() !== 'takka_bridge_option_sensitive') {
+              bridge_fail('Sensitive Bridge option was not blocked.');
+          }
+
+          // Exercise a complete draft publish -> backup -> rollback cycle.
+          $draft = bridge_data(bridge_execute('draft_theme.create'));
+          bridge_data(bridge_execute('theme.file.write', [
+              'draft_id' => $draft['id'],
+              'path' => 'wp-agent-bridge-rollback-marker.txt',
+              'content' => 'published-marker',
+          ]));
+          $published = bridge_data(bridge_execute('draft_theme.publish', [
+              'draft_id' => $draft['id'],
+              'confirm' => true,
+          ]));
+          $marker = get_stylesheet_directory() . '/wp-agent-bridge-rollback-marker.txt';
+          if (!is_file($marker)) bridge_fail('Draft publish marker was not published.');
+          if (empty($published['backup_id'])) bridge_fail('Draft publish did not return a backup_id.');
+
+          $rolled_back = bridge_data(bridge_execute('theme.rollback', [
+              'backup_id' => $published['backup_id'],
+              'confirm' => true,
+          ]));
+          if (is_file($marker)) bridge_fail('Rollback did not restore the pre-publish theme files.');
+          if (empty($rolled_back['safety_backup_id'])) bridge_fail('Rollback did not create its safety backup.');
+
+          echo "Packaged stale-write rejection, active plugin/theme protection, sensitive option guard, and rollback all passed.\n";
+          PHP
+
+          /tmp/wp eval-file /tmp/wp-agent-bridge-guards.php --path=/tmp/wp-agent-bridge-test
