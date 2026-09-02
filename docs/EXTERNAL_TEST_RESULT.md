@@ -1,6 +1,6 @@
-# WP Agent Bridge 1.0.0 RC1 外部テスト結果
+# WP Agent Bridge Direct Runtime 外部テスト結果
 
-テスター名は本名でなくて構いません。secret/token/private key等は絶対に記載しないでください。
+テスター名は本名でなくて構いません。secret / token / private key / Webhook secret等は絶対に記載しないでください。
 
 ## 基本情報
 
@@ -9,67 +9,83 @@
 - WordPressバージョン:
 - PHPバージョン:
 - ブラウザ / ChatGPTアプリ:
-- WordPressサイトURL(公開して問題ない場合のみ):
 
 ## 1. fresh install
 
-- [ ] `wp-agent-bridge-1.0.0.zip` を新規インストールできた
+- [ ] お試し版ZIPを新規インストールできた
 - [ ] 有効化できた
-- [ ] 既存のWP Agent Bridge / TakKa WordPress Bridgeは入っていなかった
+- [ ] `ツール > WP Agent Bridge` を開けた
 
 補足:
 
-## 2. GitHub認可
+## 2. private runtime repository
 
-- [ ] `Tools > WP Bridge Setup` に `Status: Not connected` が表示された
+- [ ] `Status: Not connected` が表示された
+- [ ] `Create private repository on GitHub` を押した
+- [ ] 指定された `wordpress-bridge-...` 名で作成した
+- [ ] VisibilityをPrivateにした
+- Repository:
+
+## 3. site-specific GitHub App
+
 - [ ] `Connect GitHub` を押した
-- [ ] GitHub認可画面が表示された
-- [ ] 権限表示は `Public read-only` + `repository invitations` 相当だった
-- [ ] Organization accessの `Grant` は押していない
-- Repository invitationの手動Accept: 必要だった / 不要だった / 不明
+- [ ] `Create GitHub App` 画面が表示された
+- [ ] GitHub Appを作成できた
+- [ ] `Only select repositories` を選んだ
+- [ ] 今回のruntime repositoryだけを選んだ
+- [ ] Installできた
+- 権限表示で気づいた点:
 
-認可画面や遷移で気づいた点:
+## 4. WordPress接続完了
 
-## 3. WordPress接続完了
-
-- [ ] `GitHub connection completed.` が表示された
-- [ ] `Status: Connected` になった
+- [ ] `GitHub direct connection completed.` が表示された
+- [ ] `Status: Connected (direct GitHub webhook)` になった
 - Repository:
 - Runtime branch:
-- Installation ID(表示された場合):
+- GitHub App slug:
 
-## 4. GitHub repositoryアクセス
+## 5. GitHub repository
 
-- [ ] 自分用runtime repositoryをGitHubで開けた
 - [ ] `AGENTS.md` を確認できた
-- [ ] `wordpress-bridge/` を確認できた
-- [ ] Organization管理権限は必要なかった
-- 他人のruntime repoが見えてしまった: はい / いいえ / 確認していない
+- [ ] `wordpress-bridge/commands/pending/` を確認できた
+- [ ] `wordpress-bridge/commands/completed/` を確認できた
+- [ ] `wordpress-bridge/results/` を確認できた
+- [ ] `wp-agent-bridge-runtime` branchを確認できた
+- 古い別runtime repositoryを誤って選んだ: はい / いいえ
 
-※ 他人のprivate repo名を探す必要はありません。通常操作の範囲で意図せず見えた場合だけ「はい」。
-
-## 5. ChatGPT GitHub接続
+## 6. ChatGPT GitHub接続
 
 - ChatGPTのGitHubはテスト前から接続済みだった: はい / いいえ
 - [ ] テスター本人のGitHubアカウントで接続できた
-- [ ] ChatGPTから作成されたruntime repositoryを認識できた
+- [ ] ChatGPTから今回のruntime repositoryを認識できた
 - ChatGPTが認識したRepository:
 
-見つかるまでに待ち時間があった場合:
-
-## 6. Bridge E2E
+## 7. Direct Runtime E2E
 
 - [ ] `site.info` が成功した
 - [ ] `cache.flush` が成功した
-- [ ] 記事・設定・テーマ・プラグインを変更せず完了した
-- ChatGPTの最終結果:
+- [ ] `results/` に結果が作成された
+- [ ] ChatGPTが結果を読み取れた
+- [ ] 通常処理でGitHub Actionsを要求されなかった
 
-## 7. 最終状態
+補足:
 
-- [ ] WordPressの `WP Bridge Setup` は `Status: Connected` のまま
-- [ ] GitHub Appの削除・再インストールはしていない
-- [ ] Organization側設定は変更していない
-- [ ] secret/token/private key等は共有していない
+## 8. メディアアップロード
+
+- [ ] ChatGPTへ小さな画像を添付した
+- [ ] WP Agent BridgeだけでWordPressへアップロードできた
+- [ ] WPVibeを使わなかった
+- Attachment ID:
+- Media URL:
+
+失敗した場合のエラー:
+
+## 9. 最終状態
+
+- [ ] WordPressのWP Agent BridgeはConnectedのまま
+- [ ] 運営者の中継サーバーを設定していない
+- [ ] WPVibeを一般利用者向け経路として必要としなかった
+- [ ] secret / token / private key / Webhook secretを共有していない
 
 ## 総合結果
 
