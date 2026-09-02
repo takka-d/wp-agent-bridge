@@ -53,47 +53,57 @@
 - `Runtime branch: wp-agent-bridge-runtime`
 - `GitHub App: wp-agent-bridge-...`
 
+**ここに表示されたRepositoryのフルネームを今回の唯一の正規runtime repositoryとして記録してください。** branch名やフォルダ名だけで別repositoryを選んではいけません。
+
 この時点で、通常経路は **ChatGPT → GitHub → 利用者のWordPress → GitHub → ChatGPT** です。
 
-## 5. runtime repositoryを確認する
+## 5. runtime repositoryの正規マーカーを確認する
 
-GitHubで手順4のprivate repositoryを開き、少なくとも次を確認します。
+GitHubで手順4のprivate repositoryを開き、`wp-agent-bridge-runtime` branchで少なくとも次を確認します。
 
 - `AGENTS.md`
+- `wordpress-bridge/RUNTIME_CONNECTION.json`
 - `wordpress-bridge/commands/pending/`
 - `wordpress-bridge/commands/completed/`
 - `wordpress-bridge/results/`
-- branch `wp-agent-bridge-runtime`
 
-以前のテスト等で似た名前のruntime repositoryがあっても、**WordPressのConnected画面に表示されたrepositoryを今回の接続先として使います。**
+`wordpress-bridge/RUNTIME_CONNECTION.json` は次を満たすことを確認します。
+
+- `status`: `canonical`
+- `transport`: `direct-github-webhook`
+- `repository`: 手順4で記録したRepositoryと完全一致
+- `runtime_branch`: `wp-agent-bridge-runtime`
+- `site_host`: 今回のWordPressサイト
+
+以前のテスト等で似た名前のruntime repositoryがあっても、**WordPressのConnected画面とこのマーカーが一致したrepositoryだけ**を使います。
 
 ## 6. ChatGPTからrepositoryを確認する
 
 1. ChatGPTで **設定 > プラグイン > GitHub** を確認する。
 2. GitHub未接続なら、テスター本人のGitHubアカウントで通常の接続を行う。
 3. GitHubプラグイン画面にrepository選択欄がなくても異常ではない。
-4. ChatGPTへ次のように依頼する。
+4. ChatGPTへ、手順4で記録したRepositoryのフルネームを含めて次のように依頼する。
 
 ```text
-GitHubで、私のWordPressのWP Agent Bridge画面に表示されたprivate runtime repositoryを探して、wp-agent-bridge-runtime branchのAGENTS.mdを読んで。見つかったrepository名だけ教えて。
+GitHubで <WordPressのConnected画面に表示されたRepositoryフルネーム> の wp-agent-bridge-runtime branchを確認して。最初に AGENTS.md と wordpress-bridge/RUNTIME_CONNECTION.json を読み、markerのrepository/status/transport/site_hostが一致することを確認してから、このrepositoryだけを今回のWordPress操作に使って。似た名前の別repositoryへは書き込まないで。
 ```
 
-5. 手順4と同じrepositoryが返れば成功。
-6. 別の古いruntime repositoryを選んだ場合は、その時点で記録して終了する。
+5. 正しいrepositoryとcanonical markerを確認できれば成功。
+6. 別repositoryを選んだ場合は、その別repositoryへcommandを書かずにテストを止めて記録する。
 
 ## 7. 安全なE2E操作
 
 ChatGPTへ次のように依頼します。
 
 ```text
-今確認したWP Agent Bridgeのruntime repositoryを使って、接続先WordPressのsite.infoを取得し、その後cache.flushを1回実行して。記事・設定・テーマ・プラグインは変更しないで、結果だけ教えて。
+今確認したcanonical WP Agent Bridge runtime repositoryだけを使って、接続先WordPressのsite.infoを取得し、その後cache.flushを1回実行して。記事・設定・テーマ・プラグインは変更しないで、結果だけ教えて。
 ```
 
 確認すること:
 
-- commandが `commands/pending/` に書かれる。
+- commandが正しいrepositoryの `commands/pending/` に書かれる。
 - GitHub Appのsigned push WebhookでWordPressが処理する。
-- `results/` に結果が返る。
+- 同じrepositoryの `results/` に結果が返る。
 - ChatGPTが結果を読める。
 - 通常処理にGitHub Actionsを要求されない。
 
@@ -122,7 +132,8 @@ ChatGPTへ次のように依頼します。
 2. 自分のprivate runtime repositoryを作成できた。
 3. サイト専用GitHub AppをそのrepositoryだけにInstallできた。
 4. WordPressが `Connected (direct GitHub webhook)` になった。
-5. ChatGPTが正しいruntime repositoryを認識した。
-6. `site.info` と `cache.flush` がDirect Runtimeで完了した。
-7. WP Agent Bridgeだけでメディアアップロードできた。
-8. WPVibe、運営者の中継サーバー、通常処理のGitHub Actionsを必要としなかった。
+5. `RUNTIME_CONNECTION.json` がcanonicalで、WordPress表示のrepositoryと一致した。
+6. ChatGPTがその正しいruntime repositoryだけを認識した。
+7. `site.info` と `cache.flush` がDirect Runtimeで完了した。
+8. WP Agent Bridgeだけでメディアアップロードできた。
+9. WPVibe、運営者の中継サーバー、通常処理のGitHub Actionsを必要としなかった。
