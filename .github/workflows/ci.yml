@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, direct-runtime-prototype]
   pull_request:
     branches: [main]
 
