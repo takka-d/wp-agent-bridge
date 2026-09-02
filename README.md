@@ -2,25 +2,31 @@
 
 ChatGPTからWordPressを更新するためのWordPressプラグインです。
 
-通常のWordPress操作は、専用private GitHub repositoryへのcommand作成 → GitHub Appのsigned Webhook → WordPress → result書き戻し、という経路で実行します。通常処理にGitHub Actionsは使用しません。
+通常のWordPress操作は、利用者自身のprivate GitHub repositoryへのcommand作成 → サイト専用GitHub Appのsigned push Webhook → 利用者のWordPress → result書き戻し、という経路で実行します。通常処理に運営者の中継サーバーやGitHub Actionsは使用しません。
 
 ## 導入
 
 1. ZIPをダウンロードする。
 2. WordPressへインストールして有効化する。
-3. ツール > WP Bridge Setup > Connect GitHub。
-4. GitHubで接続を許可する。
-5. 自動作成されたruntime repositoryをChatGPTのGitHub連携へ追加する。
-6. ChatGPTにWordPress更新を依頼する。
+3. **ツール > WP Agent Bridge** を開く。
+4. **Create private repository on GitHub** から、表示された名前のprivate repositoryを自分のGitHubアカウントに作成する。
+5. WordPressへ戻って **Connect GitHub** を押す。
+6. GitHubでサイト専用GitHub Appを作成し、**Only select repositories** で手順4のrepositoryだけを選んでInstallする。
+7. WordPressに戻り `Status: Connected (direct GitHub webhook)` を確認する。
+8. ChatGPTでGitHubを接続し、手順4のruntime repositoryを参照できることを確認する。
+9. ChatGPTにWordPress更新を依頼する。
 
-repository、runtime branch、relay用secret等はオンボーディング処理で自動設定します。
+private keyとWebhook secretは利用者のWordPress内に暗号化して保存します。WPVibeや運営者所有の中継サーバーは一般利用者の通常経路には不要です。
 
 ## 主な機能
 
-- 投稿・固定ページ・メディア等のWordPress REST API操作
+- 投稿・固定ページの取得、作成、更新
+- メディアアップロード(`media.upload_base64` / `media.upload_from_url`)
 - テーマファイルの読取・検索・編集
 - Draft Themeのpreview / publish / rollback
+- プラグイン / テーマ管理
 - post meta、option、taxonomy、menu、cron等の管理
+- WordPress REST API経由の各種操作
 - guarded write、preview、confirm、SHA-256、plan/impact hash、stale-write rejection
 - HMAC署名認証とsecure transport
 
