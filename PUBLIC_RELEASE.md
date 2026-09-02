@@ -27,7 +27,7 @@ The end-user setup remains six user-visible steps:
 2. Install and activate it in WordPress.
 3. Select `Connect GitHub` in `Tools > WP Bridge Setup`.
 4. Complete the GitHub authorization flow.
-5. Add the automatically created runtime repository to ChatGPT's GitHub connection.
+5. Connect GitHub to ChatGPT and confirm that the generated runtime repository is available.
 6. Ask ChatGPT to update WordPress.
 
 Repository creation, runtime initialization, branch/path creation, secret generation, and WordPress pairing are automated behind the onboarding flow.
@@ -56,7 +56,7 @@ Verified for the 1.0.0 release candidate:
 - [x] dedicated private runtime repository is automatically created in the runtime Organization;
 - [x] runtime branch and command/result paths are initialized automatically;
 - [x] temporary Setup OAuth grant is revoked after onboarding;
-- [x] ChatGPT can be connected to only the generated runtime repository while the existing personal GitHub installation remains intact;
+- [x] ChatGPT can be connected to the generated runtime repository while the existing personal GitHub installation remains intact for the operator test account;
 - [x] ChatGPT can write a command into the generated runtime repository;
 - [x] signed Webhook relay executes the command in WordPress and writes the result back;
 - [x] processed command moves from `commands/pending` to `commands/completed`;
@@ -67,13 +67,17 @@ Verified for the 1.0.0 release candidate:
 - [x] 1.0.0 package workflow completes successfully;
 - [x] clean public repository is created from the generated public-source ZIP with fresh Git history;
 - [x] public repository CI passes PHP syntax, release metadata, runtime-payload, and obvious-secret checks;
-- [x] release candidate asset SHA-256 matches the package produced by the private release build.
+- [x] release candidate asset SHA-256 matches the package produced by the private release build;
+- [x] exact release-candidate ZIP installs and activates on a clean WordPress 7.1 + MySQL 8 instance;
+- [x] packaged onboarding class and completion REST route load on the clean WordPress instance;
+- [x] packaged content preview/apply rejects stale writes after intervening content changes;
+- [x] packaged active plugin and active theme deletion protections reject destructive requests;
+- [x] packaged sensitive Bridge option read protection rejects credential access;
+- [x] packaged Draft Theme publish creates a backup and packaged rollback restores the pre-publish theme files while creating a safety backup.
 
 Still required before publishing the stable download/article:
 
-- [ ] generated ZIP is installed on a separate clean supported WordPress instance;
-- [ ] fresh-user onboarding is tested once without relying on a prior OAuth grant;
-- [ ] content preview/apply stale-write rejection is rechecked on the packaged build;
-- [ ] active theme/plugin and sensitive-key protections are rechecked on the packaged build;
-- [ ] rollback path is rechecked on the packaged build;
+- [ ] configure the centrally installed ChatGPT GitHub App for future runtime repositories without requiring each outside collaborator to administer the runtime Organization;
+- [ ] verify with a non-owner/outside-collaborator GitHub user that ChatGPT can see only that user's generated runtime repository through the Organization installation;
+- [ ] fresh-user onboarding is tested once without relying on a prior Setup OAuth grant;
 - [ ] TakKa Note download/article license notice matches `LICENSE.md`.
