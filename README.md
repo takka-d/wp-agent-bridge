@@ -14,7 +14,7 @@ ChatGPTからWordPressの記事・ページ・設定などを更新するため�
 2. WordPressへZIPをアップロードし、有効化する。
 3. WordPressの **ツール > WP Bridge Setup** で **Connect GitHub** を押す。
 4. GitHubで接続を許可する。
-5. 自動作成されたruntime repositoryをChatGPTのGitHub連携へ追加する。
+5. ChatGPTでGitHubを接続し、自動作成されたruntime repositoryが利用可能になったことを確認する。
 6. ChatGPTにWordPressの更新を依頼する。
 
 手順3〜4では、専用private repository作成、runtime branch作成、必要ファイルの初期化、WordPressとの紐付けを自動で行います。利用者がrepository、branch、Webhook、secretを手作業で設定することは想定していません。
@@ -60,4 +60,4 @@ WordPress.org Plugin Directoryからの配布は予定していません。
 
 ## Status
 
-1.0.0公開候補。GitHub onboarding、専用private runtime repository作成、ChatGPTからのcommand投入、signed Webhook relay、WordPress実行、result返却までのend-to-end testを完了しています。
+1.0.0公開候補。GitHub onboarding、専用private runtime repository作成、ChatGPTからのcommand投入、signed Webhook relay、WordPress実行、result返却までのend-to-end testに加え、配布ZIPをcleanなWordPress 7.1環境へインストールしてstale-write rejection、active plugin/theme protection、sensitive option protection、Draft Theme publish/rollbackを検証しています。
