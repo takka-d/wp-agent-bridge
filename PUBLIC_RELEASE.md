@@ -63,15 +63,17 @@ Verified for the 1.0.0 release candidate:
 - [x] normal command transport does not use GitHub Actions;
 - [x] plugin header Version and `readme.txt` Stable tag are set to 1.0.0;
 - [x] plugin package includes `LICENSE.md`;
-- [x] public package build excludes central Onboarding Service and development runtime data by construction.
+- [x] public package build excludes central Onboarding Service and development runtime data by construction;
+- [x] 1.0.0 package workflow completes successfully;
+- [x] clean public repository is created from the generated public-source ZIP with fresh Git history;
+- [x] public repository CI passes PHP syntax, release metadata, runtime-payload, and obvious-secret checks;
+- [x] release candidate asset SHA-256 matches the package produced by the private release build.
 
-Still required before publishing the download/article:
+Still required before publishing the stable download/article:
 
-- [ ] current 1.0.0 package workflow completes successfully;
 - [ ] generated ZIP is installed on a separate clean supported WordPress instance;
 - [ ] fresh-user onboarding is tested once without relying on a prior OAuth grant;
 - [ ] content preview/apply stale-write rejection is rechecked on the packaged build;
 - [ ] active theme/plugin and sensitive-key protections are rechecked on the packaged build;
 - [ ] rollback path is rechecked on the packaged build;
-- [ ] clean public repository is created from the generated public-source ZIP with fresh history;
 - [ ] TakKa Note download/article license notice matches `LICENSE.md`.
