@@ -1,0 +1,40 @@
+name: Build Direct Runtime Trial
+
+on:
+  push:
+    branches:
+      - direct-runtime-prototype
+    paths:
+      - .github/workflows/build-direct-runtime-trial.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build installable plugin ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist/wp-agent-bridge
+          cp -a plugin/wp-agent-bridge/. dist/wp-agent-bridge/
+          cd dist
+          zip -r -9 wp-agent-bridge-direct-runtime-trial-20260903.zip wp-agent-bridge >/dev/null
+          sha256sum wp-agent-bridge-direct-runtime-trial-20260903.zip > wp-agent-bridge-direct-runtime-trial-20260903.sha256
+
+      - name: Upload trial package
+        uses: actions/upload-artifact@v4
+        with:
+          name: wp-agent-bridge-direct-runtime-trial-20260903
+          path: |
+            dist/wp-agent-bridge-direct-runtime-trial-20260903.zip
+            dist/wp-agent-bridge-direct-runtime-trial-20260903.sha256
+          if-no-files-found: error
+          retention-days: 30
