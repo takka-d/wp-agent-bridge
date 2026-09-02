@@ -15,6 +15,7 @@
 - [ ] お試し版ZIPを新規インストールできた
 - [ ] 有効化できた
 - [ ] `ツール > WP Agent Bridge` を開けた
+- [ ] 旧 `TakKa WP Bridge` / Bridge Key設定画面が通常メニューに出ていない
 
 補足:
 
@@ -44,27 +45,33 @@
 - Runtime branch:
 - GitHub App slug:
 
-## 5. GitHub repository
+## 5. canonical runtime identity
 
 - [ ] `AGENTS.md` を確認できた
+- [ ] `wordpress-bridge/RUNTIME_CONNECTION.json` を確認できた
+- [ ] marker `status` が `canonical`
+- [ ] marker `transport` が `direct-github-webhook`
+- [ ] marker `repository` がWordPressのConnected画面と完全一致
+- [ ] marker `runtime_branch` が `wp-agent-bridge-runtime`
+- [ ] marker `site_host` が今回のWordPressサイトと一致
 - [ ] `wordpress-bridge/commands/pending/` を確認できた
 - [ ] `wordpress-bridge/commands/completed/` を確認できた
 - [ ] `wordpress-bridge/results/` を確認できた
-- [ ] `wp-agent-bridge-runtime` branchを確認できた
 - 古い別runtime repositoryを誤って選んだ: はい / いいえ
 
 ## 6. ChatGPT GitHub接続
 
 - ChatGPTのGitHubはテスト前から接続済みだった: はい / いいえ
 - [ ] テスター本人のGitHubアカウントで接続できた
-- [ ] ChatGPTから今回のruntime repositoryを認識できた
+- [ ] ChatGPTがConnected画面とmarkerで指定されたruntime repositoryを認識できた
+- [ ] 似た名前の別repositoryへcommandを書かなかった
 - ChatGPTが認識したRepository:
 
 ## 7. Direct Runtime E2E
 
 - [ ] `site.info` が成功した
 - [ ] `cache.flush` が成功した
-- [ ] `results/` に結果が作成された
+- [ ] 正しいrepositoryの `results/` に結果が作成された
 - [ ] ChatGPTが結果を読み取れた
 - [ ] 通常処理でGitHub Actionsを要求されなかった
 
