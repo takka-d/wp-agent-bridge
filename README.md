@@ -4,7 +4,7 @@ ChatGPTからWordPressの記事・ページ・設定などを更新するため�
 
 特定のWordPress連携サービス側に独自の月間実行回数や操作回数の課金枠を設けず、GitHub接続を利用してWordPressを操作します。
 
-通常のWordPress commandは、専用private GitHub repositoryへのcommand作成 → GitHub Appのsigned Webhook → WordPress → result書き戻し、という経路で実行します。通常処理にGitHub Actionsは使用しません。
+通常のWordPress commandは、専用private GitHub repositoryへのcommand作成 → GitHub Appのsigned Webhook → WordPress → result書き戻し、という経路で実行します。通常処理にGitHub Actionsや別のWordPress連携サービスは使用しません。
 
 ## 導入
 
@@ -29,6 +29,9 @@ ChatGPTからWordPressの記事・ページ・設定などを更新するため�
 - theme fileの編集
 - Draft Themeのpreview / publish / rollback
 - media upload
+  - WordPress側の上限は6 MiB
+  - runtime command JSONの2 MiB上限を超える画像はchunkへ分割して転送
+  - chunkごと、および再構成後の元ファイル全体についてbytesとSHA-256を検証
 - WP-Cron管理
 - WordPress REST APIを利用した各種操作
 
@@ -60,4 +63,4 @@ WordPress.org Plugin Directoryからの配布は予定していません。
 
 ## Status
 
-1.0.0公開候補。GitHub onboarding、専用private runtime repository作成、ChatGPTからのcommand投入、signed Webhook relay、WordPress実行、result返却までのend-to-end testに加え、配布ZIPをcleanなWordPress 7.1環境へインストールしてstale-write rejection、active plugin/theme protection、sensitive option protection、Draft Theme publish/rollbackを検証しています。
+1.0.1公開候補。GitHub onboarding、専用private runtime repository作成、ChatGPTからのcommand投入、signed Webhook relay、WordPress実行、result返却までのend-to-end testに加え、配布ZIPをcleanなWordPress 7.1環境へインストールしてstale-write rejection、active plugin/theme protection、sensitive option protection、Draft Theme publish/rollbackを検証しています。1.0.1ではさらに、1つのcommandへBase64全体を埋め込めない大きさの画像を複数chunkに分割し、再構成後のbytesとSHA-256一致を確認してWordPressメディアライブラリへ登録するテストまで追加しています。
