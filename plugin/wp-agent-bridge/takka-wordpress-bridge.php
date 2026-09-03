@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Agent Bridge
  * Description: Secure WordPress management bridge for ChatGPT using GitHub App connectivity, guarded writes, previews, and rollback.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: TakKa
  * Requires at least: 6.9
  * Requires PHP: 7.4
@@ -59,6 +59,7 @@ require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v088.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v089-secure.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v090-secure-status.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v093-public-readiness.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-runtime-media-chunks.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-onboarding.php';
 
 TakKa_WordPress_Bridge_Envelope::init();
@@ -85,4 +86,5 @@ TakKa_WordPress_Bridge_V088::init();
 TakKa_WordPress_Bridge_V089_Secure::init();
 TakKa_WordPress_Bridge_V090_Secure_Status::init();
 TakKa_WordPress_Bridge_V093_Public_Readiness::init();
+TakKa_WordPress_Bridge_Runtime_Media_Chunks::init();
 TakKa_WordPress_Bridge_Onboarding::init();
