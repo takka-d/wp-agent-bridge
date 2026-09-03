@@ -75,9 +75,25 @@ Verified for the 1.0.0 release candidate:
 - [x] packaged sensitive Bridge option read protection rejects credential access;
 - [x] packaged Draft Theme publish creates a backup and packaged rollback restores the pre-publish theme files while creating a safety backup.
 
+Additional verification completed for the 1.0.1 release candidate:
+
+- [x] exact 1.0.1 plugin candidate was installed on the live TakKa Note site from a complete 51-file self-update manifest;
+- [x] self-update requires a full manifest and no longer treats omitted live plugin files as implicit deletions;
+- [x] self-update deletion requires explicit delete paths plus explicit deletion confirmation;
+- [x] self-update validates required PHP bootstrap dependencies before replacement;
+- [x] runtime request IDs persist completed responses so an identical replay does not repeat the WordPress side effect;
+- [x] reuse of the same request ID with a different payload does not execute the changed side effect;
+- [x] the canonical signed runtime reconstructed a 2,400,088-byte media test through three chunks with matching final SHA-256, then removed the test attachment;
+- [x] the production Onboarding Service resolved its configured `wp-agent-bridge-runtime` Organization installation with repository administration and contents write permission;
+- [x] the production runtime repository naming and initialization functions created a new private Organization repository, `wp-agent-bridge-runtime` branch, canonical marker, signed-runtime guidance, and command/completed/result paths;
+- [x] the generated onboarding E2E repository was deleted immediately after verification and verified absent with GitHub HTTP 404;
+- [x] Onboarding Service 0.3.2 cleans both the generated repository and relay mapping when a post-creation onboarding failure requires rollback;
+- [x] the obsolete onboarding test helper that conflicts with the current main plugin was removed from the live service site;
+- [x] all temporary live inspection/E2E routes were removed after testing and the active child-theme `functions.php` was restored byte-for-byte to its pre-test SHA-256.
+
 Still required before publishing the stable download/article:
 
-- [ ] configure the centrally installed ChatGPT GitHub App for future runtime repositories without requiring each outside collaborator to administer the runtime Organization;
+- [ ] configure/verify the centrally installed ChatGPT GitHub App for future runtime repositories without requiring each outside collaborator to administer the runtime Organization;
 - [ ] verify with a non-owner/outside-collaborator GitHub user that ChatGPT can see only that user's generated runtime repository through the Organization installation;
 - [ ] fresh-user onboarding is tested once without relying on a prior Setup OAuth grant;
 - [ ] TakKa Note download/article license notice matches `LICENSE.md`.
