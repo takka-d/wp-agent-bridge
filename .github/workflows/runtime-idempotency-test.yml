@@ -1,0 +1,141 @@
+name: Runtime idempotency test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'plugin/wp-agent-bridge/**'
+      - '.github/workflows/runtime-idempotency-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  idempotency:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: wordpress
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install WP-CLI and WordPress
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o /tmp/wp
+          chmod +x /tmp/wp
+          mkdir -p /tmp/wpab-idempotency
+          /tmp/wp core download --version=7.1 --path=/tmp/wpab-idempotency
+          /tmp/wp config create --path=/tmp/wpab-idempotency --dbname=wordpress --dbuser=root --dbpass=root --dbhost=127.0.0.1:3306 --skip-check
+          /tmp/wp core install --path=/tmp/wpab-idempotency --url=http://wpab-idempotency.test --title='WPAB idempotency test' --admin_user=admin --admin_password='Temporary-Test-Password-2026!' --admin_email=admin@example.test --skip-email
+          cp -R plugin/wp-agent-bridge /tmp/wpab-idempotency/wp-content/plugins/wp-agent-bridge
+          /tmp/wp plugin activate wp-agent-bridge --path=/tmp/wpab-idempotency
+
+      - name: Verify completed replay and payload conflict
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/wpab-idempotency-test.php <<'PHP'
+          <?php
+          $secret = str_repeat('a', 64);
+          update_option('takka_bridge_secret', $secret, false);
+          update_option('takka_bridge_user_id', 1, false);
+          wp_set_current_user(1);
+
+          add_action('rest_api_init', static function (): void {
+              register_rest_route('wpab-ci/v1', '/increment', [
+                  'methods' => WP_REST_Server::CREATABLE,
+                  'permission_callback' => static function (): bool {
+                      return current_user_can('manage_options');
+                  },
+                  'callback' => static function (WP_REST_Request $request): WP_REST_Response {
+                      $counter = (int) get_option('wpab_ci_side_effect_counter', 0) + 1;
+                      update_option('wpab_ci_side_effect_counter', $counter, false);
+                      return new WP_REST_Response([
+                          'ok' => true,
+                          'counter' => $counter,
+                          'value' => (string) $request->get_param('value'),
+                      ], 200);
+                  },
+              ]);
+          });
+          do_action('rest_api_init');
+
+          function wpab_fail(string $message): void {
+              fwrite(STDERR, $message . "\n");
+              exit(1);
+          }
+
+          function wpab_signed_execute(array $inner, string $secret): WP_REST_Response {
+              $outer = [
+                  'action' => 'envelope',
+                  'params' => [
+                      'payload_b64' => base64_encode(wp_json_encode($inner)),
+                  ],
+              ];
+              $body = wp_json_encode($outer);
+              $timestamp = (string) time();
+              $route = '/takka-bridge/v1/execute';
+              $signature_payload = $timestamp . "\nPOST\n" . $route . "\n" . hash('sha256', $body);
+              $signature = hash_hmac('sha256', $signature_payload, $secret);
+
+              $request = new WP_REST_Request('POST', $route);
+              $request->set_header('content-type', 'application/json');
+              $request->set_header('x-takka-timestamp', $timestamp);
+              $request->set_header('x-takka-signature', $signature);
+              $request->set_body($body);
+              $response = rest_do_request($request);
+              if (is_wp_error($response)) {
+                  wpab_fail($response->get_error_code() . ': ' . $response->get_error_message());
+              }
+              return rest_ensure_response($response);
+          }
+
+          $request_id = 'ci-idempotency-' . substr(hash('sha256', microtime(true)), 0, 20);
+          $inner = [
+              'request_id' => $request_id,
+              'action' => 'rest.call',
+              'params' => [
+                  'route' => '/wpab-ci/v1/increment',
+                  'method' => 'POST',
+                  'body' => ['value' => 'first'],
+              ],
+          ];
+
+          $first = wpab_signed_execute($inner, $secret);
+          if ($first->get_status() !== 200) wpab_fail('First request did not return HTTP 200.');
+          if ((int) get_option('wpab_ci_side_effect_counter', 0) !== 1) wpab_fail('First request did not execute exactly once.');
+
+          $second = wpab_signed_execute($inner, $secret);
+          if ($second->get_status() !== 200) wpab_fail('Replay did not return the original HTTP 200 response.');
+          if ((int) get_option('wpab_ci_side_effect_counter', 0) !== 1) wpab_fail('Replay executed the side effect again.');
+          $headers = $second->get_headers();
+          if ((string) ($headers['X-TakKa-Idempotent-Replay'] ?? '') !== '1') wpab_fail('Replay response was not marked as idempotent replay.');
+
+          $conflicting = $inner;
+          $conflicting['params']['body']['value'] = 'different-payload';
+          $third = wpab_signed_execute($conflicting, $secret);
+          if ($third->get_status() !== 409) wpab_fail('Different payload with reused request_id was not rejected with HTTP 409.');
+          if ((int) get_option('wpab_ci_side_effect_counter', 0) !== 1) wpab_fail('Conflicting request executed the side effect.');
+          $data = $third->get_data();
+          if (!is_array($data) || ($data['code'] ?? '') !== 'takka_bridge_idempotency_payload_conflict') {
+              wpab_fail('Conflicting request returned the wrong error code.');
+          }
+
+          echo "Generic /execute idempotency passed: first execution=1, replay execution=0, conflicting payload=409.\n";
+          PHP
+
+          /tmp/wp eval-file /tmp/wpab-idempotency-test.php --path=/tmp/wpab-idempotency
