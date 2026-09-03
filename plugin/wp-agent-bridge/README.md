@@ -21,7 +21,13 @@ private keyとWebhook secretは利用者のWordPress内に暗号化して保存�
 ## 主な機能
 
 - 投稿・固定ページの取得、作成、更新
-- メディアアップロード(`media.upload_base64` / `media.upload_from_url`)
+- メディアアップロード
+  - Direct Runtimeでは画像本体をcommand JSONへ埋め込まず、`wordpress-bridge/media/pending/*.b64` に分離して転送
+  - 1ファイルまたは複数chunkに分割可能
+  - `expected_bytes` と `expected_sha256` で完全性を確認
+  - Data URL、空白、URL-safe Base64、padding省略を正規化
+  - 成功後は一時payloadをprivate repositoryから削除
+  - URLからのアップロードも対応
 - テーマファイルの読取・検索・編集
 - Draft Themeのpreview / publish / rollback
 - プラグイン / テーマ管理
