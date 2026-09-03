@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
 
 final class TakKa_WordPress_Bridge_V06
 {
-    private const VERSION = '0.6.1';
+    private const VERSION = '0.6.2';
     private const ROUTE_NAMESPACE = 'takka-bridge/v1';
     private const ROUTE = '/takka-bridge/v1/v06';
     private const OPTION_SECRET = 'takka_bridge_secret';
@@ -53,6 +53,8 @@ final class TakKa_WordPress_Bridge_V06
             'signed_self_update_manifest',
             'self_update_preflight_php_parse',
             'self_update_backup_rollback',
+            'self_update_full_manifest_required',
+            'self_update_explicit_delete_paths',
         ] as $feature) {
             if (!in_array($feature, $features, true)) {
                 $features[] = $feature;
@@ -116,7 +118,7 @@ final class TakKa_WordPress_Bridge_V06
                 case 'bridge.self_update.status':
                     return rest_ensure_response(TakKa_WordPress_Bridge_V06_Self_Update::status());
                 case 'bridge.self_update.apply':
-                    return TakKa_WordPress_Bridge_V06_Self_Update::apply($params);
+                    return TakKa_WordPress_Bridge_V06_Self_Update_Safe::apply($params);
                 case 'bridge.self_update.rollback':
                     return TakKa_WordPress_Bridge_V06_Self_Update::rollback($params);
             }
@@ -136,7 +138,7 @@ final class TakKa_WordPress_Bridge_V06
             'version' => self::VERSION,
             'route' => self::ROUTE,
             'actions' => self::ACTIONS,
-            'self_update' => TakKa_WordPress_Bridge_V06_Self_Update::capabilities(),
+            'self_update' => TakKa_WordPress_Bridge_V06_Self_Update_Safe::capabilities(),
             'arbitrary_plugin_package' => false,
             'arbitrary_filesystem_write' => false,
         ];

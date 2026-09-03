@@ -1,0 +1,172 @@
+name: Self-update safety test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'plugin/wp-agent-bridge/**'
+      - '.github/workflows/self-update-safety-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  self-update-safety:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: wordpress
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install WordPress and candidate plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o /tmp/wp
+          chmod +x /tmp/wp
+          mkdir -p /tmp/wpab-self-update
+          /tmp/wp core download --version=7.1 --path=/tmp/wpab-self-update
+          /tmp/wp config create --path=/tmp/wpab-self-update --dbname=wordpress --dbuser=root --dbpass=root --dbhost=127.0.0.1:3306 --skip-check
+          /tmp/wp core install --path=/tmp/wpab-self-update --url=http://wpab-self-update.test --title='WPAB self update safety' --admin_user=admin --admin_password='Temporary-Test-Password-2026!' --admin_email=admin@example.test --skip-email
+          cp -R plugin/wp-agent-bridge /tmp/wpab-self-update/wp-content/plugins/wp-agent-bridge
+          /tmp/wp plugin activate wp-agent-bridge --path=/tmp/wpab-self-update
+
+      - name: Reject partial manifests and allow only explicit deletion
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/wpab-self-update-test.php <<'PHP'
+          <?php
+          wp_set_current_user(1);
+
+          function su_fail(string $message): void {
+              fwrite(STDERR, $message . "\n");
+              exit(1);
+          }
+
+          function su_entry(string $path, string $data): array {
+              return [
+                  'path' => $path,
+                  'sha256' => hash('sha256', $data),
+                  'data_b64' => base64_encode($data),
+              ];
+          }
+
+          function su_manifest_sha(array $entries): string {
+              $rows = [];
+              foreach ($entries as $entry) {
+                  $data = base64_decode($entry['data_b64'], true);
+                  if (!is_string($data)) su_fail('Fixture contained invalid Base64.');
+                  $rows[$entry['path']] = [
+                      'sha256' => hash('sha256', $data),
+                      'bytes' => strlen($data),
+                  ];
+              }
+              ksort($rows, SORT_STRING);
+              $canonical = '';
+              foreach ($rows as $path => $row) {
+                  $canonical .= $path . "\0" . $row['sha256'] . "\0" . (string) $row['bytes'] . "\n";
+              }
+              return hash('sha256', $canonical);
+          }
+
+          function su_package_entries(string $root, array $exclude = []): array {
+              $exclude = array_fill_keys($exclude, true);
+              $entries = [];
+              $iterator = new RecursiveIteratorIterator(
+                  new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS),
+                  RecursiveIteratorIterator::LEAVES_ONLY
+              );
+              $prefix = rtrim(str_replace('\\', '/', $root), '/') . '/';
+              foreach ($iterator as $info) {
+                  if (!$info->isFile() || $info->isLink()) continue;
+                  $absolute = str_replace('\\', '/', $info->getPathname());
+                  $relative = substr($absolute, strlen($prefix));
+                  if (isset($exclude[$relative])) continue;
+                  $data = file_get_contents($info->getPathname());
+                  if (!is_string($data)) su_fail('Could not read package file: ' . $relative);
+                  $entries[] = su_entry($relative, $data);
+              }
+              usort($entries, static fn(array $a, array $b): int => strcmp($a['path'], $b['path']));
+              return $entries;
+          }
+
+          function su_expect_error($result, string $code): void {
+              if (!is_wp_error($result) || $result->get_error_code() !== $code) {
+                  $actual = is_wp_error($result) ? $result->get_error_code() : get_debug_type($result);
+                  su_fail("Expected {$code}; got {$actual}.");
+              }
+          }
+
+          $root = WP_PLUGIN_DIR . '/wp-agent-bridge';
+          $bootstrap = file_get_contents($root . '/takka-wordpress-bridge.php');
+          if (!is_string($bootstrap)) su_fail('Could not read bootstrap.');
+          $one = [su_entry('takka-wordpress-bridge.php', $bootstrap)];
+          $base_params = [
+              'confirm' => true,
+              'allow_same_version' => true,
+              'target_version' => '1.0.1',
+              'manifest_sha256' => su_manifest_sha($one),
+              'files' => $one,
+          ];
+
+          $missing_flag = TakKa_WordPress_Bridge_V06_Self_Update_Safe::apply($base_params);
+          su_expect_error($missing_flag, 'takka_bridge_self_update_full_manifest_required');
+
+          $partial = $base_params;
+          $partial['full_manifest'] = true;
+          $partial_result = TakKa_WordPress_Bridge_V06_Self_Update_Safe::apply($partial);
+          su_expect_error($partial_result, 'takka_bridge_self_update_manifest_incomplete');
+
+          $all_paths = array_map(
+              static fn(array $entry): string => $entry['path'],
+              su_package_entries($root)
+          );
+          $omitted = array_values(array_diff($all_paths, ['takka-wordpress-bridge.php']));
+          sort($omitted, SORT_STRING);
+          $pretend_delete = $partial;
+          $pretend_delete['delete_paths'] = $omitted;
+          $pretend_delete['confirm_delete_paths'] = true;
+          $dependency_result = TakKa_WordPress_Bridge_V06_Self_Update_Safe::apply($pretend_delete);
+          su_expect_error($dependency_result, 'takka_bridge_self_update_required_file_missing');
+
+          $obsolete = $root . '/obsolete-self-update-test.txt';
+          if (file_put_contents($obsolete, 'obsolete') === false) su_fail('Could not create obsolete fixture.');
+          $entries = su_package_entries($root, ['obsolete-self-update-test.txt']);
+          $params = [
+              'confirm' => true,
+              'allow_same_version' => true,
+              'target_version' => '1.0.1',
+              'full_manifest' => true,
+              'delete_paths' => ['obsolete-self-update-test.txt'],
+              'confirm_delete_paths' => true,
+              'manifest_sha256' => su_manifest_sha($entries),
+              'files' => $entries,
+          ];
+          $result = TakKa_WordPress_Bridge_V06_Self_Update_Safe::apply($params);
+          if (is_wp_error($result)) su_fail($result->get_error_code() . ': ' . $result->get_error_message());
+          $response = rest_ensure_response($result);
+          $data = $response->get_data();
+          if (!is_array($data) || empty($data['ok'])) su_fail('Full manifest update did not return ok=true.');
+          if (is_file($obsolete)) su_fail('Explicitly deleted obsolete file still exists.');
+          if (!is_file($root . '/includes/class-takka-wordpress-bridge-v06-self-update-safe.php')) {
+              su_fail('Safe self-update class disappeared after complete manifest update.');
+          }
+
+          echo "Self-update safety passed: partial manifest blocked, implicit deletion blocked, missing required PHP blocked, explicit deletion succeeded.\n";
+          PHP
+
+          /tmp/wp eval-file /tmp/wpab-self-update-test.php --path=/tmp/wpab-self-update

@@ -13,11 +13,14 @@ if (!defined('ABSPATH')) {
  * replay/conflict decision to rest_pre_dispatch, whose contract explicitly
  * supports returning a response before route dispatch.
  *
- * Authentication is re-verified here before any cached response is exposed.
+ * Authentication is re-verified before any idempotency state is exposed or
+ * persisted. Completed responses are stored after the callback so a retry with
+ * the same request_id and payload returns the original response without running
+ * the WordPress operation again.
  */
 final class TakKa_WordPress_Bridge_Idempotency
 {
-    private const VERSION = '0.5.1';
+    private const VERSION = '0.5.2';
     private const OPTION_SECRET = 'takka_bridge_secret';
     private const OPTION_USER_ID = 'takka_bridge_user_id';
     private const IDEMPOTENCY_PREFIX = 'takka_bridge_idem_';
@@ -36,6 +39,7 @@ final class TakKa_WordPress_Bridge_Idempotency
     public static function init(): void
     {
         add_filter('rest_pre_dispatch', [self::class, 'pre_dispatch'], 20, 3);
+        add_filter('rest_request_after_callbacks', [self::class, 'after_dispatch'], 130, 3);
         add_filter('rest_request_after_callbacks', [self::class, 'annotate_health'], 140, 3);
     }
 
@@ -53,6 +57,9 @@ final class TakKa_WordPress_Bridge_Idempotency
         $features = isset($data['features']) && is_array($data['features']) ? $data['features'] : [];
         if (!in_array('pre_dispatch_idempotency', $features, true)) {
             $features[] = 'pre_dispatch_idempotency';
+        }
+        if (!in_array('completed_response_idempotency', $features, true)) {
+            $features[] = 'completed_response_idempotency';
         }
         $data['features'] = $features;
         $rest->set_data($data);
@@ -137,6 +144,56 @@ final class TakKa_WordPress_Bridge_Idempotency
         }
         self::touch_index($option);
         return $result;
+    }
+
+    public static function after_dispatch($response, array $handler, WP_REST_Request $request)
+    {
+        if (strtoupper($request->get_method()) !== 'POST') {
+            return $response;
+        }
+        $route = (string) $request->get_route();
+        if (!in_array($route, self::ROUTES, true) || !self::has_valid_bridge_auth($request)) {
+            return $response;
+        }
+
+        $context = self::extract_request_context($request);
+        if (is_wp_error($context) || $context === null) {
+            return $response;
+        }
+
+        if (is_wp_error($response)) {
+            $response = rest_convert_error_to_response($response);
+        }
+        $rest = rest_ensure_response($response);
+        $headers = $rest->get_headers();
+
+        // Replays and idempotency-generated conflicts already describe existing
+        // state. Never overwrite the original completed record with them.
+        if (isset($headers['X-TakKa-Idempotency-Internal'])) {
+            return $response;
+        }
+
+        $option = self::idempotency_option($context['request_id']);
+        $existing = get_option($option, null);
+        if (is_array($existing)
+            && isset($existing['payload_hash'])
+            && !hash_equals((string) $existing['payload_hash'], $context['payload_hash'])) {
+            return $response;
+        }
+
+        update_option($option, [
+            'state' => 'completed',
+            'request_id' => $context['request_id'],
+            'payload_hash' => $context['payload_hash'],
+            'action' => $context['action'],
+            'created_at' => is_array($existing) && isset($existing['created_at']) ? (int) $existing['created_at'] : time(),
+            'completed_at' => time(),
+            'status' => $rest->get_status(),
+            'headers' => $headers,
+            'data' => $rest->get_data(),
+        ], false);
+        self::touch_index($option);
+        return $rest;
     }
 
     private static function has_valid_bridge_auth(WP_REST_Request $request): bool
