@@ -1,8 +1,8 @@
-# WP Agent Bridge 1.0.0
+# WP Agent Bridge 1.0.1
 
 ChatGPTからWordPressを更新するためのWordPressプラグインです。
 
-通常のWordPress操作は、専用private GitHub repositoryへのcommand作成 → GitHub Appのsigned Webhook → WordPress → result書き戻し、という経路で実行します。通常処理にGitHub Actionsは使用しません。
+通常のWordPress操作は、専用private GitHub repositoryへのcommand作成 → GitHub Appのsigned Webhook → WordPress → result書き戻し、という経路で実行します。通常処理にGitHub ActionsやWPVibeは使用しません。
 
 ## 導入
 
@@ -17,7 +17,14 @@ repository、runtime branch、relay用secret等はオンボーディング処理
 
 ## 主な機能
 
-- 投稿・固定ページ・メディア等のWordPress REST API操作
+- 投稿・固定ページ等のWordPress REST API操作
+- メディアアップロード
+  - 最大6 MiB
+  - runtime command JSONの上限を超えないよう画像をchunkへ自動分割
+  - 各chunkと元ファイル全体のbytes / SHA-256を検証
+  - 再送された同一chunkを安全に受理
+  - 全chunk受信後に自動再構成してWordPressメディアライブラリへ登録
+  - staleな一時ファイルを自動削除
 - テーマファイルの読取・検索・編集
 - Draft Themeのpreview / publish / rollback
 - post meta、option、taxonomy、menu、cron等の管理
