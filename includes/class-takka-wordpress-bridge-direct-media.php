@@ -7,18 +7,19 @@ if (!defined('ABSPATH')) {
 /**
  * Media transport for Direct Runtime.
  *
- * Binary media is not embedded in the command JSON. ChatGPT writes a Base64
- * payload to wordpress-bridge/media/pending/<id>.b64 and submits a small REST
- * command that references that file. The plugin fetches the payload with its
- * site-specific GitHub App, verifies byte count + SHA-256, uploads it to the
- * WordPress media library, then removes the temporary payload from GitHub.
+ * Media bytes are kept out of command JSON. ChatGPT writes one or more Base64
+ * payload files under wordpress-bridge/media/pending/ and submits a small REST
+ * command that references them. The plugin fetches the payloads using the
+ * site-specific GitHub App, verifies total byte count + SHA-256, uploads the
+ * media, then removes the temporary payload files.
  */
 final class TakKa_WordPress_Bridge_Direct_Media
 {
     private const NAMESPACE = 'wp-agent-bridge-runtime/v1';
     private const ROUTE = '/wp-agent-bridge-runtime/v1/media-upload';
-    private const MAX_MEDIA_BYTES = 6291456; // 6 MiB decoded.
-    private const MAX_SOURCE_TEXT_BYTES = 10485760; // Base64 + small formatting overhead.
+    private const MAX_MEDIA_BYTES = 6291456;
+    private const MAX_SOURCE_TEXT_BYTES = 10485760;
+    private const MAX_CHUNKS = 32;
 
     public static function init(): void
     {
@@ -61,6 +62,7 @@ final class TakKa_WordPress_Bridge_Direct_Media
         $data['media_runtime_file_upload'] = [
             'route' => self::ROUTE,
             'max_decoded_bytes' => self::MAX_MEDIA_BYTES,
+            'max_chunks' => self::MAX_CHUNKS,
             'integrity' => ['expected_bytes', 'expected_sha256'],
             'source_cleanup' => true,
         ];
@@ -75,9 +77,9 @@ final class TakKa_WordPress_Bridge_Direct_Media
             return new WP_Error('wpab_direct_media_json', 'JSON body is required.', ['status' => 400]);
         }
 
-        $data_path = isset($json['data_path']) && is_string($json['data_path']) ? trim($json['data_path']) : '';
-        if (!preg_match('#^wordpress-bridge/media/pending/[A-Za-z0-9._-]{1,120}\.b64$#', $data_path)) {
-            return new WP_Error('wpab_direct_media_path', 'data_path must point to wordpress-bridge/media/pending/<id>.b64.', ['status' => 400]);
+        $paths = self::payload_paths($json);
+        if (is_wp_error($paths)) {
+            return $paths;
         }
 
         $filename = isset($json['filename']) && is_string($json['filename']) ? sanitize_file_name($json['filename']) : '';
@@ -90,11 +92,7 @@ final class TakKa_WordPress_Bridge_Direct_Media
             ? strtolower(trim($json['expected_sha256']))
             : '';
         if ($expected_bytes < 1 || $expected_bytes > self::MAX_MEDIA_BYTES || !preg_match('/^[a-f0-9]{64}$/', $expected_sha256)) {
-            return new WP_Error(
-                'wpab_direct_media_integrity_required',
-                'expected_bytes and expected_sha256 are required for runtime media uploads.',
-                ['status' => 400, 'max_decoded_bytes' => self::MAX_MEDIA_BYTES]
-            );
+            return new WP_Error('wpab_direct_media_integrity_required', 'expected_bytes and expected_sha256 are required for runtime media uploads.', ['status' => 400, 'max_decoded_bytes' => self::MAX_MEDIA_BYTES]);
         }
 
         $connection = TakKa_WordPress_Bridge_Direct_Runtime::connection();
@@ -111,14 +109,27 @@ final class TakKa_WordPress_Bridge_Direct_Media
             return $token;
         }
 
-        $source = self::read_runtime_file($token, $repository, $branch, $data_path);
-        if (is_wp_error($source)) {
-            return $source;
-        }
-
-        $binary = self::decode_base64((string) $source['text']);
-        if (is_wp_error($binary)) {
-            return $binary;
+        $binary = '';
+        $sources = [];
+        foreach ($paths as $path) {
+            $source = self::read_runtime_file($token, $repository, $branch, $path);
+            if (is_wp_error($source)) {
+                self::memzero($binary);
+                return $source;
+            }
+            $chunk = self::decode_base64((string) $source['text']);
+            if (is_wp_error($chunk)) {
+                self::memzero($binary);
+                return $chunk;
+            }
+            if (strlen($binary) + strlen($chunk) > self::MAX_MEDIA_BYTES) {
+                self::memzero($chunk);
+                self::memzero($binary);
+                return new WP_Error('wpab_direct_media_size', 'Decoded media exceeds the size limit.', ['status' => 413, 'max_decoded_bytes' => self::MAX_MEDIA_BYTES]);
+            }
+            $binary .= $chunk;
+            self::memzero($chunk);
+            $sources[] = ['path' => $path, 'sha' => (string) $source['sha']];
         }
 
         $actual_bytes = strlen($binary);
@@ -140,23 +151,49 @@ final class TakKa_WordPress_Bridge_Direct_Media
             return $uploaded;
         }
 
-        $cleanup = TakKa_WordPress_Bridge_Direct_GitHub::delete_file(
-            $token,
-            $repository,
-            $branch,
-            $data_path,
-            (string) $source['sha'],
-            'WP Agent Bridge: remove uploaded media payload'
-        );
-        if (is_wp_error($cleanup)) {
-            $uploaded['source_cleanup'] = false;
-            $uploaded['source_cleanup_error'] = $cleanup->get_error_message();
-        } else {
-            $uploaded['source_cleanup'] = true;
+        $cleanup_errors = [];
+        foreach ($sources as $source) {
+            $cleanup = TakKa_WordPress_Bridge_Direct_GitHub::delete_file($token, $repository, $branch, $source['path'], $source['sha'], 'WP Agent Bridge: remove uploaded media payload');
+            if (is_wp_error($cleanup)) {
+                $cleanup_errors[$source['path']] = $cleanup->get_error_message();
+            }
         }
-        $uploaded['source_path'] = $data_path;
+
+        $uploaded['source_cleanup'] = !$cleanup_errors;
+        if ($cleanup_errors) {
+            $uploaded['source_cleanup_errors'] = $cleanup_errors;
+        }
+        $uploaded['source_paths'] = array_values($paths);
         $uploaded['sha256'] = $actual_sha256;
         return rest_ensure_response($uploaded);
+    }
+
+    private static function payload_paths(array $params)
+    {
+        $paths = [];
+        if (isset($params['data_paths']) && is_array($params['data_paths'])) {
+            foreach ($params['data_paths'] as $path) {
+                if (is_string($path) && trim($path) !== '') {
+                    $paths[] = trim($path);
+                }
+            }
+        } elseif (isset($params['data_path']) && is_string($params['data_path']) && trim($params['data_path']) !== '') {
+            $paths[] = trim($params['data_path']);
+        }
+        if (!$paths || count($paths) > self::MAX_CHUNKS) {
+            return new WP_Error('wpab_direct_media_paths', 'Provide data_path or 1-' . self::MAX_CHUNKS . ' data_paths.', ['status' => 400]);
+        }
+        $seen = [];
+        foreach ($paths as $path) {
+            if (!preg_match('#^wordpress-bridge/media/pending/[A-Za-z0-9._-]{1,120}\.b64$#', $path)) {
+                return new WP_Error('wpab_direct_media_path', 'Media payload paths must match wordpress-bridge/media/pending/<id>.b64.', ['status' => 400]);
+            }
+            if (isset($seen[$path])) {
+                return new WP_Error('wpab_direct_media_duplicate_path', 'Duplicate media payload path.', ['status' => 400, 'path' => $path]);
+            }
+            $seen[$path] = true;
+        }
+        return $paths;
     }
 
     private static function read_runtime_file(string $token, string $repository, string $ref, string $path)
@@ -223,7 +260,7 @@ final class TakKa_WordPress_Bridge_Direct_Media
         }
         if (strlen($binary) < 1 || strlen($binary) > self::MAX_MEDIA_BYTES) {
             self::memzero($binary);
-            return new WP_Error('wpab_direct_media_size', 'Decoded media is empty or exceeds the size limit.', ['status' => 413, 'max_decoded_bytes' => self::MAX_MEDIA_BYTES]);
+            return new WP_Error('wpab_direct_media_chunk_size', 'Decoded media chunk is empty or too large.', ['status' => 413, 'max_decoded_bytes' => self::MAX_MEDIA_BYTES]);
         }
         return $binary;
     }
@@ -233,7 +270,6 @@ final class TakKa_WordPress_Bridge_Direct_Media
         require_once ABSPATH . 'wp-admin/includes/file.php';
         require_once ABSPATH . 'wp-admin/includes/media.php';
         require_once ABSPATH . 'wp-admin/includes/image.php';
-
         $tmp = wp_tempnam($filename);
         if (!$tmp || file_put_contents($tmp, $binary, LOCK_EX) === false) {
             if ($tmp) {
@@ -241,7 +277,6 @@ final class TakKa_WordPress_Bridge_Direct_Media
             }
             return new WP_Error('wpab_direct_media_temp_write', 'Could not create temporary upload file.', ['status' => 500]);
         }
-
         $post_id = isset($params['post_id']) ? absint($params['post_id']) : 0;
         $file_array = ['name' => $filename, 'tmp_name' => $tmp];
         $description = isset($params['description']) && is_string($params['description']) ? $params['description'] : null;
@@ -250,7 +285,6 @@ final class TakKa_WordPress_Bridge_Direct_Media
             @unlink($tmp);
             return $attachment_id;
         }
-
         if (isset($params['alt_text']) && is_string($params['alt_text'])) {
             update_post_meta($attachment_id, '_wp_attachment_image_alt', sanitize_text_field($params['alt_text']));
         }
@@ -263,7 +297,6 @@ final class TakKa_WordPress_Bridge_Direct_Media
         if (count($post_update) > 1) {
             wp_update_post(wp_slash($post_update));
         }
-
         return [
             'ok' => true,
             'id' => $attachment_id,
