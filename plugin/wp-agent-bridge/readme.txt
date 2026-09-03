@@ -54,6 +54,10 @@ High-impact writes remain subject to the Bridge's preview, confirmation, state-h
 == Changelog ==
 
 = 1.0.1 =
+* Added completed-response request ID persistence so an identical retried runtime command replays the original response without re-running its WordPress side effect.
+* Rejects reuse of the same request ID with a different payload instead of executing the changed command.
+* Hardened Bridge self-update so a full manifest is required; omitted live plugin files are no longer interpreted as implicit deletions.
+* Plugin-file deletion during self-update now requires explicit delete paths and explicit deletion confirmation, and required PHP bootstrap dependencies are checked before replacement.
 * Added chunked media transport over the canonical signed Webhook runtime path.
 * Avoids embedding a full image Base64 payload in one command JSON, preventing the runtime 2 MiB command limit from conflicting with the 6 MiB WordPress media limit.
 * Verifies per-chunk byte count and SHA-256 plus the reconstructed original file byte count and SHA-256.
