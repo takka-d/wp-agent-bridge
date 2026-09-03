@@ -3,7 +3,9 @@ name: External tester kit
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths:
+      - 'plugin/wp-agent-bridge/**'
       - '.github/workflows/external-tester-kit.yml'
       - 'docs/EXTERNAL_TEST_GUIDE_JA.md'
       - 'docs/EXTERNAL_TEST_RESULT.md'
@@ -15,17 +17,44 @@ jobs:
   package:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Download verified RC1 plugin ZIP
+      - name: Build tested plugin ZIP
         shell: bash
         run: |
           set -euo pipefail
+          version="$(sed -n 's/^ \* Version: //p' plugin/wp-agent-bridge/takka-wordpress-bridge.php | head -n1 | tr -d '\r')"
+          test "$version" = '1.0.1'
           mkdir -p tester-kit
-          curl -fL --retry 3 \
-            https://github.com/takka-d/wp-agent-bridge/releases/download/v1.0.0-rc1/wp-agent-bridge-1.0.0.zip \
-            -o tester-kit/wp-agent-bridge-1.0.0.zip
-          echo 'f4fbb8c00b45fb01c0ceeba7d8342a40fed51039cb7ff5350e6a28cab4a061fa  tester-kit/wp-agent-bridge-1.0.0.zip' | sha256sum -c -
+          (cd plugin && zip -qr "../tester-kit/wp-agent-bridge-${version}.zip" wp-agent-bridge)
+          sha256sum "tester-kit/wp-agent-bridge-${version}.zip"
+
+      - name: Generate deterministic large PNG media fixture
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import binascii
+          import struct
+          import zlib
+          from pathlib import Path
+
+          def chunk(kind: bytes, data: bytes) -> bytes:
+              return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', binascii.crc32(kind + data) & 0xffffffff)
+
+          png = bytearray(b'\x89PNG\r\n\x1a\n')
+          png += chunk(b'IHDR', struct.pack('>IIBBBBB', 1, 1, 8, 6, 0, 0, 0))
+          png += chunk(b'tEXt', b'Comment\x00' + (b'A' * 2_400_000))
+          png += chunk(b'IDAT', zlib.compress(b'\x00\x00\x00\x00\x00', 9))
+          png += chunk(b'IEND', b'')
+          path = Path('tester-kit/03_画像転送テスト用_約2.4MB.png')
+          path.write_bytes(png)
+          size = path.stat().st_size
+          if not 1_572_864 < size <= 6_291_456:
+              raise SystemExit(f'fixture size out of target range: {size}')
+          print(f'{path}: {size} bytes')
+          PY
 
       - name: Add Japanese test guide and result sheet
         shell: bash
@@ -33,24 +62,25 @@ jobs:
           set -euo pipefail
           cp docs/EXTERNAL_TEST_GUIDE_JA.md tester-kit/01_テスト手順.md
           cp docs/EXTERNAL_TEST_RESULT.md tester-kit/02_テスト結果記入.md
-          printf '%s  %s\n' \
-            'f4fbb8c00b45fb01c0ceeba7d8342a40fed51039cb7ff5350e6a28cab4a061fa' \
-            'wp-agent-bridge-1.0.0.zip' \
+          sha256sum \
+            tester-kit/wp-agent-bridge-1.0.1.zip \
+            tester-kit/03_画像転送テスト用_約2.4MB.png \
             > tester-kit/SHA256SUMS
           cat > tester-kit/最初に読んでください.txt <<'EOF'
-          WP Agent Bridge 1.0.0 RC1 外部テストセット
+          WP Agent Bridge 1.0.1 外部テストセット
 
           1. まず「01_テスト手順.md」を読んでください。
-          2. WordPressへ入れるファイルは「wp-agent-bridge-1.0.0.zip」です。
-          3. 結果は「02_テスト結果記入.md」に記録してください。
-          4. GitHubのsecret、token、private key、Webhook secret等は誰にも送らないでください。
-          5. エラーが出たら同じ操作を繰り返さず、その画面と手順番号を残してください。
+          2. WordPressへ入れるファイルは「wp-agent-bridge-1.0.1.zip」です。
+          3. 「03_画像転送テスト用_約2.4MB.png」は、runtimeの2 MiB command上限を回避するchunk転送の確認用です。
+          4. 結果は「02_テスト結果記入.md」に記録してください。
+          5. GitHubのsecret、token、private key、Webhook secret等は誰にも送らないでください。
+          6. エラーが出たら同じ操作を繰り返さず、その画面と手順番号を残してください。
           EOF
 
       - name: Upload external tester kit
         uses: actions/upload-artifact@v4
         with:
-          name: wp-agent-bridge-external-tester-kit-1.0.0-rc1
+          name: wp-agent-bridge-external-tester-kit-1.0.1
           path: tester-kit/
           if-no-files-found: error
           retention-days: 30
