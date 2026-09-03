@@ -1,6 +1,6 @@
-# WP Agent Bridge 1.0.0 RC1 外部テスト結果
+# WP Agent Bridge 1.0.1 外部テスト結果
 
-テスター名は本名でなくて構いません。secret/token/private key等は絶対に記載しないでください。
+テスター名は本名でなくて構いません。秘密情報は記載しないでください。
 
 ## 基本情報
 
@@ -13,7 +13,7 @@
 
 ## 1. fresh install
 
-- [ ] `wp-agent-bridge-1.0.0.zip` を新規インストールできた
+- [ ] `wp-agent-bridge-1.0.1.zip` を新規インストールできた
 - [ ] 有効化できた
 - [ ] 既存のWP Agent Bridge / TakKa WordPress Bridgeは入っていなかった
 
@@ -24,8 +24,7 @@
 - [ ] `Tools > WP Bridge Setup` に `Status: Not connected` が表示された
 - [ ] `Connect GitHub` を押した
 - [ ] GitHub認可画面が表示された
-- [ ] 権限表示は `Public read-only` + `repository invitations` 相当だった
-- [ ] Organization accessの `Grant` は押していない
+- [ ] Organization全体の管理権限を追加していない
 - Repository invitationの手動Accept: 必要だった / 不要だった / 不明
 
 認可画面や遷移で気づいた点:
@@ -44,9 +43,6 @@
 - [ ] `AGENTS.md` を確認できた
 - [ ] `wordpress-bridge/` を確認できた
 - [ ] Organization管理権限は必要なかった
-- 他人のruntime repoが見えてしまった: はい / いいえ / 確認していない
-
-※ 他人のprivate repo名を探す必要はありません。通常操作の範囲で意図せず見えた場合だけ「はい」。
 
 ## 5. ChatGPT GitHub接続
 
@@ -55,8 +51,6 @@
 - [ ] ChatGPTから作成されたruntime repositoryを認識できた
 - ChatGPTが認識したRepository:
 
-見つかるまでに待ち時間があった場合:
-
 ## 6. Bridge E2E
 
 - [ ] `site.info` が成功した
@@ -64,12 +58,26 @@
 - [ ] 記事・設定・テーマ・プラグインを変更せず完了した
 - ChatGPTの最終結果:
 
-## 7. 最終状態
+## 7. chunked media transport
+
+- [ ] `03_画像転送テスト用_約2.4MB.png` を使用した
+- [ ] 画像全体を1つのcommand JSONへ直埋めせずchunk分割した
+- [ ] 別のWordPress連携経路へ迂回しなかった
+- [ ] 各chunkのbytes / SHA-256検証が成功した
+- [ ] 元画像全体のbytes / SHA-256検証が成功した
+- [ ] WordPressメディアライブラリへ登録できた
+- Attachment ID:
+- Attachment URL:
+- 元ファイルbytes:
+- 元ファイルSHA-256:
+- Chunk数:
+
+## 8. 最終状態
 
 - [ ] WordPressの `WP Bridge Setup` は `Status: Connected` のまま
 - [ ] GitHub Appの削除・再インストールはしていない
 - [ ] Organization側設定は変更していない
-- [ ] secret/token/private key等は共有していない
+- [ ] 秘密情報を共有していない
 
 ## 総合結果
 
