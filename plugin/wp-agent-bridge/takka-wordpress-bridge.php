@@ -24,6 +24,7 @@ require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v05.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-idempotency.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-error-normalizer.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v06-self-update.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v06-self-update-safe.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v06-idempotency.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v06.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v07-audit.php';
