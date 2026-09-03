@@ -7,18 +7,19 @@ if (!defined('ABSPATH')) {
 /**
  * Media transport for Direct Runtime.
  *
- * Binary media is not embedded in the command JSON. ChatGPT writes a Base64
- * payload to wordpress-bridge/media/pending/<id>.b64 and submits a small REST
- * command that references that file. The plugin fetches the payload with its
- * site-specific GitHub App, verifies byte count + SHA-256, uploads it to the
- * WordPress media library, then removes the temporary payload from GitHub.
+ * Media bytes are kept out of command JSON. ChatGPT writes one or more Base64
+ * payload files under wordpress-bridge/media/pending/ and submits a small REST
+ * command that references them. The plugin fetches the payloads using the
+ * site-specific GitHub App, verifies total byte count + SHA-256, uploads the
+ * media, then removes the temporary payload files.
  */
 final class TakKa_WordPress_Bridge_Direct_Media
 {
     private const NAMESPACE = 'wp-agent-bridge-runtime/v1';
     private const ROUTE = '/wp-agent-bridge-runtime/v1/media-upload';
-    private const MAX_MEDIA_BYTES = 6291456; // 6 MiB decoded.
-    private const MAX_SOURCE_TEXT_BYTES = 10485760; // Base64 + small formatting overhead.
+    private const MAX_MEDIA_BYTES = 6291456; // 6 MiB decoded total.
+    private const MAX_SOURCE_TEXT_BYTES = 10485760; // Per Base64 file.
+    private const MAX_CHUNKS = 32;
 
     public static function init(): void
     {
@@ -61,6 +62,7 @@ final class TakKa_WordPress_Bridge_Direct_Media
         $data['media_runtime_file_upload'] = [
             'route' => self::ROUTE,
             'max_decoded_bytes' => self::MAX_MEDIA_BYTES,
+            'max_chunks' => self::MAX_CHUNKS,
             'integrity' => ['expected_bytes', 'expected_sha256'],
             'source_cleanup' => true,
         ];
@@ -75,9 +77,9 @@ final class TakKa_WordPress_Bridge_Direct_Media
             return new WP_Error('wpab_direct_media_json', 'JSON body is required.', ['status' => 400]);
         }
 
-        $data_path = isset($json['data_path']) && is_string($json['data_path']) ? trim($json['data_path']) : '';
-        if (!preg_match('#^wordpress-bridge/media/pending/[A-Za-z0-9._-]{1,120}\.b64$#', $data_path)) {
-            return new WP_Error('wpab_direct_media_path', 'data_path must point to wordpress-bridge/media/pending/<id>.b64.', ['status' => 400]);
+        $paths = self::payload_paths($json);
+        if (is_wp_error($paths)) {
+            return $paths;
         }
 
         $filename = isset($json['filename']) && is_string($json['filename']) ? sanitize_file_name($json['filename']) : '';
@@ -111,14 +113,30 @@ final class TakKa_WordPress_Bridge_Direct_Media
             return $token;
         }
 
-        $source = self::read_runtime_file($token, $repository, $branch, $data_path);
-        if (is_wp_error($source)) {
-            return $source;
-        }
-
-        $binary = self::decode_base64((string) $source['text']);
-        if (is_wp_error($binary)) {
-            return $binary;
+        $binary = '';
+        $sources = [];
+        foreach ($paths as $path) {
+            $source = self::read_runtime_file($token, $repository, $branch, $path);
+            if (is_wp_error($source)) {
+                self::memzero($binary);
+                return $source;
+            }
+            $chunk = self::decode_base64((string) $source['text']);
+            if (is_wp_error($chunk)) {
+                self::memzero($binary);
+                return $chunk;
+            }
+            if (strlen($binary) + strlen($chunk) > self::MAX_MEDIA_BYTES) {
+                self::memzero($chunk);
+                self::memzero($binary);
+                return new WP_Error('wpab_direct_media_size', 'Decoded media exceeds the size limit.', [
+                    'status' => 413,
+                    'max_decoded_bytes' => self::MAX_MEDIA_BYTES,
+                ]);
+            }
+            $binary .= $chunk;
+            self::memzero($chunk);
+            $sources[] = ['path' => $path, 'sha' => (string) $source['sha']];
         }
 
         $actual_bytes = strlen($binary);
@@ -140,23 +158,57 @@ final class TakKa_WordPress_Bridge_Direct_Media
             return $uploaded;
         }
 
-        $cleanup = TakKa_WordPress_Bridge_Direct_GitHub::delete_file(
-            $token,
-            $repository,
-            $branch,
-            $data_path,
-            (string) $source['sha'],
-            'WP Agent Bridge: remove uploaded media payload'
-        );
-        if (is_wp_error($cleanup)) {
-            $uploaded['source_cleanup'] = false;
-            $uploaded['source_cleanup_error'] = $cleanup->get_error_message();
-        } else {
-            $uploaded['source_cleanup'] = true;
+        $cleanup_errors = [];
+        foreach ($sources as $source) {
+            $cleanup = TakKa_WordPress_Bridge_Direct_GitHub::delete_file(
+                $token,
+                $repository,
+                $branch,
+                $source['path'],
+                $source['sha'],
+                'WP Agent Bridge: remove uploaded media payload'
+            );
+            if (is_wp_error($cleanup)) {
+                $cleanup_errors[$source['path']] = $cleanup->get_error_message();
+            }
         }
-        $uploaded['source_path'] = $data_path;
+
+        $uploaded['source_cleanup'] = !$cleanup_errors;
+        if ($cleanup_errors) {
+            $uploaded['source_cleanup_errors'] = $cleanup_errors;
+        }
+        $uploaded['source_paths'] = array_values($paths);
         $uploaded['sha256'] = $actual_sha256;
         return rest_ensure_response($uploaded);
+    }
+
+    private static function payload_paths(array $params)
+    {
+        $paths = [];
+        if (isset($params['data_paths']) && is_array($params['data_paths'])) {
+            foreach ($params['data_paths'] as $path) {
+                if (is_string($path) && trim($path) !== '') {
+                    $paths[] = trim($path);
+                }
+            }
+        } elseif (isset($params['data_path']) && is_string($params['data_path']) && trim($params['data_path']) !== '') {
+            $paths[] = trim($params['data_path']);
+        }
+
+        if (!$paths || count($paths) > self::MAX_CHUNKS) {
+            return new WP_Error('wpab_direct_media_paths', 'Provide data_path or 1-' . self::MAX_CHUNKS . ' data_paths.', ['status' => 400]);
+        }
+        $seen = [];
+        foreach ($paths as $path) {
+            if (!preg_match('#^wordpress-bridge/media/pending/[A-Za-z0-9._-]{1,120}\.b64$#', $path)) {
+                return new WP_Error('wpab_direct_media_path', 'Media payload paths must match wordpress-bridge/media/pending/<id>.b64.', ['status' => 400]);
+            }
+            if (isset($seen[$path])) {
+                return new WP_Error('wpab_direct_media_duplicate_path', 'Duplicate media payload path.', ['status' => 400, 'path' => $path]);
+            }
+            $seen[$path] = true;
+        }
+        return $paths;
     }
 
     private static function read_runtime_file(string $token, string $repository, string $ref, string $path)
@@ -165,27 +217,21 @@ final class TakKa_WordPress_Bridge_Direct_Media
         if (is_wp_error($meta)) {
             return $meta;
         }
-        $sha = isset($meta['sha']) && is_string($meta['sha']) ? strtolower(trim($meta['sha'])) : '';
+        $sha = isset($meta['sha']) && is_string($meta['sha']) ? strtolower(trim((string) $meta['sha'])) : '';
         if (!preg_match('/^[a-f0-9]{40,64}$/', $sha)) {
             return new WP_Error('wpab_direct_media_source_sha', 'GitHub did not return a valid source blob SHA.', ['status' => 502]);
         }
 
         $encoded = isset($meta['content']) && is_string($meta['content']) ? preg_replace('/\s+/', '', $meta['content']) : '';
         if ($encoded === '') {
-            // Contents API omits inline content for larger files. Fetch the blob
-            // directly so media payloads are not constrained by that threshold.
-            $blob = TakKa_WordPress_Bridge_Direct_GitHub::github_api(
-                'GET',
-                '/repos/' . $repository . '/git/blobs/' . $sha,
-                $token
-            );
+            // Contents API may omit inline content for larger files. Git blobs
+            // support larger payloads, so use the blob SHA as a fallback.
+            $blob = TakKa_WordPress_Bridge_Direct_GitHub::github_api('GET', '/repos/' . $repository . '/git/blobs/' . $sha, $token);
             if (is_wp_error($blob)) {
                 return $blob;
             }
             $blob_data = isset($blob['data']) && is_array($blob['data']) ? $blob['data'] : [];
-            $encoded = isset($blob_data['content']) && is_string($blob_data['content'])
-                ? preg_replace('/\s+/', '', $blob_data['content'])
-                : '';
+            $encoded = isset($blob_data['content']) && is_string($blob_data['content']) ? preg_replace('/\s+/', '', $blob_data['content']) : '';
         }
         if ($encoded === '') {
             return new WP_Error('wpab_direct_media_source_content', 'GitHub media payload content is missing.', ['status' => 502]);
@@ -215,8 +261,7 @@ final class TakKa_WordPress_Bridge_Direct_Media
             return new WP_Error('wpab_direct_media_base64_empty', 'Base64 media payload is empty.', ['status' => 400]);
         }
 
-        // Accept URL-safe Base64 and omitted padding, both common when data is
-        // produced by tools rather than copied from a canonical encoder.
+        // Normalize common transport variants without silently dropping data.
         $value = strtr($value, '-_', '+/');
         if (preg_match('/[^A-Za-z0-9+\/=]/', $value)) {
             return new WP_Error('wpab_direct_media_base64_chars', 'Base64 media payload contains invalid characters.', ['status' => 400]);
@@ -237,7 +282,7 @@ final class TakKa_WordPress_Bridge_Direct_Media
         }
         if (strlen($binary) < 1 || strlen($binary) > self::MAX_MEDIA_BYTES) {
             self::memzero($binary);
-            return new WP_Error('wpab_direct_media_size', 'Decoded media is empty or exceeds the size limit.', [
+            return new WP_Error('wpab_direct_media_chunk_size', 'Decoded media chunk is empty or too large.', [
                 'status' => 413,
                 'max_decoded_bytes' => self::MAX_MEDIA_BYTES,
             ]);
