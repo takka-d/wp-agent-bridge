@@ -76,16 +76,24 @@ final class TakKa_WordPress_Bridge_Direct_Hardening
             . "Do not substitute another repository with similar files.\n\n"
             . "Create commands at `wordpress-bridge/commands/pending/<id>.json` and read results from `wordpress-bridge/results/<id>.json`.\n"
             . "Use unique `id` and `request_id` values. Respect preview/confirm/SHA/plan/impact guards returned by the Bridge.\n\n"
+            . "## Media uploads\n\n"
+            . "For normal Direct Runtime media uploads, do NOT embed a large `data_b64` string inside the command JSON.\n"
+            . "1. Encode the original binary as Base64 and write it to `wordpress-bridge/media/pending/<id>.b64`.\n"
+            . "2. Compute `expected_bytes` and SHA-256 from the original binary.\n"
+            . "3. Submit a small REST command to `/wp-agent-bridge-runtime/v1/media-upload` with `data_path`, `filename`, `expected_bytes`, and `expected_sha256`.\n"
+            . "4. The plugin verifies integrity, uploads to the WordPress media library, and deletes the temporary `.b64` payload after success.\n"
+            . "Whitespace, Data-URL prefixes, URL-safe Base64, and omitted Base64 padding are normalized by the plugin.\n\n"
             . "Normal transport: ChatGPT -> this private repository -> site-specific GitHub App signed push Webhook -> connected WordPress -> this repository -> ChatGPT.\n"
-            . "WPVibe is not a required user dependency. Media upload is supported by WP Agent Bridge.\n";
+            . "WPVibe is not a required user dependency.\n";
 
         $runtime = "# Runtime\n\n"
             . "Transport: site-specific GitHub App + signed push Webhook direct to the user's WordPress.\n"
             . "Repository: `" . $repository . "`\n"
             . "Branch: `" . $branch . "`\n"
             . "Marker: `wordpress-bridge/RUNTIME_CONNECTION.json`\n"
-            . "Pending: `wordpress-bridge/commands/pending/<id>.json`\n"
+            . "Pending commands: `wordpress-bridge/commands/pending/<id>.json`\n"
             . "Results: `wordpress-bridge/results/<id>.json`\n"
+            . "Media payloads: `wordpress-bridge/media/pending/<id>.b64` -> `/wp-agent-bridge-runtime/v1/media-upload`\n"
             . "Normal WordPress commands do not use GitHub Actions, WPVibe, or an operator-owned relay.\n";
 
         self::sync_file($token, $repository, $branch, 'AGENTS.md', $agents);
