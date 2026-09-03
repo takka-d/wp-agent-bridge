@@ -3,7 +3,7 @@ Contributors: takka-d
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
@@ -24,6 +24,7 @@ The project is designed around these principles:
 * Draft theme preview, backup, publish, and rollback workflows.
 * Idempotent request IDs for retry-safe delivery.
 * Protected handling for user data, post meta, options, and other sensitive WordPress state.
+* Chunked media transfer for files that would exceed the runtime command JSON limit.
 
 == Installation ==
 
@@ -36,6 +37,10 @@ The project is designed around these principles:
 
 The onboarding flow creates and initializes the dedicated private runtime repository automatically. Manual branch, webhook, or secret configuration is not required for ordinary users.
 
+== Media transfer ==
+
+Media files up to 6 MiB can be transferred without embedding the entire Base64 payload in one runtime command. The client splits the binary into bounded chunks, sends each chunk through the existing authenticated Bridge rest.call action, and WordPress verifies both per-chunk and whole-file byte counts and SHA-256 before adding the reconstructed file to the media library. Retried chunks are idempotent and stale staged uploads are cleaned automatically.
+
 == License ==
 
 Free of charge to download, install, and use. Private modification is permitted. Redistribution of original or modified copies is prohibited without prior written permission. See LICENSE.md in the plugin distribution for the complete terms.
@@ -47,6 +52,12 @@ This is a custom proprietary/source-available license, not an open-source licens
 High-impact writes remain subject to the Bridge's preview, confirmation, state-hash, plan-hash, impact-hash, active-theme/plugin, and sensitive-key protections.
 
 == Changelog ==
+
+= 1.0.1 =
+* Added chunked media transport over the canonical signed Webhook runtime path.
+* Avoids embedding a full image Base64 payload in one command JSON, preventing the runtime 2 MiB command limit from conflicting with the 6 MiB WordPress media limit.
+* Verifies per-chunk byte count and SHA-256 plus the reconstructed original file byte count and SHA-256.
+* Supports retry-safe duplicate chunks, automatic finalization, and stale staging cleanup.
 
 = 1.0.0 =
 * Added guided GitHub onboarding to the main plugin.
