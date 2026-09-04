@@ -1,0 +1,397 @@
+name: Self-contained runtime test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'plugin/wp-agent-bridge/**'
+      - '.github/workflows/self-contained-runtime-test.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'plugin/wp-agent-bridge/**'
+      - '.github/workflows/self-contained-runtime-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  direct-runtime:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: wordpress
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Static self-contained transport assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          plugin='plugin/wp-agent-bridge'
+          ! grep -R -F 'https://takka-note.com/wp-json/takka-wp-bridge-onboarding' "$plugin"
+          ! grep -R -F 'wp-agent-bridge-runtime/wordpress-bridge-' "$plugin"
+          grep -q 'site-specific GitHub App' "$plugin/includes/class-takka-wordpress-bridge-onboarding.php"
+          grep -q "'contents' => 'write'" "$plugin/includes/class-takka-wordpress-bridge-onboarding.php"
+          grep -q "'metadata' => 'read'" "$plugin/includes/class-takka-wordpress-bridge-onboarding.php"
+          grep -q "'default_events' => \['push'\]" "$plugin/includes/class-takka-wordpress-bridge-onboarding.php"
+          grep -q "'public' => false" "$plugin/includes/class-takka-wordpress-bridge-onboarding.php"
+          grep -q 'No operator-owned relay' "$plugin/includes/class-takka-wordpress-bridge-direct-runtime.php"
+          grep -q 'Direct_Runtime_V2::init' "$plugin/takka-wordpress-bridge.php"
+          grep -q 'Direct_Onboarding_Guard::init' "$plugin/takka-wordpress-bridge.php"
+
+      - name: PHP syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          find plugin/wp-agent-bridge -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+
+      - name: Install WP-CLI and clean WordPress 7.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o /tmp/wp
+          chmod +x /tmp/wp
+          mkdir -p /tmp/wpab-direct-test
+          /tmp/wp core download --version=7.1 --path=/tmp/wpab-direct-test
+          /tmp/wp config create \
+            --path=/tmp/wpab-direct-test \
+            --dbname=wordpress \
+            --dbuser=root \
+            --dbpass=root \
+            --dbhost=127.0.0.1:3306 \
+            --skip-check
+          /tmp/wp core install \
+            --path=/tmp/wpab-direct-test \
+            --url=http://wpab-direct.test \
+            --title='WPAB Direct Runtime Test' \
+            --admin_user=admin \
+            --admin_password='Temporary-Test-Password-2026!' \
+            --admin_email=admin@example.test \
+            --skip-email
+          cp -R plugin/wp-agent-bridge /tmp/wpab-direct-test/wp-content/plugins/wp-agent-bridge
+          /tmp/wp plugin activate wp-agent-bridge --path=/tmp/wpab-direct-test
+
+      - name: Verify Direct Runtime routes and recovery semantics
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/wpab-direct-runtime-test.php <<'PHP'
+          <?php
+          wp_set_current_user(1);
+
+          function t_fail(string $message): void {
+              fwrite(STDERR, $message . "\n");
+              exit(1);
+          }
+
+          function gh_response(int $status, $data): array {
+              return [
+                  'headers' => [],
+                  'body' => $data === null ? '' : wp_json_encode($data, JSON_UNESCAPED_SLASHES),
+                  'response' => ['code' => $status, 'message' => 'mock'],
+                  'cookies' => [],
+                  'filename' => null,
+              ];
+          }
+
+          function png_chunk(string $type, string $data): string {
+              return pack('N', strlen($data)) . $type . $data . pack('N', crc32($type . $data));
+          }
+
+          $GLOBALS['fake_gh_files'] = [];
+          $GLOBALS['fake_fail_result_put_once'] = false;
+          $GLOBALS['fake_branch_sha'] = str_repeat('a', 40);
+
+          function fake_put(string $path, string $content): void {
+              $GLOBALS['fake_gh_files'][$path] = ['content' => $content, 'sha' => sha1($content)];
+          }
+
+          add_filter('pre_http_request', function ($pre, $args, $url) {
+              if (strpos($url, 'https://api.github.com/') !== 0) {
+                  return $pre;
+              }
+              $method = strtoupper((string) ($args['method'] ?? 'GET'));
+              $parts = wp_parse_url($url);
+              $path = (string) ($parts['path'] ?? '');
+              $query = [];
+              parse_str((string) ($parts['query'] ?? ''), $query);
+
+              if ($method === 'POST' && $path === '/app/installations/42/access_tokens') {
+                  return gh_response(201, [
+                      'token' => 'fake-installation-token',
+                      'expires_at' => gmdate('c', time() + 3600),
+                  ]);
+              }
+
+              $prefix = '/repos/test-user/runtime-repo/contents/';
+              if (strpos($path, $prefix) === 0) {
+                  $file = rawurldecode(substr($path, strlen($prefix)));
+                  $file = implode('/', array_map('rawurldecode', explode('/', substr($path, strlen($prefix)))));
+
+                  if ($method === 'GET' && $file === 'wordpress-bridge/commands/pending') {
+                      $rows = [];
+                      foreach ($GLOBALS['fake_gh_files'] as $name => $record) {
+                          $p = 'wordpress-bridge/commands/pending/';
+                          if (strpos($name, $p) !== 0) continue;
+                          $leaf = substr($name, strlen($p));
+                          if ($leaf === '' || strpos($leaf, '/') !== false) continue;
+                          $rows[] = [
+                              'type' => 'file',
+                              'name' => $leaf,
+                              'path' => $name,
+                              'sha' => $record['sha'],
+                          ];
+                      }
+                      return gh_response(200, $rows);
+                  }
+
+                  if ($method === 'GET') {
+                      if (!isset($GLOBALS['fake_gh_files'][$file])) {
+                          return gh_response(404, ['message' => 'Not Found']);
+                      }
+                      $record = $GLOBALS['fake_gh_files'][$file];
+                      // Exercise Direct Media's Git blob fallback for large .b64 files.
+                      $contents_api_payload = (substr($file, -4) === '.b64' && strlen($record['content']) > 1000000)
+                          ? ''
+                          : base64_encode($record['content']);
+                      return gh_response(200, [
+                          'type' => 'file',
+                          'path' => $file,
+                          'sha' => $record['sha'],
+                          'encoding' => 'base64',
+                          'content' => $contents_api_payload,
+                      ]);
+                  }
+
+                  if ($method === 'PUT') {
+                      $body = json_decode((string) ($args['body'] ?? ''), true);
+                      if (!is_array($body) || !isset($body['content'])) {
+                          return gh_response(400, ['message' => 'bad mock PUT']);
+                      }
+                      if ($GLOBALS['fake_fail_result_put_once']
+                          && $file === 'wordpress-bridge/results/recover-side-effect.json') {
+                          $GLOBALS['fake_fail_result_put_once'] = false;
+                          return gh_response(409, ['message' => 'simulated branch conflict']);
+                      }
+                      if (isset($GLOBALS['fake_gh_files'][$file]) && empty($body['sha'])) {
+                          return gh_response(422, ['message' => 'sha was not supplied']);
+                      }
+                      $decoded = base64_decode((string) $body['content'], true);
+                      if (!is_string($decoded)) return gh_response(400, ['message' => 'bad base64']);
+                      fake_put($file, $decoded);
+                      return gh_response(isset($body['sha']) ? 200 : 201, [
+                          'content' => ['sha' => $GLOBALS['fake_gh_files'][$file]['sha']],
+                      ]);
+                  }
+
+                  if ($method === 'DELETE') {
+                      $body = json_decode((string) ($args['body'] ?? ''), true);
+                      if (!isset($GLOBALS['fake_gh_files'][$file])) {
+                          return gh_response(404, ['message' => 'Not Found']);
+                      }
+                      if (!is_array($body) || !hash_equals($GLOBALS['fake_gh_files'][$file]['sha'], (string) ($body['sha'] ?? ''))) {
+                          return gh_response(409, ['message' => 'sha mismatch']);
+                      }
+                      unset($GLOBALS['fake_gh_files'][$file]);
+                      return gh_response(200, ['commit' => ['sha' => str_repeat('b', 40)]]);
+                  }
+              }
+
+              if ($method === 'GET' && $path === '/repos/test-user/runtime-repo/git/ref/heads/wp-agent-bridge-runtime') {
+                  return gh_response(200, ['object' => ['sha' => $GLOBALS['fake_branch_sha']]]);
+              }
+
+              $blob_prefix = '/repos/test-user/runtime-repo/git/blobs/';
+              if ($method === 'GET' && strpos($path, $blob_prefix) === 0) {
+                  $sha = substr($path, strlen($blob_prefix));
+                  foreach ($GLOBALS['fake_gh_files'] as $record) {
+                      if (hash_equals($record['sha'], $sha)) {
+                          return gh_response(200, [
+                              'sha' => $sha,
+                              'encoding' => 'base64',
+                              'content' => base64_encode($record['content']),
+                          ]);
+                      }
+                  }
+                  return gh_response(404, ['message' => 'Not Found']);
+              }
+
+              return gh_response(404, ['message' => 'Unhandled mock GitHub request', 'method' => $method, 'path' => $path]);
+          }, 10, 3);
+
+          $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+          if ($key === false) t_fail('Could not generate test RSA key.');
+          $pem = '';
+          if (!openssl_pkey_export($key, $pem)) t_fail('Could not export test RSA key.');
+          if (!TakKa_WordPress_Bridge_Direct_GitHub::store_app_credentials(123, 'wpab-test-app', $pem, str_repeat('w', 40))) {
+              t_fail('Could not store test GitHub App credentials.');
+          }
+          if (!TakKa_WordPress_Bridge_Direct_Runtime::store_connection([
+              'installation_id' => 42,
+              'repository_id' => 99,
+              'repository' => 'test-user/runtime-repo',
+              'runtime_branch' => 'wp-agent-bridge-runtime',
+          ])) {
+              t_fail('Could not store test Direct Runtime connection.');
+          }
+          update_option('takka_bridge_secret', str_repeat('b', 64), false);
+          update_option('takka_bridge_user_id', 1, false);
+
+          add_action('rest_api_init', function () {
+              register_rest_route('wpab-test/v1', '/mutate', [
+                  'methods' => WP_REST_Server::CREATABLE,
+                  'permission_callback' => '__return_true',
+                  'callback' => static function () {
+                      $count = (int) get_option('wpab_test_counter', 0) + 1;
+                      update_option('wpab_test_counter', $count, false);
+                      return rest_ensure_response(['ok' => true, 'count' => $count]);
+                  },
+              ]);
+          }, 5);
+          do_action('rest_api_init');
+          $routes = rest_get_server()->get_routes();
+          foreach ([
+              '/wp-agent-bridge-runtime/v1/github-webhook',
+              '/wp-agent-bridge-runtime/v1/media-upload',
+              '/wp-agent-bridge-media/v1/upload-chunk',
+              '/wp-agent-bridge-onboarding/v2/manifest-complete',
+              '/wp-agent-bridge-onboarding/v2/installed',
+          ] as $route) {
+              if (!isset($routes[$route])) t_fail('Missing Direct Runtime route: ' . $route);
+          }
+
+          function deliver_push(array $changed): array {
+              $payload = [
+                  'ref' => 'refs/heads/wp-agent-bridge-runtime',
+                  'deleted' => false,
+                  'after' => $GLOBALS['fake_branch_sha'],
+                  'repository' => ['id' => 99, 'full_name' => 'test-user/runtime-repo', 'private' => true],
+                  'installation' => ['id' => 42],
+                  'commits' => [[
+                      'added' => $changed,
+                      'modified' => [],
+                      'removed' => [],
+                  ]],
+              ];
+              $raw = wp_json_encode($payload, JSON_UNESCAPED_SLASHES);
+              $request = new WP_REST_Request('POST', '/wp-agent-bridge-runtime/v1/github-webhook');
+              $request->set_header('x-github-event', 'push');
+              $request->set_header('x-github-delivery', wp_generate_uuid4());
+              $request->set_header('x-hub-signature-256', 'sha256=' . hash_hmac('sha256', $raw, str_repeat('w', 40)));
+              $request->set_header('content-type', 'application/json');
+              $request->set_body($raw);
+              $response = rest_do_request($request);
+              if (is_wp_error($response)) t_fail('Webhook WP_Error: ' . $response->get_error_message());
+              return ['status' => $response->get_status(), 'data' => $response->get_data()];
+          }
+
+          // 1) Reproduce: WordPress side effect succeeds, first GitHub result PUT
+          // fails. Recovery must replay the same request_id without executing the
+          // side effect twice, then finish result/completed/pending bookkeeping.
+          $side_path = 'wordpress-bridge/commands/pending/recover-side-effect.json';
+          $side_command = [
+              'id' => 'recover-side-effect',
+              'request_id' => 'recover-side-effect',
+              'type' => 'rest',
+              'method' => 'POST',
+              'route' => '/wpab-test/v1/mutate',
+              'body' => [],
+          ];
+          fake_put($side_path, wp_json_encode($side_command, JSON_UNESCAPED_SLASHES));
+          $GLOBALS['fake_fail_result_put_once'] = true;
+          $side_response = deliver_push([$side_path]);
+          if ($side_response['status'] !== 200) t_fail('Side-effect recovery webhook did not return 200.');
+          if ((int) get_option('wpab_test_counter', 0) !== 1) {
+              t_fail('Recovered request executed its WordPress side effect more than once.');
+          }
+          foreach ([
+              'wordpress-bridge/results/recover-side-effect.json',
+              'wordpress-bridge/commands/completed/recover-side-effect.json',
+          ] as $required) {
+              if (!isset($GLOBALS['fake_gh_files'][$required])) t_fail('Recovery did not create ' . $required);
+          }
+          if (isset($GLOBALS['fake_gh_files'][$side_path])) t_fail('Recovered pending command was not removed.');
+
+          // 2) Reproduce: result exists but completed/pending bookkeeping was
+          // interrupted. An unrelated later push must repair it without WordPress
+          // execution.
+          $book_path = 'wordpress-bridge/commands/pending/bookkeeping-only.json';
+          $book_raw = wp_json_encode([
+              'id' => 'bookkeeping-only',
+              'request_id' => 'bookkeeping-only',
+              'type' => 'health',
+          ], JSON_UNESCAPED_SLASHES);
+          fake_put($book_path, $book_raw);
+          fake_put('wordpress-bridge/results/bookkeeping-only.json', wp_json_encode([
+              'id' => 'bookkeeping-only',
+              'request_id' => 'bookkeeping-only',
+              'result' => ['ok' => true, 'status' => 200],
+          ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+          deliver_push(['README.md']);
+          if (isset($GLOBALS['fake_gh_files'][$book_path])) t_fail('Bookkeeping-only pending command was not removed.');
+          if (!isset($GLOBALS['fake_gh_files']['wordpress-bridge/commands/completed/bookkeeping-only.json'])) {
+              t_fail('Bookkeeping-only recovery did not create completed command.');
+          }
+
+          // 3) Large Direct Media: keep >2 MiB media outside command JSON in the
+          // user's own runtime repository, reconstruct it, upload it, and delete
+          // the temporary .b64 source.
+          $png = "\x89PNG\r\n\x1a\n";
+          $png .= png_chunk('IHDR', pack('NNCCCCC', 1, 1, 8, 6, 0, 0, 0));
+          $png .= png_chunk('tEXt', "Comment\0" . str_repeat('A', 2400000));
+          $png .= png_chunk('IDAT', gzcompress("\x00\x00\x00\x00\x00", 9));
+          $png .= png_chunk('IEND', '');
+          if (strlen($png) <= 1572864 || strlen($png) > 6291456) t_fail('Large media fixture is outside the target window.');
+          $media_source = 'wordpress-bridge/media/pending/self-contained-large.b64';
+          fake_put($media_source, base64_encode($png));
+          $media_command_path = 'wordpress-bridge/commands/pending/self-contained-media.json';
+          fake_put($media_command_path, wp_json_encode([
+              'id' => 'self-contained-media',
+              'request_id' => 'self-contained-media',
+              'type' => 'rest',
+              'method' => 'POST',
+              'route' => '/wp-agent-bridge-runtime/v1/media-upload',
+              'body' => [
+                  'data_path' => $media_source,
+                  'filename' => 'self-contained-large.png',
+                  'expected_bytes' => strlen($png),
+                  'expected_sha256' => hash('sha256', $png),
+                  'title' => 'Self-contained media test',
+                  'alt_text' => 'Self-contained media test',
+              ],
+          ], JSON_UNESCAPED_SLASHES));
+          deliver_push([$media_command_path]);
+          if (isset($GLOBALS['fake_gh_files'][$media_source])) t_fail('Direct Media did not delete its temporary GitHub source file.');
+          if (isset($GLOBALS['fake_gh_files'][$media_command_path])) t_fail('Direct Media command remained pending.');
+
+          $found_attachment = 0;
+          foreach (get_posts(['post_type' => 'attachment', 'post_status' => 'inherit', 'posts_per_page' => -1]) as $attachment) {
+              $file = get_attached_file($attachment->ID);
+              if ($file && basename($file) === 'self-contained-large.png') {
+                  $found_attachment = (int) $attachment->ID;
+                  if ((int) filesize($file) !== strlen($png)) t_fail('Uploaded Direct Media byte count changed.');
+                  if (!hash_equals(hash('sha256', $png), hash_file('sha256', $file))) t_fail('Uploaded Direct Media SHA-256 changed.');
+                  break;
+              }
+          }
+          if ($found_attachment < 1) t_fail('Direct Media did not create the expected attachment.');
+          wp_delete_attachment($found_attachment, true);
+
+          echo "Self-contained Direct Runtime recovery, idempotency, and >2 MiB media tests passed.\n";
+          PHP
+
+          /tmp/wp eval-file /tmp/wpab-direct-runtime-test.php --path=/tmp/wpab-direct-test
