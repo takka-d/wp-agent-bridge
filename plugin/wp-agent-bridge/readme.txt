@@ -3,7 +3,7 @@ Contributors: takka-d
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.1.1
+Stable tag: 1.1.2
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
@@ -71,6 +71,10 @@ This is a custom proprietary/source-available license, not an open-source licens
 High-impact writes remain subject to the Bridge's preview, confirmation, state-hash, plan-hash, impact-hash, active-theme/plugin, and sensitive-key protections.
 
 == Changelog ==
+
+= 1.1.2 =
+* Aligns packaged version metadata and bundled documentation with the self-contained Direct Runtime architecture validated in 1.1.1.
+* Replaces stale 1.0.1/relay onboarding text in the packaged README without changing the validated runtime behavior.
 
 = 1.1.1 =
 * Prevents self-generated Direct Runtime media/result/completed bookkeeping pushes from recursively redispatching an in-flight pending command.
