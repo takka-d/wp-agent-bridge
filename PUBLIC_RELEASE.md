@@ -1,99 +1,136 @@
 # WP Agent Bridge Public Release Checklist
 
-## Do not make the development repository public
+## Release architecture
 
-The current development repository contains unrelated project data and historical runtime queue/result commits. A public release must be created in a **new repository with fresh Git history**.
+WP Agent Bridge 1.1.0 is the first self-contained runtime release candidate.
 
-Deleting runtime files in a later commit is not sufficient because earlier commits remain reachable from Git history.
+Normal end-user operation must use only resources controlled by that end user:
+
+`ChatGPT -> user's private runtime repository -> user's site-specific GitHub App signed Webhook -> user's WordPress -> user's runtime repository -> ChatGPT`
+
+The distribution must not require an operator-owned runtime Organization, operator-owned private repository, operator relay server, per-command GitHub Actions worker, old Bridge Key, `takka-d/chatgpt-data`, or WPVibe.
+
+Version 1.0.1 remains the previous signed-runtime/chunk-media generation. Do not publish the self-contained architecture under the same 1.0.1 version number. The self-contained release line starts at **1.1.0**.
 
 ## Public repository contents
 
-Initialize the public repository from the clean generated public-source artifact, not by mirroring the development repository.
-
-The public distribution must intentionally exclude:
+The public distribution intentionally excludes:
 
 - central/operator Onboarding Service source;
 - diagnostics/test helper plugins;
-- existing command/result JSON;
+- existing runtime command/result/media payloads;
 - unrelated project directories;
-- credentials, tokens, private keys, development-only data;
-- Git history from the development repository.
+- credentials, tokens, private keys, Webhook secrets, development-only data;
+- operator-owned runtime repository configuration.
 
-## Public onboarding target
+The public ZIP contains the WP Agent Bridge plugin itself plus its license/readme files. Development and test workflows remain repository-side and are not included in the installed plugin directory unless explicitly part of the package source.
 
-The end-user setup remains six user-visible steps:
+## End-user onboarding target
 
 1. Download the WP Agent Bridge ZIP.
 2. Install and activate it in WordPress.
-3. Select `Connect GitHub` in `Tools > WP Bridge Setup`.
-4. Complete the GitHub authorization flow.
-5. Connect GitHub to ChatGPT and confirm that the generated runtime repository is available.
-6. Ask ChatGPT to update WordPress.
+3. Open `Tools > WP Agent Bridge`.
+4. Create the suggested private runtime repository in the user's own GitHub account.
+5. Choose `Connect GitHub`; WordPress supplies a GitHub App manifest.
+6. Create/install the site-specific private GitHub App in the user's own GitHub account, selecting only that runtime repository.
+7. WP Agent Bridge initializes the `wp-agent-bridge-runtime` branch, canonical marker, command/result directories, and media payload directory.
+8. Connect the same GitHub account to ChatGPT and verify that ChatGPT can access that runtime repository.
+9. Ask ChatGPT to operate WordPress through that repository.
 
-Repository creation, runtime initialization, branch/path creation, secret generation, and WordPress pairing are automated behind the onboarding flow.
+Ordinary setup must not require the user to paste a PAT, private key, Webhook secret, Bridge Key, or GitHub Actions workflow configuration.
+
+## Runtime identity requirements
+
+A completed Direct Runtime repository must contain a machine-readable `wordpress-bridge/RUNTIME_CONNECTION.json` identifying at least:
+
+- `status: canonical`
+- `transport: direct-github-webhook`
+- `ownership: user-owned`
+- `operator_relay: false`
+- the actual repository name
+- runtime branch `wp-agent-bridge-runtime`
+- the target site host
+
+`AGENTS.md` and `WEBHOOK_RUNTIME.md` must describe the same architecture and must not tell ChatGPT to substitute an operator-owned Organization runtime.
+
+## Delivery and replay safety
+
+Required behaviors:
+
+- every runtime command uses unique `id` and `request_id` values;
+- identical completed request IDs replay the stored response instead of repeating the WordPress side effect;
+- reuse of one request ID with a different payload is rejected;
+- a valid push reconciles the current `commands/pending/` directory so a missed Webhook or interrupted GitHub bookkeeping write can recover;
+- result/completed/pending conflicts are retried without duplicating WordPress mutations.
+
+## Media transport
+
+WordPress media limit: 6 MiB decoded.
+
+The ordinary self-contained media path must not embed a large file's complete Base64 payload into one command JSON. Base64 payload files are stored only in the user's own private runtime repository under `wordpress-bridge/media/pending/`, then fetched by the user's WordPress through the site-specific GitHub App.
+
+WordPress must verify original `expected_bytes` and `expected_sha256` before attachment creation and remove temporary payload files after success. The bounded authenticated chunk route may remain as a fallback and must verify per-chunk and whole-file integrity.
+
+## Self-update safety
+
+A Bridge self-update must:
+
+- require `full_manifest=true`;
+- reject partial manifests;
+- verify every submitted file SHA-256;
+- verify the canonical manifest SHA-256;
+- parse-check submitted PHP before replacement;
+- verify literal bootstrap PHP dependencies are present;
+- require every omitted existing file to be explicitly present in `delete_paths`;
+- require separate deletion confirmation when `delete_paths` is non-empty;
+- capture the current plugin before writing;
+- automatically restore that capture if file replacement itself fails.
+
+A live migration must not rely on plugin-internal rollback as the only recovery mechanism for a post-write bootstrap fatal. Existing production transport must remain available until the new Direct Runtime has independently passed health and media/retry checks.
+
+## Privacy and ownership
+
+Normal runtime commands, results, article text, WordPress settings, GitHub App private keys, and Webhook secrets are not sent to or stored by the WP Agent Bridge operator.
+
+The site-specific GitHub App private key and Webhook secret are encrypted at rest inside that user's WordPress installation. The runtime repository is private and user-owned.
+
+External test result sheets should not request the tester's GitHub username, WordPress URL, article contents, secrets, or runtime command/result payloads unless a tester independently chooses to provide diagnostic material for a specific failure.
 
 ## License
 
-The public source is source-visible but is **not open source**. It uses the `WP Agent Bridge License 1.0`:
-
-- download/install/use: free of charge;
-- private modification: permitted;
-- redistribution of original or modified copies: prohibited without prior written permission;
-- GitHub-hosted public repositories remain subject to GitHub's platform Terms of Service.
-
-The license is custom, proprietary/source-available, and not GPL-compatible.
-
-## WordPress.org
+The public source is source-visible but is not an open-source license. `WP Agent Bridge License 1.0` permits free download/install/use and private modification, while redistribution of original or modified copies requires prior written permission.
 
 Do not submit the current licensed distribution to the WordPress.org Plugin Directory under this license.
 
-## Release gate
+## 1.1.0 release gates
 
-Verified for the 1.0.0 release candidate:
+Completed in isolation before live cutover:
 
-- [x] main plugin contains guided onboarding client functionality;
-- [x] GitHub authorization is limited to public read-only + repository invitation handling for the temporary setup OAuth flow;
-- [x] dedicated private runtime repository is automatically created in the runtime Organization;
-- [x] runtime branch and command/result paths are initialized automatically;
-- [x] temporary Setup OAuth grant is revoked after onboarding;
-- [x] ChatGPT can be connected to the generated runtime repository while the existing personal GitHub installation remains intact for the operator test account;
-- [x] ChatGPT can write a command into the generated runtime repository;
-- [x] signed Webhook relay executes the command in WordPress and writes the result back;
-- [x] processed command moves from `commands/pending` to `commands/completed`;
-- [x] normal command transport does not use GitHub Actions;
-- [x] plugin header Version and `readme.txt` Stable tag are set to 1.0.0;
-- [x] plugin package includes `LICENSE.md`;
-- [x] public package build excludes central Onboarding Service and development runtime data by construction;
-- [x] 1.0.0 package workflow completes successfully;
-- [x] clean public repository is created from the generated public-source ZIP with fresh Git history;
-- [x] public repository CI passes PHP syntax, release metadata, runtime-payload, and obvious-secret checks;
-- [x] release candidate asset SHA-256 matches the package produced by the private release build;
-- [x] exact release-candidate ZIP installs and activates on a clean WordPress 7.1 + MySQL 8 instance;
-- [x] packaged onboarding class and completion REST route load on the clean WordPress instance;
-- [x] packaged content preview/apply rejects stale writes after intervening content changes;
-- [x] packaged active plugin and active theme deletion protections reject destructive requests;
-- [x] packaged sensitive Bridge option read protection rejects credential access;
-- [x] packaged Draft Theme publish creates a backup and packaged rollback restores the pre-publish theme files while creating a safety backup.
+- [x] PHP syntax / release metadata / obvious-secret CI passes.
+- [x] exact packaged plugin installs and activates on clean WordPress 7.1 + MySQL 8.
+- [x] content stale-write rejection, active plugin/theme protection, sensitive option protection, Draft Theme publish/rollback pass.
+- [x] request-ID completed-response idempotency and changed-payload rejection pass.
+- [x] GitHub result-write conflict recovery completes bookkeeping without repeating the WordPress side effect.
+- [x] missed-pending reconciliation is exercised by the self-contained runtime test.
+- [x] self-update regression test rejects destructive incomplete manifests and validates required dependencies.
+- [x] self-contained migration test preserves rollback metadata and writes a user-owned canonical runtime identity.
+- [x] approximately 2.4 MiB media reconstruction passes in isolated WordPress testing.
+- [x] external tester kit is generated from the exact plugin version metadata rather than a hard-coded prior version.
 
-Additional verification completed for the 1.0.1 release candidate:
+Production observations before 1.1.0 cutover:
 
-- [x] exact 1.0.1 plugin candidate was installed on the live TakKa Note site from a complete 51-file self-update manifest;
-- [x] self-update requires a full manifest and no longer treats omitted live plugin files as implicit deletions;
-- [x] self-update deletion requires explicit delete paths plus explicit deletion confirmation;
-- [x] self-update validates required PHP bootstrap dependencies before replacement;
-- [x] runtime request IDs persist completed responses so an identical replay does not repeat the WordPress side effect;
-- [x] reuse of the same request ID with a different payload does not execute the changed side effect;
-- [x] the canonical signed runtime reconstructed a 2,400,088-byte media test through three chunks with matching final SHA-256, then removed the test attachment;
-- [x] the production Onboarding Service resolved its configured `wp-agent-bridge-runtime` Organization installation with repository administration and contents write permission;
-- [x] the production runtime repository naming and initialization functions created a new private Organization repository, `wp-agent-bridge-runtime` branch, canonical marker, signed-runtime guidance, and command/completed/result paths;
-- [x] the generated onboarding E2E repository was deleted immediately after verification and verified absent with GitHub HTTP 404;
-- [x] Onboarding Service 0.3.2 cleans both the generated repository and relay mapping when a post-creation onboarding failure requires rollback;
-- [x] the obsolete onboarding test helper that conflicts with the current main plugin was removed from the live service site;
-- [x] all temporary live inspection/E2E routes were removed after testing and the active child-theme `functions.php` was restored byte-for-byte to its pre-test SHA-256.
+- [x] TakKa Note's existing canonical signed runtime remains healthy before migration.
+- [x] TakKa Note's existing 1.0.1 chunk-media route successfully staged two chunks, reconstructed a PNG with matching full SHA-256, created the attachment, and the test attachment was then deleted.
+- [x] current production plugin/version and self-update backup inventory were captured before any 1.1.0 replacement.
+- [x] current production 1.0.1 does not expose the self-contained onboarding v2 route, proving 1.1.0 is an actual architecture change rather than a same-build reinstall.
 
-Still required before publishing the stable download/article:
+Still required before stable 1.1.0 publication/cutover:
 
-- [ ] configure/verify the centrally installed ChatGPT GitHub App for future runtime repositories without requiring each outside collaborator to administer the runtime Organization;
-- [ ] verify with a non-owner/outside-collaborator GitHub user that ChatGPT can see only that user's generated runtime repository through the Organization installation;
-- [ ] fresh-user onboarding is tested once without relying on a prior Setup OAuth grant;
-- [ ] TakKa Note download/article license notice matches `LICENSE.md`.
+- [ ] 1.1.0 branch CI passes after the version separation changes.
+- [ ] exact 1.1.0 distribution artifact SHA-256 is recorded.
+- [ ] full-manifest live preflight is performed without writes and does not reveal undeclared existing-file deletion.
+- [ ] coexistence/migration behavior with the currently active production Onboarding Service is resolved before replacing live plugin files.
+- [ ] Direct Runtime is established in parallel while the current canonical signed runtime remains usable.
+- [ ] Direct Runtime health, retry/idempotency, and media upload are proven on the live site before canonical cutover.
+- [ ] only after successful Direct validation is the old operator-owned runtime path retired for this site.
+- [ ] download/article license notice matches `LICENSE.md`.
