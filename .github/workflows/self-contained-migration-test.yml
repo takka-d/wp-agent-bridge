@@ -1,0 +1,249 @@
+name: Self-contained migration safety test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'plugin/wp-agent-bridge/**'
+      - '.github/workflows/self-contained-migration-test.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'plugin/wp-agent-bridge/**'
+      - '.github/workflows/self-contained-migration-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  migration:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: wordpress
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Assert no operator-owned runtime dependencies in plugin
+        shell: bash
+        run: |
+          set -euo pipefail
+          plugin='plugin/wp-agent-bridge'
+          ! grep -R -F 'takka-note.com' "$plugin"
+          ! grep -R -F 'wp-agent-bridge-runtime/wordpress-bridge-' "$plugin"
+          ! grep -R -E 'invite_collaborator|repository_invitations|/collaborators/' "$plugin"
+          ! grep -R -F 'takka-d/chatgpt-data' "$plugin" --exclude='class-takka-wordpress-bridge-direct-runtime-identity.php'
+          grep -q "operator_relay.*false" "$plugin/includes/class-takka-wordpress-bridge-direct-runtime-identity.php"
+          grep -q "ownership.*user-owned" "$plugin/includes/class-takka-wordpress-bridge-direct-runtime-identity.php"
+
+      - name: Install WP-CLI and clean WordPress 7.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o /tmp/wp
+          chmod +x /tmp/wp
+          mkdir -p /tmp/wpab-migration-test
+          /tmp/wp core download --version=7.1 --path=/tmp/wpab-migration-test
+          /tmp/wp config create \
+            --path=/tmp/wpab-migration-test \
+            --dbname=wordpress \
+            --dbuser=root \
+            --dbpass=root \
+            --dbhost=127.0.0.1:3306 \
+            --skip-check
+          /tmp/wp core install \
+            --path=/tmp/wpab-migration-test \
+            --url=http://wpab-migration.test \
+            --title='WPAB migration test' \
+            --admin_user=admin \
+            --admin_password='Temporary-Test-Password-2026!' \
+            --admin_email=admin@example.test \
+            --skip-email
+          cp -R plugin/wp-agent-bridge /tmp/wpab-migration-test/wp-content/plugins/wp-agent-bridge
+          /tmp/wp plugin activate wp-agent-bridge --path=/tmp/wpab-migration-test
+
+      - name: Verify migration rollback preservation and immediate identity sync
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/wpab-migration-test.php <<'PHP'
+          <?php
+          wp_set_current_user(1);
+
+          function m_fail(string $message): void {
+              fwrite(STDERR, $message . "\n");
+              exit(1);
+          }
+
+          function m_response(int $status, $data): array {
+              return [
+                  'headers' => [],
+                  'body' => $data === null ? '' : wp_json_encode($data, JSON_UNESCAPED_SLASHES),
+                  'response' => ['code' => $status, 'message' => 'mock'],
+                  'cookies' => [],
+                  'filename' => null,
+              ];
+          }
+
+          $GLOBALS['migration_files'] = [];
+          $GLOBALS['migration_puts'] = 0;
+
+          add_filter('pre_http_request', function ($pre, $args, $url) {
+              if (strpos($url, 'https://api.github.com/') !== 0) return $pre;
+              $method = strtoupper((string) ($args['method'] ?? 'GET'));
+              $parts = wp_parse_url($url);
+              $path = (string) ($parts['path'] ?? '');
+
+              if ($method === 'POST' && $path === '/app/installations/42/access_tokens') {
+                  return m_response(201, [
+                      'token' => 'migration-token',
+                      'expires_at' => gmdate('c', time() + 3600),
+                  ]);
+              }
+
+              $prefix = '/repos/test-user/runtime-repo/contents/';
+              if (strpos($path, $prefix) === 0) {
+                  $file = implode('/', array_map('rawurldecode', explode('/', substr($path, strlen($prefix)))));
+                  if ($method === 'GET') {
+                      if (!isset($GLOBALS['migration_files'][$file])) {
+                          return m_response(404, ['message' => 'Not Found']);
+                      }
+                      $record = $GLOBALS['migration_files'][$file];
+                      return m_response(200, [
+                          'type' => 'file',
+                          'path' => $file,
+                          'sha' => $record['sha'],
+                          'encoding' => 'base64',
+                          'content' => base64_encode($record['content']),
+                      ]);
+                  }
+                  if ($method === 'PUT') {
+                      $body = json_decode((string) ($args['body'] ?? ''), true);
+                      if (!is_array($body) || !isset($body['content'])) return m_response(400, ['message' => 'bad PUT']);
+                      $content = base64_decode((string) $body['content'], true);
+                      if (!is_string($content)) return m_response(400, ['message' => 'bad base64']);
+                      $exists = isset($GLOBALS['migration_files'][$file]);
+                      if ($exists && empty($body['sha'])) return m_response(422, ['message' => 'sha required']);
+                      $GLOBALS['migration_files'][$file] = ['content' => $content, 'sha' => sha1($content)];
+                      $GLOBALS['migration_puts']++;
+                      return m_response($exists ? 200 : 201, ['content' => ['sha' => sha1($content)]]);
+                  }
+              }
+              return m_response(404, ['message' => 'Unhandled migration mock', 'method' => $method, 'path' => $path]);
+          }, 10, 3);
+
+          // Simulate the current live architecture existing locally before
+          // self-contained Direct Runtime setup begins.
+          $legacy = [
+              'repository' => 'operator-old/runtime',
+              'repository_id' => 777,
+              'installation_id' => 888,
+              'runtime_branch' => 'wp-agent-bridge-runtime',
+          ];
+          update_option('takka_bridge_github_connection_v1', $legacy, false);
+          TakKa_WordPress_Bridge_Direct_Onboarding_Guard::preserve_legacy_connection();
+          $backup = get_option('takka_bridge_legacy_connection_backup_v1', null);
+          if (!is_array($backup) || ($backup['repository'] ?? '') !== 'operator-old/runtime') {
+              m_fail('Legacy connection was not preserved before Direct Runtime setup.');
+          }
+
+          $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+          $pem = '';
+          if ($key === false || !openssl_pkey_export($key, $pem)) m_fail('Could not create test App key.');
+          if (!TakKa_WordPress_Bridge_Direct_GitHub::store_app_credentials(123, 'wpab-migration-app', $pem, str_repeat('w', 40))) {
+              m_fail('Could not store Direct App credentials.');
+          }
+          if (!TakKa_WordPress_Bridge_Direct_Runtime::store_connection([
+              'installation_id' => 42,
+              'repository_id' => 99,
+              'repository' => 'test-user/runtime-repo',
+              'runtime_branch' => 'wp-agent-bridge-runtime',
+          ])) {
+              m_fail('Could not store Direct Runtime connection.');
+          }
+
+          // The legacy onboarding prototype deletes this option after the new
+          // Direct connection is committed. The migration guard must restore it
+          // locally so rollback remains possible until explicit cutover cleanup.
+          delete_option('takka_bridge_github_connection_v1');
+          $installed_request = new WP_REST_Request('GET', '/wp-agent-bridge-onboarding/v2/installed');
+          $installed_response = new WP_REST_Response(['ok' => true], 200);
+          TakKa_WordPress_Bridge_Direct_Onboarding_Guard::after_direct_setup($installed_response, [], $installed_request);
+
+          $restored = get_option('takka_bridge_github_connection_v1', null);
+          if (!is_array($restored) || ($restored['repository'] ?? '') !== 'operator-old/runtime') {
+              m_fail('Legacy local rollback mapping was not restored after Direct setup.');
+          }
+
+          foreach ([
+              'AGENTS.md',
+              'wordpress-bridge/RUNTIME_CONNECTION.json',
+              'wordpress-bridge/WEBHOOK_RUNTIME.md',
+              'wordpress-bridge/media/pending/.gitkeep',
+          ] as $path) {
+              if (!isset($GLOBALS['migration_files'][$path])) m_fail('Identity sync did not create ' . $path);
+          }
+
+          $marker = json_decode($GLOBALS['migration_files']['wordpress-bridge/RUNTIME_CONNECTION.json']['content'], true);
+          if (!is_array($marker)) m_fail('Runtime marker JSON is invalid.');
+          $expected = [
+              'status' => 'canonical',
+              'transport' => 'direct-github-webhook',
+              'repository' => 'test-user/runtime-repo',
+              'runtime_branch' => 'wp-agent-bridge-runtime',
+              'site_host' => 'wpab-migration.test',
+              'ownership' => 'user-owned',
+              'operator_relay' => false,
+          ];
+          foreach ($expected as $key_name => $value) {
+              if (!array_key_exists($key_name, $marker) || $marker[$key_name] !== $value) {
+                  m_fail('Unexpected runtime marker field: ' . $key_name);
+              }
+          }
+
+          $agents = $GLOBALS['migration_files']['AGENTS.md']['content'];
+          foreach (['user-owned', 'operator_relay', 'direct-github-webhook', 'operator-owned relay', 'media/pending'] as $needle) {
+              if (strpos($agents, $needle) === false) m_fail('AGENTS.md missing self-contained marker: ' . $needle);
+          }
+
+          // Identity sync is idempotent: a second pass should not write any file.
+          $puts_before = $GLOBALS['migration_puts'];
+          $second = TakKa_WordPress_Bridge_Direct_Runtime_Identity::sync();
+          if (is_wp_error($second)) m_fail('Second identity sync failed: ' . $second->get_error_message());
+          if ($GLOBALS['migration_puts'] !== $puts_before) m_fail('Second identity sync performed unnecessary GitHub writes.');
+
+          // Guard must run before the destructive legacy onboarding callback.
+          $guard_priority = has_action('admin_post_takka_bridge_connect_github', [TakKa_WordPress_Bridge_Direct_Onboarding_Guard::class, 'block_unsafe_reconnect']);
+          $onboarding_priority = has_action('admin_post_takka_bridge_connect_github', [TakKa_WordPress_Bridge_Onboarding::class, 'handle_connect']);
+          if ($guard_priority !== 1 || $onboarding_priority === false || $guard_priority >= $onboarding_priority) {
+              m_fail('Reconnect guard does not run before onboarding connection reset.');
+          }
+
+          do_action('rest_api_init');
+          $tombstone = new WP_REST_Request('POST', '/takka-bridge-onboarding/v1/complete');
+          $tombstone_response = rest_do_request($tombstone);
+          if ($tombstone_response->get_status() !== 410) {
+              m_fail('Retired operator onboarding callback did not return 410.');
+          }
+          $tombstone_data = $tombstone_response->get_data();
+          if (!is_array($tombstone_data) || ($tombstone_data['code'] ?? '') !== 'wpab_central_onboarding_retired') {
+              m_fail('Retired operator onboarding callback returned the wrong error code.');
+          }
+
+          echo "Migration rollback preservation, immediate user-owned identity sync, idempotent resync, reconnect ordering, and central callback tombstone all passed.\n";
+          PHP
+
+          /tmp/wp eval-file /tmp/wpab-migration-test.php --path=/tmp/wpab-migration-test
