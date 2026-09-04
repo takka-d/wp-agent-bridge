@@ -6,9 +6,9 @@ ChatGPTからWordPressの記事・ページ・設定などを更新するため�
 
 ## 現在の配布状態
 
-- Version: `1.1.2`
+- Version: `1.1.3`
 - Status: **release candidate / external tester distribution ready**
-- 再現可能なplugin ZIP SHA-256: `22bc88c83afa0900b35a0b2e0765f45cf938fd3e47d6257d915afde898355d83`
+- 再現可能なplugin ZIP SHA-256: `24c8c20bf36ace6592d7857865de848e4762ebaa6773f63089bebc4d1c270326`
 - broader public / stable releaseはまだ宣言していません。
 
 ## 構成
@@ -119,7 +119,14 @@ WordPress側のmedia上限は6 MiBです。runtime command JSON自体は2 MiB以
 
 自己完結runtimeでは、大きな画像を1個のcommand JSONへBase64直埋めしません。Base64 payloadを利用者自身のruntime repositoryの`wordpress-bridge/media/pending/*.b64`へ置き、小さいcommandから`/wp-agent-bridge-runtime/v1/media-upload`を呼び出します。必要なら複数payloadへ分割できます。
 
-WordPress側では、元ファイルの`expected_bytes`と`expected_sha256`を検証した後にMedia Libraryへ登録し、成功後は一時payloadを利用者repoから削除します。bounded chunk REST routeもfallbackとして保持します。
+1. ChatGPT側で元ファイルのbytes / SHA-256を計算する。
+2. Git Data操作が利用できる場合はpayload群をblobとして先にstagingし、payload群とupload commandを**1つのtree / commit / ref更新**でruntime branchへ公開する。
+3. WordPress側が`data_path` / `data_paths`から元ファイルを再構成し、`expected_bytes` / `expected_sha256`を検証してMedia Libraryへ登録する。
+4. 成功後は、使用した`.b64` payloadを**1つのGit tree cleanup commit**でまとめて削除する。
+5. cleanup中にruntime branchが別commitで進んだ場合は、一部ファイルを先に削除せず最新HEADからbounded retryする。
+6. resultが先に見えた場合も、対応するpending commandが消えるかcompletedが確認できるまで次のruntime branch更新を開始しない。
+
+これにより、画像1枚につきpayload数だけbranchを動かす方式と、payloadを1個ずつcleanup commitする方式を避け、画像アップロード時のGitHub 409競合窓を縮小します。bounded chunk REST routeもfallbackとして保持します。
 
 ## 配送失敗からの復旧
 
@@ -164,10 +171,12 @@ WordPress.org Plugin Directoryからの配布は予定していません。
 
 ## Status
 
-**1.1.2 release candidate / external tester distribution ready.**
+**1.1.3 release candidate / external tester distribution ready.**
 
-1.1.0から自己完結Direct Runtimeへ移行し、1.1.1でDirect Runtime自身のGitHub書き戻しpushによる再帰再実行を防ぐloop guardを追加しました。1.1.2は、1.1.1で実機検証したruntime実装を維持したまま、配布ZIP内README・version metadata・公開release documentationを自己完結方式へ一致させた版です。
+1.1.3は、画像upload時にruntime branchを細かく動かすことで起きていた競合を減らす更新です。複数payloadとupload commandをGit Data APIで1回のbranch更新として投入できる手順へ変更し、WordPress側のpayload cleanupも1ファイル1commitではなく1つのGit tree commitに集約しました。cleanup時にbranchが進んだ場合は最新HEADから再構築してbounded retryします。
 
-隔離CIでは、clean WordPress 7.1 + MySQL 8、既存guard/rollback、request-id idempotency、self-update破壊再発防止、GitHub書き戻し失敗後のpending recovery、migration rollback metadata、約2.4 MiB画像転送を確認しています。
+隔離CIでは、clean WordPress 7.1 + MySQL 8、既存guard/rollback、request-id idempotency、self-update破壊再発防止、GitHub書き戻し失敗後のpending recovery、migration rollback metadataに加え、約2.4 MiB画像を複数payloadから再構成し、cleanup ref更新を1回意図的に409競合させた後、部分削除なしで再試行できることを確認しています。
 
-TakKa Noteの実環境では、user-owned private runtime repository、site-specific GitHub App signed Webhook、canonical runtime identity、Direct Runtime health、2,458,838-byte PNGの5分割転送と全体SHA-256検証、source cleanup、同一request_idのcompleted-response replay、異なるpayloadでの409 rejectionを確認しました。その後1.1.2へ更新し、Direct Runtime health、active version、temporary route cleanupまで確認済みです。旧central/operator Onboarding Serviceは停止済みです。
+1.1.3 plugin ZIP SHA-256: `24c8c20bf36ace6592d7857865de848e4762ebaa6773f63089bebc4d1c270326`。
+
+TakKa Note実環境への1.1.3反映と実画像での再検証は、release candidateのCI通過後に行います。
