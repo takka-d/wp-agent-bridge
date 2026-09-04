@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
  * payload files under wordpress-bridge/media/pending/ and submits a small REST
  * command that references them. The plugin fetches the payloads using the
  * site-specific GitHub App, verifies total byte count + SHA-256, uploads the
- * media, then removes the temporary payload files.
+ * media, then removes all temporary payload files in one Git tree commit.
  */
 final class TakKa_WordPress_Bridge_Direct_Media
 {
@@ -20,6 +20,7 @@ final class TakKa_WordPress_Bridge_Direct_Media
     private const MAX_MEDIA_BYTES = 6291456;
     private const MAX_SOURCE_TEXT_BYTES = 10485760;
     private const MAX_CHUNKS = 32;
+    private const CLEANUP_RETRIES = 3;
 
     public static function init(): void
     {
@@ -65,6 +66,8 @@ final class TakKa_WordPress_Bridge_Direct_Media
             'max_chunks' => self::MAX_CHUNKS,
             'integrity' => ['expected_bytes', 'expected_sha256'],
             'source_cleanup' => true,
+            'source_cleanup_mode' => 'single-git-tree-commit',
+            'source_cleanup_retries' => self::CLEANUP_RETRIES,
         ];
         $rest_response->set_data($data);
         return $rest_response;
@@ -151,21 +154,135 @@ final class TakKa_WordPress_Bridge_Direct_Media
             return $uploaded;
         }
 
-        $cleanup_errors = [];
-        foreach ($sources as $source) {
-            $cleanup = TakKa_WordPress_Bridge_Direct_GitHub::delete_file($token, $repository, $branch, $source['path'], $source['sha'], 'WP Agent Bridge: remove uploaded media payload');
-            if (is_wp_error($cleanup)) {
-                $cleanup_errors[$source['path']] = $cleanup->get_error_message();
-            }
-        }
-
-        $uploaded['source_cleanup'] = !$cleanup_errors;
-        if ($cleanup_errors) {
-            $uploaded['source_cleanup_errors'] = $cleanup_errors;
+        $cleanup = self::cleanup_sources_atomic($token, $repository, $branch, $sources);
+        $uploaded['source_cleanup'] = !is_wp_error($cleanup);
+        $uploaded['source_cleanup_mode'] = 'single-git-tree-commit';
+        if (is_wp_error($cleanup)) {
+            $uploaded['source_cleanup_errors'] = ['atomic_cleanup' => $cleanup->get_error_message()];
+        } elseif (is_array($cleanup)) {
+            $uploaded['source_cleanup_commit'] = $cleanup['commit_sha'] ?? null;
+            $uploaded['source_cleanup_attempts'] = $cleanup['attempts'] ?? 1;
         }
         $uploaded['source_paths'] = array_values($paths);
         $uploaded['sha256'] = $actual_sha256;
         return rest_ensure_response($uploaded);
+    }
+
+    private static function cleanup_sources_atomic(string $token, string $repository, string $branch, array $sources)
+    {
+        if (!$sources) {
+            return ['ok' => true, 'commit_sha' => null, 'attempts' => 0];
+        }
+
+        for ($attempt = 1; $attempt <= self::CLEANUP_RETRIES; $attempt++) {
+            $ref = TakKa_WordPress_Bridge_Direct_GitHub::github_api(
+                'GET',
+                '/repos/' . $repository . '/git/ref/heads/' . rawurlencode($branch),
+                $token
+            );
+            if (is_wp_error($ref)) {
+                return $ref;
+            }
+            $head = isset($ref['data']['object']['sha']) ? strtolower((string) $ref['data']['object']['sha']) : '';
+            if (!preg_match('/^[a-f0-9]{40,64}$/', $head)) {
+                return new WP_Error('wpab_direct_media_cleanup_head', 'GitHub did not return a valid runtime branch head.', ['status' => 502]);
+            }
+
+            $commit = TakKa_WordPress_Bridge_Direct_GitHub::github_api(
+                'GET',
+                '/repos/' . $repository . '/git/commits/' . $head,
+                $token
+            );
+            if (is_wp_error($commit)) {
+                return $commit;
+            }
+            $base_tree = isset($commit['data']['tree']['sha']) ? strtolower((string) $commit['data']['tree']['sha']) : '';
+            if (!preg_match('/^[a-f0-9]{40,64}$/', $base_tree)) {
+                return new WP_Error('wpab_direct_media_cleanup_tree', 'GitHub did not return a valid base tree SHA.', ['status' => 502]);
+            }
+
+            $tree_entries = [];
+            foreach ($sources as $source) {
+                $path = isset($source['path']) ? (string) $source['path'] : '';
+                $expected_sha = isset($source['sha']) ? strtolower((string) $source['sha']) : '';
+                if (!preg_match('#^wordpress-bridge/media/pending/[A-Za-z0-9._-]{1,120}\.b64$#', $path)
+                    || !preg_match('/^[a-f0-9]{40,64}$/', $expected_sha)) {
+                    return new WP_Error('wpab_direct_media_cleanup_source', 'Invalid staged media cleanup source.', ['status' => 500]);
+                }
+
+                $current = TakKa_WordPress_Bridge_Direct_GitHub::get_content_metadata($token, $repository, $head, $path);
+                if (is_wp_error($current)) {
+                    return $current;
+                }
+                $current_sha = isset($current['sha']) ? strtolower((string) $current['sha']) : '';
+                if (!hash_equals($expected_sha, $current_sha)) {
+                    return new WP_Error('wpab_direct_media_cleanup_changed', 'A staged media payload changed before cleanup.', [
+                        'status' => 409,
+                        'path' => $path,
+                        'expected_sha' => $expected_sha,
+                        'actual_sha' => $current_sha,
+                    ]);
+                }
+
+                $tree_entries[] = [
+                    'path' => $path,
+                    'mode' => '100644',
+                    'type' => 'blob',
+                    'sha' => null,
+                ];
+            }
+
+            $tree = TakKa_WordPress_Bridge_Direct_GitHub::github_api(
+                'POST',
+                '/repos/' . $repository . '/git/trees',
+                $token,
+                ['base_tree' => $base_tree, 'tree' => $tree_entries]
+            );
+            if (is_wp_error($tree)) {
+                return $tree;
+            }
+            $tree_sha = isset($tree['data']['sha']) ? strtolower((string) $tree['data']['sha']) : '';
+            if (!preg_match('/^[a-f0-9]{40,64}$/', $tree_sha)) {
+                return new WP_Error('wpab_direct_media_cleanup_new_tree', 'GitHub did not return a valid cleanup tree SHA.', ['status' => 502]);
+            }
+
+            $new_commit = TakKa_WordPress_Bridge_Direct_GitHub::github_api(
+                'POST',
+                '/repos/' . $repository . '/git/commits',
+                $token,
+                [
+                    'message' => 'WP Agent Bridge: remove uploaded media payloads',
+                    'tree' => $tree_sha,
+                    'parents' => [$head],
+                ]
+            );
+            if (is_wp_error($new_commit)) {
+                return $new_commit;
+            }
+            $commit_sha = isset($new_commit['data']['sha']) ? strtolower((string) $new_commit['data']['sha']) : '';
+            if (!preg_match('/^[a-f0-9]{40,64}$/', $commit_sha)) {
+                return new WP_Error('wpab_direct_media_cleanup_commit', 'GitHub did not return a valid cleanup commit SHA.', ['status' => 502]);
+            }
+
+            $update = TakKa_WordPress_Bridge_Direct_GitHub::github_api(
+                'PATCH',
+                '/repos/' . $repository . '/git/refs/heads/' . rawurlencode($branch),
+                $token,
+                ['sha' => $commit_sha, 'force' => false]
+            );
+            if (!is_wp_error($update)) {
+                return ['ok' => true, 'commit_sha' => $commit_sha, 'attempts' => $attempt];
+            }
+
+            $error_data = $update->get_error_data();
+            $status = is_array($error_data) ? (int) ($error_data['status'] ?? 0) : 0;
+            if (($status === 409 || $status === 422) && $attempt < self::CLEANUP_RETRIES) {
+                continue;
+            }
+            return $update;
+        }
+
+        return new WP_Error('wpab_direct_media_cleanup_retry', 'Could not atomically clean up media payloads after retries.', ['status' => 409]);
     }
 
     private static function payload_paths(array $params)
