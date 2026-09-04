@@ -1,102 +1,148 @@
-# WP Agent Bridge 1.0.1 外部テスト手順
+# WP Agent Bridge 自己完結runtime 外部テスト手順
 
-対象: GitHub・ChatGPT・WordPressを普段から利用しているテスター
+このテストでは、テスター本人が所有するGitHub・ChatGPT・WordPressだけを使い、WP Agent Bridgeの初回接続、通常操作、配送復旧、大きな画像転送を確認します。
 
-このテストでは、一般利用者としてWP Agent Bridgeの初回接続、通常のWordPress操作、2 MiBを超える画像転送を確認します。
+**テスターのGitHubユーザー名、WordPress URL、記事本文、command/result、secret等をWP Agent Bridge運営者へ提出することはテスト条件ではありません。**
 
 ## 事前条件
 
 - テスター本人のGitHub、ChatGPT、WordPressを使う。
-- HTTPSのWordPress REST APIへ外部から到達できること。
-- 既存のWP Agent BridgeまたはTakKa WordPress Bridgeが入っている場合はfresh installテストを中止して報告する。
-- 認証情報などの秘密情報は共有しない。
+- HTTPSのWordPress REST APIへGitHub Webhookから到達できること。
+- GitHub上にprivate repositoryを1個作れること。
+- 既存のWP Agent Bridge / TakKa WordPress Bridgeが入っている場合はfresh installテストを中止する。
+- token、private key、Webhook secret、Cookie、nonce等を第三者へ共有しない。
 
 ## 1. WordPressへプラグインを入れる
 
-1. 同梱の `wp-agent-bridge-1.0.1.zip` を使う。
+1. テスト対象のWP Agent Bridge ZIPを使う。
 2. WordPress管理画面の **プラグイン > 新規プラグインを追加 > プラグインのアップロード** からインストールする。
 3. インストール完了後に有効化する。
-4. エラーが出た場合は同じ操作を繰り返さず、その画面を保存して報告する。
+4. エラーが出た場合は同じ操作を繰り返さず停止する。
 
-## 2. GitHub接続を開始する
+## 2. 自分のprivate runtime repositoryを作る
 
-1. **ツール > WP Bridge Setup** を開く。
-2. `Status: Not connected` と **Connect GitHub** が表示されることを確認する。
-3. **Connect GitHub** を押し、GitHubで通常の認可を完了する。
-4. Organization全体の管理権限を追加する操作は行わない。
-5. repository invitationのAcceptが必要なら行い、不要ならそのまま続行する。
+1. **ツール > WP Agent Bridge** を開く。
+2. `Status: Not connected` を確認する。
+3. **Create private repository on GitHub** を開く。
+4. prefillされたrepository名を使い、**自分自身のGitHubアカウント**にprivate repositoryを作成する。
+5. publicへ変更しない。
 
-## 3. WordPress側の接続完了を確認する
+WP Agent Bridge運営者のOrganizationへ参加したり、運営者所有repositoryへcollaborator追加されたりする操作はありません。
+
+## 3. site-specific GitHub Appを作る
+
+1. WordPressへ戻り **Connect GitHub** を押す。
+2. GitHub App manifest画面へ移動することを確認する。
+3. 作成されるGitHub Appの所有者が自分自身のGitHubアカウントであることを確認する。
+4. GitHub Appをインストールする際、**Only select repositories** を選択する。
+5. 手順2で作成したprivate runtime repository **1個だけ**を選択する。
+6. WordPressへ戻る。
+
+利用者がPAT、private key、Webhook secret、Bridge Key、GitHub Actions workflowを手入力することはありません。GitHubから返されたsite-specific Appのprivate key / Webhook secretは、そのWordPress内だけに暗号化保存されます。
+
+## 4. WordPress側の接続完了を確認する
 
 次を確認する。
 
-- `GitHub connection completed.`
-- `Status: Connected`
-- `Repository: wp-agent-bridge-runtime/wordpress-bridge-...`
-- `Runtime branch: wp-agent-bridge-runtime`
+- `GitHub direct connection completed.`
+- `Status: Connected (direct GitHub webhook)`
+- Repositoryが**自分自身のGitHub account/private repository**になっている
+- Runtime branchが`wp-agent-bridge-runtime`
+- GitHub Appが自分のaccountに作成したsite-specific Appになっている
 
-Repository名を結果記録へコピーする。
+## 5. runtime repositoryを確認する
 
-## 4. GitHub側で自分のruntime repoを確認する
+`wp-agent-bridge-runtime` branchで以下を確認する。
 
-1. 手順3のprivate repositoryを開けることを確認する。
-2. 他人のruntime repositoryを探したり権限変更したりしない。
-3. `AGENTS.md` と `wordpress-bridge/` が存在することを確認する。
+- `AGENTS.md`
+- `wordpress-bridge/RUNTIME_CONNECTION.json`
+- `wordpress-bridge/WEBHOOK_RUNTIME.md`
+- `wordpress-bridge/commands/pending/`
+- `wordpress-bridge/commands/completed/`
+- `wordpress-bridge/results/`
+- `wordpress-bridge/media/pending/`
 
-## 5. ChatGPTのGitHub接続を確認する
+`RUNTIME_CONNECTION.json`では少なくとも次を確認する。
 
-ChatGPTから次のように依頼する。
+- `status: canonical`
+- `transport: direct-github-webhook`
+- `ownership: user-owned`
+- `operator_relay: false`
+- repository名が今開いているrepository自身と一致
+
+## 6. ChatGPTから自分のruntimeを認識する
+
+ChatGPTのGitHub接続を**テスター本人のGitHubアカウント**へ接続する。
+
+その後、次のように依頼する。
 
 ```text
-GitHubで、私がアクセスできる wp-agent-bridge-runtime Organizationの wordpress-bridge- で始まるprivate repositoryを確認して。AGENTS.mdを読めるか確認して、repository名だけ教えて。
+私のGitHubでWP Agent Bridgeのruntime repositoryを確認して。AGENTS.mdとwordpress-bridge/RUNTIME_CONNECTION.jsonを読み、status=canonical、transport=direct-github-webhook、ownership=user-owned、operator_relay=falseであることと、repository markerが実際のrepository自身を指していることだけ確認して。
 ```
 
-手順3のrepository名が返れば成功。見つからない場合はOrganization設定を変更せず、その時点で終了する。
+運営者所有Organization/runtimeを探す必要はありません。
 
-## 6. WordPressへの安全なE2E操作
+## 7. 安全なBridge E2E
 
 ChatGPTへ次のように依頼する。
 
 ```text
-今確認したWP Agent Bridgeのruntime repositoryを使って、接続先WordPressで site.info を取得し、その後 cache.flush を1回実行して。WordPressの記事・設定・テーマ・プラグインは変更しないで、結果だけ教えて。
+今確認したuser-owned WP Agent Bridge runtimeを使って、接続先WordPressでsite.infoを取得し、その後cache.flushを1回実行して。記事・設定・テーマ・プラグインは変更しないで、結果だけ確認して。
 ```
 
-`site.info`と`cache.flush`の両方がruntime repository経由で完了することを確認する。
+確認:
 
-## 7. 2 MiB command上限を超える画像転送
+- commandが自分のprivate repoの`commands/pending`へ作られる。
+- GitHub App signed Webhookが自分のWordPressへ直接届く。
+- result/completedが同じ自分のprivate repoへ返る。
+- 運営者所有relay/repositoryを経由しない。
 
-同梱の `03_画像転送テスト用_約2.4MB.png` を使う。この画像はWordPress側の6 MiB上限以内だが、全体をBase64化して1つのcommand JSONへ埋め込むとruntimeの2 MiB上限を超える。
+## 8. 大きな画像転送
 
-1. `03_画像転送テスト用_約2.4MB.png` をChatGPTへ添付する。
-2. 次のように依頼する。
+同梱の約2.4 MiB PNGを使う。これはWordPress側6 MiB上限以内だが、全体Base64を1つのcommand JSONへ入れる方式は使わない。
+
+ChatGPTへ次のように依頼する。
 
 ```text
-この画像を、今確認したWP Agent Bridgeの正式なruntime repository経由でWordPressメディアライブラリへアップロードして。別のWordPress連携経路は使わず、WP Agent Bridge 1.0.1のchunked media transportを使って。成功したらattachment ID、URL、元ファイルのbytesとSHA-256検証結果を教えて。
+この画像をuser-owned WP Agent Bridge runtimeだけを使ってWordPress Media Libraryへアップロードして。画像全体のBase64を1個のcommand JSONへ入れず、wordpress-bridge/media/pending/のBase64 payloadファイルを使うself-contained media transportで送って。必要ならpayloadを複数ファイルに分割してdata_pathsを使って。元ファイルのbytesとSHA-256をWordPress側で検証し、成功後に一時payloadを削除して。
 ```
 
 確認ポイント:
 
-- 画像全体のBase64を1つのcommand JSONへ直埋めしない。
-- runtime上限内のchunkへ分割する。
-- 各chunkのbytesとSHA-256をWordPress側で検証する。
-- 全chunk受信後、元ファイル全体のbytesとSHA-256を再検証してからメディア登録する。
-- attachment IDとURLが返る。
-- 別経路へ迂回しない。
+- payload保存先はテスター本人のprivate runtime repoだけ。
+- command JSONへ画像全体のBase64を直埋めしない。
+- `data_path`または`data_paths`からWordPressが元画像を再構成する。
+- 元画像のbytes / SHA-256一致後にMedia Libraryへ登録する。
+- 成功後に`media/pending/*.b64`が削除される。
+- 別のWordPress連携サービスへ迂回しない。
 
-失敗した場合は画像を縮小して再試行せず、そのresultを保存して終了する。
+失敗時は画像を縮小して成功扱いにせず、その時点で停止する。
 
-## 8. テスト後
+## 9. pending取りこぼし復旧
 
-- `WP Bridge Setup` が `Status: Connected` のままであることを確認する。
-- `02_テスト結果記入.md` に結果を記入する。
-- エラー時は同じ操作を繰り返さず、エラー全文と直前の操作を残す。
+通常利用者が意図的にGitHub障害を作る必要はありません。もしテスト中に`WordPressでは処理されたように見えるがpendingが残る`状態が自然発生した場合のみ、別の無害な`site.info` commandを1件投入する。
+
+期待結果:
+
+- 次のvalid pushで既存`commands/pending/`も再走査される。
+- 同じ`request_id`のWordPress副作用は二重実行されない。
+- result/completed/pending bookkeepingだけが復旧する。
+
+## 10. テスト後
+
+- `WP Bridge Setup`がConnectedのままであること。
+- GitHub Appのrepository accessがテスト用private runtime repo 1個だけであること。
+- operator-owned Organization、relay、runtime repositoryを使っていないこと。
+- 不要になったテスト環境はテスター自身の判断で削除する。
 
 ## 成功条件
 
-1. 1.0.1 ZIPをfresh installして有効化できた。
-2. GitHub認可を経てWordPressがConnectedになった。
-3. `wp-agent-bridge-runtime` にテスター専用private repoが作成された。
-4. ChatGPTからそのrepoを認識できた。
-5. `site.info` と `cache.flush` がBridge経由で完了した。
-6. 約2.4 MiBのテストPNGが、縮小や別経路に逃げずchunked media transportでアップロードできた。
-7. Organization管理権限や他人のruntime repoへのアクセスを必要としなかった。
+1. ZIPをfresh installして有効化できる。
+2. runtime repositoryをテスター自身のGitHub accountにprivateで作成できる。
+3. site-specific private GitHub Appをテスター自身が所有し、runtime repo 1個だけにinstallできる。
+4. WordPressがDirect Runtime Connectedになる。
+5. canonical markerが`ownership=user-owned` / `operator_relay=false`になる。
+6. ChatGPTから自分のruntime repoを認識できる。
+7. `site.info` / `cache.flush`がuser-owned repo → signed Webhook → user WordPress → user-owned repoで完了する。
+8. 約2.4 MiB画像を縮小・別経路なしでMedia Libraryへ送れる。
+9. 運営者所有のGitHub/WordPress/relayへruntime command/resultやWordPress内容を送らない。
