@@ -24,6 +24,12 @@ jobs:
             php -l "$file"
           done < <(find plugin/wp-agent-bridge -type f -name '*.php' -print0)
 
+      - name: Direct Runtime self-webhook loop regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/direct-webhook-loop-guard-test.php
+
       - name: Verify release metadata
         shell: bash
         run: |

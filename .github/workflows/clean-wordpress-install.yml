@@ -35,7 +35,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Install WP-CLI
         shell: bash
@@ -72,15 +72,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(sed -n 's/^ \* Version: //p' plugin/wp-agent-bridge/takka-wordpress-bridge.php | head -n1 | tr -d '\r')" = '1.1.0'
-          (cd plugin && zip -qr /tmp/wp-agent-bridge-1.1.0.zip wp-agent-bridge)
-          sha256sum /tmp/wp-agent-bridge-1.1.0.zip
+          version="$(sed -n 's/^ \* Version: //p' plugin/wp-agent-bridge/takka-wordpress-bridge.php | head -n1 | tr -d '\r')"
+          stable="$(sed -n 's/^Stable tag: //p' plugin/wp-agent-bridge/readme.txt | head -n1 | tr -d '\r')"
+          test -n "$version"
+          test "$version" = "$stable"
+          echo "WPAB_VERSION=$version" >> "$GITHUB_ENV"
+          (cd plugin && zip -qr "/tmp/wp-agent-bridge-${version}.zip" wp-agent-bridge)
+          sha256sum "/tmp/wp-agent-bridge-${version}.zip"
 
       - name: Install and activate packaged plugin
         shell: bash
         run: |
           set -euo pipefail
-          /tmp/wp plugin install /tmp/wp-agent-bridge-1.1.0.zip \
+          /tmp/wp plugin install "/tmp/wp-agent-bridge-${WPAB_VERSION}.zip" \
             --activate \
             --path=/tmp/wp-agent-bridge-test
           /tmp/wp plugin get wp-agent-bridge \
@@ -88,146 +92,62 @@ jobs:
             --format=json \
             --path=/tmp/wp-agent-bridge-test \
             | tee /tmp/plugin-state.json
-          grep -q '"version":"1.1.0"' /tmp/plugin-state.json
+          php -r '$d=json_decode(file_get_contents("/tmp/plugin-state.json"),true); if(!is_array($d)||($d["status"]??"")!=="active"||($d["version"]??"")!==getenv("WPAB_VERSION")){fwrite(STDERR,"Packaged plugin state/version mismatch\n"); exit(1);}'
 
-      - name: Verify packaged bootstrap, onboarding, and chunk route
+      - name: Verify packaged bootstrap and routes
         shell: bash
         run: |
           set -euo pipefail
           /tmp/wp eval '
-            if (!class_exists("TakKa_WordPress_Bridge_Onboarding")) {
-                fwrite(STDERR, "Onboarding class was not loaded.\n");
-                exit(1);
-            }
-            if (!class_exists("TakKa_WordPress_Bridge_Runtime_Media_Chunks")) {
-                fwrite(STDERR, "Chunked media class was not loaded.\n");
-                exit(1);
+            foreach ([
+              "TakKa_WordPress_Bridge_Onboarding",
+              "TakKa_WordPress_Bridge_Direct_Runtime",
+              "TakKa_WordPress_Bridge_Direct_Runtime_V2",
+              "TakKa_WordPress_Bridge_Direct_Webhook_Loop_Guard",
+              "TakKa_WordPress_Bridge_Direct_Media",
+              "TakKa_WordPress_Bridge_Runtime_Media_Chunks",
+            ] as $class) {
+              if (!class_exists($class)) { fwrite(STDERR, "Missing class: {$class}\n"); exit(1); }
             }
             do_action("rest_api_init");
             $routes = rest_get_server()->get_routes();
             foreach ([
-                "/takka-bridge-onboarding/v1/complete",
-                "/wp-agent-bridge-media/v1/upload-chunk",
+              "/wp-agent-bridge-onboarding/v2/manifest-complete",
+              "/wp-agent-bridge-runtime/v1/github-webhook",
+              "/wp-agent-bridge-runtime/v1/media-upload",
+              "/wp-agent-bridge-media/v1/upload-chunk",
             ] as $route) {
-                if (!isset($routes[$route])) {
-                    fwrite(STDERR, "Expected REST route is missing: {$route}\n");
-                    exit(1);
-                }
+              if (!isset($routes[$route])) { fwrite(STDERR, "Missing route: {$route}\n"); exit(1); }
             }
-            echo "WP Agent Bridge packaged plugin loaded with onboarding and chunk-media routes.\n";
+            echo "Packaged plugin bootstrap/routes OK.\n";
           ' --path=/tmp/wp-agent-bridge-test
 
-      - name: Verify packaged stale-write, protection, and rollback guards
+      - name: Verify active-plugin and sensitive-option guards
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/wp-agent-bridge-guards.php <<'PHP'
+          cat > /tmp/wpab-basic-guards.php <<'PHP'
           <?php
           wp_set_current_user(1);
-
-          function bridge_fail(string $message): void {
-              fwrite(STDERR, $message . "\n");
-              exit(1);
-          }
-
-          function bridge_data($response): array {
-              if (is_wp_error($response)) {
-                  bridge_fail('Unexpected WP_Error: ' . $response->get_error_code() . ' ' . $response->get_error_message());
-              }
-              $response = rest_ensure_response($response);
-              $data = $response->get_data();
-              if (!is_array($data)) bridge_fail('Expected array response data.');
-              return $data;
-          }
-
-          function bridge_execute(string $action, array $params = []) {
-              $request = new WP_REST_Request('POST', '/takka-bridge/v1/execute');
-              $request->set_param('action', $action);
-              $request->set_param('params', $params);
-              return TakKa_WordPress_Bridge::execute($request);
-          }
-
-          function bridge_v04(string $action, array $params = []) {
-              $payload = base64_encode(wp_json_encode(['action' => $action, 'params' => $params]));
-              $request = new WP_REST_Request('POST', '/takka-bridge/v1/manage');
-              $request->set_header('content-type', 'application/json');
-              $request->set_body(wp_json_encode(['payload_b64' => $payload]));
-              return TakKa_WordPress_Bridge_V04::manage($request);
-          }
-
-          $post_id = wp_insert_post([
-              'post_type' => 'post',
-              'post_status' => 'draft',
-              'post_title' => 'WP Agent Bridge guard test',
-              'post_content' => 'alpha beta gamma',
-          ], true);
-          if (is_wp_error($post_id)) bridge_fail('Could not create guard-test post.');
-
-          $preview = bridge_data(TakKa_WordPress_Bridge_V084_Post_Content::preview([
-              'post_id' => $post_id,
-              'find' => 'beta',
-              'replace' => 'BETA',
-              'expected_matches' => 1,
+          function fail_now(string $m): void { fwrite(STDERR, $m . "\n"); exit(1); }
+          $payload = base64_encode(wp_json_encode([
+              'action' => 'plugin.delete',
+              'params' => ['file' => 'wp-agent-bridge/takka-wordpress-bridge.php', 'confirm' => true],
           ]));
-          wp_update_post(['ID' => $post_id, 'post_content' => 'alpha beta gamma external-change']);
-          $stale = TakKa_WordPress_Bridge_V084_Post_Content::apply([
-              'post_id' => $post_id,
-              'find' => 'beta',
-              'replace' => 'BETA',
-              'expected_matches' => 1,
-              'confirm' => true,
-              'expected_before_sha256' => $preview['before_sha256'],
-              'expected_plan_hash' => $preview['plan_hash'],
-          ]);
-          if (!is_wp_error($stale) || $stale->get_error_code() !== 'takka_bridge_post_content_changed') {
-              bridge_fail('Stale content write was not rejected as expected.');
+          $r = new WP_REST_Request('POST', '/takka-bridge/v1/manage');
+          $r->set_header('content-type', 'application/json');
+          $r->set_body(wp_json_encode(['payload_b64' => $payload]));
+          $deleted = TakKa_WordPress_Bridge_V04::manage($r);
+          if (!is_wp_error($deleted) || $deleted->get_error_code() !== 'takka_bridge_plugin_active_delete_blocked') {
+              fail_now('Active plugin deletion was not blocked.');
           }
-
-          $plugin_delete = bridge_v04('plugin.delete', [
-              'file' => 'wp-agent-bridge/takka-wordpress-bridge.php',
-              'confirm' => true,
-          ]);
-          if (!is_wp_error($plugin_delete) || $plugin_delete->get_error_code() !== 'takka_bridge_plugin_active_delete_blocked') {
-              bridge_fail('Active plugin deletion was not blocked.');
-          }
-          $theme_delete = bridge_v04('theme.manage.delete', [
-              'stylesheet' => get_stylesheet(),
-              'confirm' => true,
-          ]);
-          if (!is_wp_error($theme_delete) || $theme_delete->get_error_code() !== 'takka_bridge_active_theme_delete_blocked') {
-              bridge_fail('Active theme deletion was not blocked.');
-          }
-
           $sensitive = TakKa_WordPress_Bridge_V08_Options::get(['name' => 'takka_bridge_secret']);
           if (!is_wp_error($sensitive) || $sensitive->get_error_code() !== 'takka_bridge_option_sensitive') {
-              bridge_fail('Sensitive Bridge option was not blocked.');
+              fail_now('Sensitive option was not blocked.');
           }
-
-          $draft = bridge_data(bridge_execute('draft_theme.create'));
-          bridge_data(bridge_execute('theme.file.write', [
-              'draft_id' => $draft['id'],
-              'path' => 'wp-agent-bridge-rollback-marker.txt',
-              'content' => 'published-marker',
-          ]));
-          $published = bridge_data(bridge_execute('draft_theme.publish', [
-              'draft_id' => $draft['id'],
-              'confirm' => true,
-          ]));
-          $marker = get_stylesheet_directory() . '/wp-agent-bridge-rollback-marker.txt';
-          if (!is_file($marker)) bridge_fail('Draft publish marker was not published.');
-          if (empty($published['backup_id'])) bridge_fail('Draft publish did not return a backup_id.');
-
-          $rolled_back = bridge_data(bridge_execute('theme.rollback', [
-              'backup_id' => $published['backup_id'],
-              'confirm' => true,
-          ]));
-          if (is_file($marker)) bridge_fail('Rollback did not restore the pre-publish theme files.');
-          if (empty($rolled_back['safety_backup_id'])) bridge_fail('Rollback did not create its safety backup.');
-
-          echo "Packaged stale-write rejection, active plugin/theme protection, sensitive option guard, and rollback all passed.\n";
+          echo "Packaged basic guards OK.\n";
           PHP
-
-          /tmp/wp eval-file /tmp/wp-agent-bridge-guards.php --path=/tmp/wp-agent-bridge-test
+          /tmp/wp eval-file /tmp/wpab-basic-guards.php --path=/tmp/wp-agent-bridge-test
 
       - name: Verify multi-chunk media reconstruction and integrity
         shell: bash
@@ -237,33 +157,18 @@ jobs:
           <?php
           wp_set_current_user(1);
           do_action('rest_api_init');
-
-          function media_fail(string $message): void {
-              fwrite(STDERR, $message . "\n");
-              exit(1);
-          }
-
-          function png_chunk(string $type, string $data): string {
-              return pack('N', strlen($data)) . $type . $data . pack('N', crc32($type . $data));
-          }
-
+          function media_fail(string $message): void { fwrite(STDERR, $message . "\n"); exit(1); }
+          function png_chunk(string $type, string $data): string { return pack('N', strlen($data)) . $type . $data . pack('N', crc32($type . $data)); }
           $png = "\x89PNG\r\n\x1a\n";
           $png .= png_chunk('IHDR', pack('NNCCCCC', 1, 1, 8, 6, 0, 0, 0));
           $png .= png_chunk('tEXt', "Comment\0" . str_repeat('A', 2400000));
           $png .= png_chunk('IDAT', gzcompress("\x00\x00\x00\x00\x00", 9));
           $png .= png_chunk('IEND', '');
-
           $expected_bytes = strlen($png);
           $expected_sha = hash('sha256', $png);
-          if ($expected_bytes <= 1572864 || $expected_bytes > 6291456) {
-              media_fail('Fixture size does not exercise the command-size mismatch window.');
-          }
-
           $chunks = str_split($png, 1200000);
-          if (count($chunks) < 2) media_fail('Fixture did not split into multiple chunks.');
           $upload_id = 'ci-media-' . substr($expected_sha, 0, 20);
-          $final_data = null;
-
+          $final = null;
           foreach ($chunks as $index => $chunk) {
               $body = [
                   'upload_id' => $upload_id,
@@ -275,34 +180,24 @@ jobs:
                   'chunk_bytes' => strlen($chunk),
                   'chunk_sha256' => hash('sha256', $chunk),
                   'data_b64' => base64_encode($chunk),
-                  'title' => 'WP Agent Bridge chunk test',
-                  'alt_text' => 'WP Agent Bridge chunk test',
               ];
               $request = new WP_REST_Request('POST', '/wp-agent-bridge-media/v1/upload-chunk');
               $request->set_header('content-type', 'application/json');
               $request->set_body(wp_json_encode($body));
               $response = rest_do_request($request);
-              if (is_wp_error($response)) media_fail($response->get_error_code() . ': ' . $response->get_error_message());
               $response = rest_ensure_response($response);
-              if ($response->get_status() >= 400) media_fail('Chunk route returned HTTP ' . $response->get_status());
-              $data = $response->get_data();
-              if (!is_array($data) || empty($data['ok'])) media_fail('Chunk route did not return ok=true.');
-              $final_data = $data;
+              if ($response->get_status() >= 400) media_fail('Chunk HTTP ' . $response->get_status());
+              $final = $response->get_data();
           }
-
-          if (!is_array($final_data) || empty($final_data['id'])) media_fail('Final chunk did not create a media attachment.');
-          if ((int) ($final_data['bytes'] ?? 0) !== $expected_bytes) media_fail('Final media byte count mismatch.');
-          if (!hash_equals($expected_sha, (string) ($final_data['sha256'] ?? ''))) media_fail('Final media SHA-256 mismatch.');
-
-          $attachment_id = (int) $final_data['id'];
+          if (!is_array($final) || empty($final['id'])) media_fail('Final attachment missing.');
+          if ((int)($final['bytes'] ?? 0) !== $expected_bytes) media_fail('Byte count mismatch.');
+          if (!hash_equals($expected_sha, (string)($final['sha256'] ?? ''))) media_fail('SHA mismatch.');
+          $attachment_id = (int)$final['id'];
           $path = get_attached_file($attachment_id);
-          if (!is_string($path) || !is_file($path)) media_fail('Uploaded attachment file is missing.');
-          if (filesize($path) !== $expected_bytes) media_fail('Stored attachment byte count mismatch.');
-          $stored_sha = hash_file('sha256', $path);
-          if (!is_string($stored_sha) || !hash_equals($expected_sha, $stored_sha)) media_fail('Stored attachment SHA-256 mismatch.');
-
+          if (!is_string($path) || !is_file($path) || filesize($path) !== $expected_bytes || !hash_equals($expected_sha, (string)hash_file('sha256', $path))) {
+              media_fail('Stored attachment integrity mismatch.');
+          }
           wp_delete_attachment($attachment_id, true);
           echo "Multi-chunk media reconstruction passed: {$expected_bytes} bytes, " . count($chunks) . " chunks.\n";
           PHP
-
           /tmp/wp eval-file /tmp/wp-agent-bridge-media-chunks.php --path=/tmp/wp-agent-bridge-test

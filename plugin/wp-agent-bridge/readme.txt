@@ -3,7 +3,7 @@ Contributors: takka-d
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.1.0
+Stable tag: 1.1.1
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
@@ -54,7 +54,7 @@ A bounded authenticated chunk REST route remains available as a fallback transpo
 
 == Delivery recovery ==
 
-A GitHub push is not treated as a durable queue by itself. Every valid runtime push also reconciles the current `wordpress-bridge/commands/pending/` directory. If WordPress completed a command but GitHub bookkeeping failed, the same request ID is replayed from WordPress's completed-response idempotency rather than repeating the side effect, and the pending/result/completed files are repaired.
+A GitHub push is not treated as a durable queue by itself. Every valid runtime push also reconciles the current `wordpress-bridge/commands/pending/` directory. Self-generated media/result/completed bookkeeping pushes are ignored by the recovery scanner so they cannot recursively redispatch the command that created them. If WordPress completed a command but GitHub bookkeeping failed, the same request ID is replayed from WordPress's completed-response idempotency rather than repeating the side effect, and the pending/result/completed files are repaired.
 
 == Self-update safety ==
 
@@ -71,6 +71,10 @@ This is a custom proprietary/source-available license, not an open-source licens
 High-impact writes remain subject to the Bridge's preview, confirmation, state-hash, plan-hash, impact-hash, active-theme/plugin, and sensitive-key protections.
 
 == Changelog ==
+
+= 1.1.1 =
+* Prevents self-generated Direct Runtime media/result/completed bookkeeping pushes from recursively redispatching an in-flight pending command.
+* Keeps new/modified pending-command pushes and non-internal runtime pushes available to the normal recovery path.
 
 = 1.1.0 =
 * Reworked the runtime architecture so normal operation uses the user's own private GitHub repository and a site-specific private GitHub App signed Webhook directly to that user's WordPress.
