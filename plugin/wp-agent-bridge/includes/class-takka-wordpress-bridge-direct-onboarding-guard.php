@@ -16,13 +16,14 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
 {
     private const LEGACY_CONNECTION = 'takka_bridge_github_connection_v1';
     private const LEGACY_BACKUP = 'takka_bridge_legacy_connection_backup_v1';
+    private const IDENTITY_WARNING = 'takka_bridge_direct_identity_warning_v1';
 
     public static function init(): void
     {
         add_action('admin_init', [self::class, 'preserve_legacy_connection'], 1);
         add_action('admin_post_takka_bridge_connect_github', [self::class, 'block_unsafe_reconnect'], 1);
         add_action('rest_api_init', [self::class, 'register_tombstone_route'], 40);
-        add_filter('rest_request_after_callbacks', [self::class, 'restore_legacy_after_direct_setup'], 990, 3);
+        add_filter('rest_request_after_callbacks', [self::class, 'after_direct_setup'], 990, 3);
     }
 
     public static function preserve_legacy_connection(): void
@@ -78,7 +79,7 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
         ]);
     }
 
-    public static function restore_legacy_after_direct_setup($response, array $handler, WP_REST_Request $request)
+    public static function after_direct_setup($response, array $handler, WP_REST_Request $request)
     {
         if ($request->get_route() !== '/wp-agent-bridge-onboarding/v2/installed') {
             return $response;
@@ -91,11 +92,28 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
             return $response;
         }
 
+        // Keep the previous local relay mapping only as local rollback metadata;
+        // normal self-contained operation never reads it.
         $backup = get_option(self::LEGACY_BACKUP, null);
         $legacy = get_option(self::LEGACY_CONNECTION, null);
         if (is_array($backup) && !is_array($legacy)) {
             update_option(self::LEGACY_CONNECTION, $backup, false);
         }
+
+        // The connection has already been authenticated and stored by the
+        // onboarding endpoint, so initialize the canonical marker immediately.
+        // A GitHub race must not undo the working connection: record a warning
+        // and let the next authenticated admin_init retry the same idempotent sync.
+        $identity = TakKa_WordPress_Bridge_Direct_Runtime_Identity::sync();
+        if (is_wp_error($identity)) {
+            set_transient(self::IDENTITY_WARNING, [
+                'message' => $identity->get_error_message(),
+                'created_at' => time(),
+            ], HOUR_IN_SECONDS);
+        } else {
+            delete_transient(self::IDENTITY_WARNING);
+        }
+
         return $response;
     }
 
