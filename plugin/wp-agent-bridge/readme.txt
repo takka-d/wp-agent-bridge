@@ -3,7 +3,7 @@ Contributors: takka-d
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.0.1
+Stable tag: 1.1.0
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
@@ -72,7 +72,7 @@ High-impact writes remain subject to the Bridge's preview, confirmation, state-h
 
 == Changelog ==
 
-= 1.0.1 candidate =
+= 1.1.0 =
 * Reworked the runtime architecture so normal operation uses the user's own private GitHub repository and a site-specific private GitHub App signed Webhook directly to that user's WordPress.
 * Removed the operator-owned runtime/relay architecture from the distribution path.
 * Added recovery scans of the current pending directory so a missed push or interrupted GitHub bookkeeping write can be recovered by a later valid push.
@@ -83,6 +83,10 @@ High-impact writes remain subject to the Bridge's preview, confirmation, state-h
 * Plugin-file deletion during self-update now requires explicit delete paths and explicit deletion confirmation, and required PHP bootstrap dependencies are checked before replacement.
 * Added large-media transport that keeps Base64 payloads outside one command JSON, verifies original byte count and SHA-256, and removes temporary source payloads after success.
 * Retains bounded chunked media transport as an authenticated fallback.
+
+= 1.0.1 =
+* Added completed-response request ID persistence and guarded full-manifest self-update.
+* Added canonical signed-runtime chunked media transfer so files within the 6 MiB media limit do not have to fit into one 2 MiB command JSON.
 
 = 1.0.0 =
 * Added guided GitHub onboarding to the main plugin.
