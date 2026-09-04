@@ -135,7 +135,7 @@ Do not submit the current licensed distribution to the WordPress.org Plugin Dire
 - [x] Direct Runtime remained healthy after central/operator Onboarding Service deactivation.
 - [x] the retired central onboarding callback now returns the controlled HTTP 410 tombstone.
 - [x] TakKa Note was updated from 1.1.1 to 1.1.2 using source commit `2a71861dd0645e45f4c2da0a12ea08cd63d74a29`; all 60 plugin files passed post-copy SHA verification, the plugin remained active, and post-cutover Direct Runtime health succeeded.
-- [x] the final packaging commit `5a7d290c10505863d241dd0868124b327c28e092` changes only the tester-kit workflow relative to the live-cutover source, so its `plugin/wp-agent-bridge` tree is the same plugin tree already validated on TakKa Note.
+- [x] the final packaging commit `04e4f557abfce00dd33ac16e7c62dbaa09c5e256` has the same `plugin/wp-agent-bridge` tree as the live-cutover source; changes after the live-cutover source are repository documentation and tester-package workflow changes only.
 - [x] all temporary 1.1.2 cutover routes were removed; the active child theme `functions.php` returned byte-for-byte to pre-cutover SHA-256 `8a5753c6e56b3fa61a44a84231e5658e52ff9203a8bd14b77dcf4dce01aaf8e4`, and the cleanup route subsequently returned WordPress `rest_no_route` 404.
 
 ### 1.1.2 package-finalization gates
@@ -143,11 +143,17 @@ Do not submit the current licensed distribution to the WordPress.org Plugin Dire
 - [x] packaged `plugin/wp-agent-bridge/README.md` no longer describes the old 1.0.1/relay onboarding model.
 - [x] root README and packaged README describe the same self-contained ownership/transport model.
 - [x] license notices in repository documentation match `WP Agent Bridge License 1.0` restrictions.
-- [x] all seven runtime/package CI workflows passed on the 1.1.2 plugin source before live cutover; the subsequent packaging-only reproducibility change also passed its CI and tester-kit workflow.
-- [x] the tester plugin ZIP is built with `git archive` from the exact commit rather than checkout mtimes; the workflow builds it twice and `cmp` verifies byte-for-byte equality before publication.
-- [x] final packaging commit: `5a7d290c10505863d241dd0868124b327c28e092`.
-- [x] reproducible 1.1.2 plugin ZIP SHA-256 from that commit: `92e82b181444f810e656294bac748f66919c17c0249d00e8bd73f584db3aa354`.
+- [x] all seven runtime/package CI workflows passed on the 1.1.2 plugin source before live cutover; the later packaging-only changes also passed their CI and tester-kit workflows.
+- [x] the earlier checkout-time ZIP and subtree `git archive` approaches were rejected after independent reruns produced different SHA-256 values for unchanged plugin bytes.
+- [x] the final tester plugin ZIP is constructed only from sorted Git blob bytes with fixed ZIP timestamps, fixed file permissions, and `ZIP_STORED`; checkout mtimes, wall-clock time, commit timestamp, and compression-library output do not affect the plugin ZIP bytes.
+- [x] one workflow run deliberately waited two seconds between two builds and verified byte-for-byte equality with `cmp`.
+- [x] the same PR package job was rerun later on a different runner/region and produced the identical plugin ZIP SHA-256.
+- [x] the merged-main package run also produced that same plugin ZIP SHA-256, confirming stability across both reruns and repository commits when the plugin tree is unchanged.
+- [x] final packaging commit: `04e4f557abfce00dd33ac16e7c62dbaa09c5e256`.
+- [x] reproducible 1.1.2 plugin ZIP SHA-256: `22bc88c83afa0900b35a0b2e0765f45cf938fd3e47d6257d915afde898355d83`.
 - [x] TakKa Note is running the same 1.1.2 plugin tree used by the final packaging commit and Direct Runtime health succeeds after the update.
-- [x] final external tester kit was generated from merged 1.1.2 `main`: artifact ID `9930830506`, artifact SHA-256 digest `3cbb7ebd002bf0bf33881ddf78a010ae94aa92753126cb8c7d69409c059482b8`.
+- [x] final external tester kit was generated from merged 1.1.2 `main`: artifact ID `9931093956`, artifact container SHA-256 digest `d6f846bbba08ea71a08b7c9df9051eb68393e71acd7efd79cecb8f43a0541b03`.
+
+The GitHub Actions artifact container is a separate outer archive and is not treated as a reproducible release object; the reproducibility guarantee and published checksum apply to the inner `wp-agent-bridge-1.1.2.zip` plugin package recorded above.
 
 All listed 1.1.2 package-finalization gates are complete. **1.1.2 is ready for external tester distribution.** A broader public/stable release remains a separate release decision rather than an implicit consequence of completing these tester-distribution gates.
