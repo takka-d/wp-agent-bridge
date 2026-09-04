@@ -4,26 +4,33 @@ ChatGPTからWordPressの記事・ページ・設定などを更新するため�
 
 通常のWordPress操作は、**利用者自身が所有するprivate GitHub runtime repository**と、**そのWordPress専用のprivate GitHub App**を使って実行します。WP Agent Bridge運営者のruntime repository、relay server、GitHub Actions workerを通常経路として使用しません。
 
+## 現在の配布状態
+
+- Version: `1.1.2`
+- Status: **release candidate / external tester distribution ready**
+- 再現可能なplugin ZIP SHA-256: `22bc88c83afa0900b35a0b2e0765f45cf938fd3e47d6257d915afde898355d83`
+- broader public / stable releaseはまだ宣言していません。
+
 ## 構成
 
 ```mermaid
 flowchart LR
     C["ChatGPT"]
 
-    subgraph U["利用者が所有・管理"]
+    subgraph GH["利用者のGitHub"]
         R["private runtime repository"]
         A["site-specific private GitHub App"]
-        W["WordPress<br/>WP Agent Bridge"]
     end
 
+    W["利用者のWordPress<br/>WP Agent Bridge"]
+
     C -->|"command / media payload"| R
-    R -->|"push"| G["GitHub"]
-    G -->|"GitHub App signed Webhook"| W
-    W -->|"GitHub App installation API<br/>result / completed / cleanup"| G
-    G --> R
+    R -->|"push event"| A
+    A -->|"signed Webhook"| W
+    W -->|"GitHub App installation API<br/>result / completed / cleanup"| R
     R -->|"result"| C
 
-    A -. "runtime repositoryだけにinstall" .-> G
+    A -. "runtime repositoryだけにinstall" .-> R
 ```
 
 通常のデータ経路は次のとおりです。
