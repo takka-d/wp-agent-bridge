@@ -2,6 +2,13 @@ name: External tester kit
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'plugin/wp-agent-bridge/**'
+      - '.github/workflows/external-tester-kit.yml'
+      - 'docs/EXTERNAL_TEST_GUIDE_JA.md'
+      - 'docs/EXTERNAL_TEST_RESULT.md'
   push:
     branches: [main]
     paths:
@@ -56,7 +63,7 @@ jobs:
           print(f'{path}: {size} bytes')
           PY
 
-      - name: Add Japanese test guide and result sheet
+      - name: Add self-contained Japanese test guide and result sheet
         shell: bash
         run: |
           set -euo pipefail
@@ -67,20 +74,21 @@ jobs:
             tester-kit/03_画像転送テスト用_約2.4MB.png \
             > tester-kit/SHA256SUMS
           cat > tester-kit/最初に読んでください.txt <<'EOF'
-          WP Agent Bridge 1.0.1 外部テストセット
+          WP Agent Bridge 自己完結runtime 外部テストセット
 
           1. まず「01_テスト手順.md」を読んでください。
           2. WordPressへ入れるファイルは「wp-agent-bridge-1.0.1.zip」です。
-          3. 「03_画像転送テスト用_約2.4MB.png」は、runtimeの2 MiB command上限を回避するchunk転送の確認用です。
-          4. 結果は「02_テスト結果記入.md」に記録してください。
-          5. GitHubのsecret、token、private key、Webhook secret等は誰にも送らないでください。
-          6. エラーが出たら同じ操作を繰り返さず、その画面と手順番号を残してください。
+          3. GitHub runtime repositoryとsite-specific GitHub Appはテスター本人が所有します。
+          4. 「03_画像転送テスト用_約2.4MB.png」は、画像全体を1個のcommand JSONへ入れずuser-owned runtime経由で送る確認用です。
+          5. 結果は「02_テスト結果記入.md」にローカル記録できます。GitHubユーザー名やWordPress URLを運営者へ提出する必要はありません。
+          6. secret、token、private key、Webhook secret、WordPress内容を第三者へ送らないでください。
+          7. エラーが出たら成功させるために別経路へ迂回せず、その時点で停止してください。
           EOF
 
       - name: Upload external tester kit
         uses: actions/upload-artifact@v4
         with:
-          name: wp-agent-bridge-external-tester-kit-1.0.1
+          name: wp-agent-bridge-external-tester-kit-1.0.1-self-contained
           path: tester-kit/
           if-no-files-found: error
           retention-days: 30
