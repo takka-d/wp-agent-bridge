@@ -17,12 +17,19 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
     private const LEGACY_CONNECTION = 'takka_bridge_github_connection_v1';
     private const LEGACY_BACKUP = 'takka_bridge_legacy_connection_backup_v1';
     private const IDENTITY_WARNING = 'takka_bridge_direct_identity_warning_v1';
+    private const LEGACY_COMPLETE_ROUTE = '/takka-bridge-onboarding/v1/complete';
 
     public static function init(): void
     {
         add_action('admin_init', [self::class, 'preserve_legacy_connection'], 1);
         add_action('admin_post_takka_bridge_connect_github', [self::class, 'block_unsafe_reconnect'], 1);
-        add_action('rest_api_init', [self::class, 'register_tombstone_route'], 40);
+
+        // Register late so a still-active legacy Onboarding Service can keep its
+        // existing callback during the staged migration window. We must not
+        // merge/replace the same REST route while that service is the rollback
+        // transport. Once it is no longer active, a later request installs the
+        // controlled 410 tombstone below.
+        add_action('rest_api_init', [self::class, 'register_tombstone_route'], 999);
         add_filter('rest_request_after_callbacks', [self::class, 'after_direct_setup'], 990, 3);
     }
 
@@ -59,13 +66,18 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
     }
 
     /**
-     * Keep the old callback path as an explicit tombstone only. This prevents a
-     * stale browser/OAuth flow from silently re-enabling the retired
-     * operator-owned onboarding design, while making old health checks fail in a
-     * controlled and self-explanatory way.
+     * Keep the old callback path as an explicit tombstone on installations that
+     * no longer have a legacy Onboarding Service. During a staged production
+     * migration, an already-registered legacy route is left untouched until the
+     * legacy service is deliberately retired after Direct Runtime validation.
      */
     public static function register_tombstone_route(): void
     {
+        $routes = rest_get_server()->get_routes();
+        if (isset($routes[self::LEGACY_COMPLETE_ROUTE])) {
+            return;
+        }
+
         register_rest_route('takka-bridge-onboarding/v1', '/complete', [
             'methods' => WP_REST_Server::CREATABLE,
             'callback' => static function () {
