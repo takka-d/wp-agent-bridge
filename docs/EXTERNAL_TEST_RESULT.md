@@ -71,10 +71,12 @@
 - [ ] 画像全体を1つのcommand JSONへ直埋めしなかった
 - [ ] `wordpress-bridge/media/pending/*.b64`を使用した
 - [ ] 必要に応じて複数payload + `data_paths`へ分割した
+- [ ] Git Data操作を利用できる場合、payload群とupload commandを1つのtree/commit/ref更新でruntime branchへ投入した
 - [ ] 別のWordPress連携経路へ迂回しなかった
 - [ ] 元画像全体のbytes / SHA-256検証が成功した
 - [ ] WordPress Media Libraryへ登録できた
-- [ ] 成功後に一時`.b64` payloadが削除された
+- [ ] 成功後に一時`.b64` payloadがまとめて削除された
+- [ ] cleanup競合が起きても一部payloadだけが先に削除された状態にならなかった
 
 Attachment ID(ローカル記録のみ):
 
@@ -89,7 +91,7 @@ Attachment ID(ローカル記録のみ):
 
 ## 10. 最終状態
 
-- [ ] WordPressの`WP Bridge Setup`はConnectedのまま
+- [ ] **Tools > WP Agent Bridge**で`Status: Connected (direct GitHub webhook)`のまま
 - [ ] site-specific GitHub Appはruntime repo 1個だけへアクセス可能
 - [ ] operator-owned Organization / relay / runtime repositoryを使用していない
 - [ ] 秘密情報を第三者へ共有していない
