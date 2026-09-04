@@ -2,7 +2,7 @@
 
 ## Release architecture
 
-WP Agent Bridge 1.1.0 is the first self-contained runtime release candidate.
+WP Agent Bridge 1.1.x is the self-contained runtime release line. The first self-contained candidate was 1.1.0; 1.1.1 added the Direct Runtime self-webhook loop guard after live migration testing exposed a recursive re-scan case. **1.1.2 is the current release candidate**, retaining the 1.1.1 runtime implementation while aligning distributed version metadata and packaged documentation with the self-contained architecture.
 
 Normal end-user operation must use only resources controlled by that end user:
 
@@ -10,7 +10,7 @@ Normal end-user operation must use only resources controlled by that end user:
 
 The distribution must not require an operator-owned runtime Organization, operator-owned private repository, operator relay server, per-command GitHub Actions worker, old Bridge Key, `takka-d/chatgpt-data`, or WPVibe.
 
-Version 1.0.1 remains the previous signed-runtime/chunk-media generation. Do not publish the self-contained architecture under the same 1.0.1 version number. The self-contained release line starts at **1.1.0**.
+Version 1.0.1 remains the previous signed-runtime/chunk-media generation. The self-contained architecture must never be published as a replacement build under the 1.0.1 version number.
 
 ## Public repository contents
 
@@ -23,7 +23,7 @@ The public distribution intentionally excludes:
 - credentials, tokens, private keys, Webhook secrets, development-only data;
 - operator-owned runtime repository configuration.
 
-The public ZIP contains the WP Agent Bridge plugin itself plus its license/readme files. Development and test workflows remain repository-side and are not included in the installed plugin directory unless explicitly part of the package source.
+The public ZIP contains the self-contained WP Agent Bridge plugin itself, including its direct GitHub onboarding/runtime implementation, plus its license/readme files. Development and test workflows remain repository-side and are not included in the installed plugin directory unless explicitly part of the package source.
 
 ## End-user onboarding target
 
@@ -51,7 +51,7 @@ A completed Direct Runtime repository must contain a machine-readable `wordpress
 - runtime branch `wp-agent-bridge-runtime`
 - the target site host
 
-`AGENTS.md` and `WEBHOOK_RUNTIME.md` must describe the same architecture and must not tell ChatGPT to substitute an operator-owned Organization runtime.
+`AGENTS.md` and `wordpress-bridge/WEBHOOK_RUNTIME.md` must describe the same architecture and must not tell ChatGPT to substitute an operator-owned Organization runtime.
 
 ## Delivery and replay safety
 
@@ -61,7 +61,8 @@ Required behaviors:
 - identical completed request IDs replay the stored response instead of repeating the WordPress side effect;
 - reuse of one request ID with a different payload is rejected;
 - a valid push reconciles the current `commands/pending/` directory so a missed Webhook or interrupted GitHub bookkeeping write can recover;
-- result/completed/pending conflicts are retried without duplicating WordPress mutations.
+- result/completed/pending conflicts are retried without duplicating WordPress mutations;
+- GitHub writes produced by an in-progress Direct Runtime command do not cause that same request ID to be recursively reexecuted.
 
 ## Media transport
 
@@ -102,9 +103,9 @@ The public source is source-visible but is not an open-source license. `WP Agent
 
 Do not submit the current licensed distribution to the WordPress.org Plugin Directory under this license.
 
-## 1.1.0 release gates
+## 1.1.2 release gates
 
-Completed in isolation before live cutover:
+### Isolation / CI gates already demonstrated by the 1.1.1 runtime implementation
 
 - [x] PHP syntax / release metadata / obvious-secret CI passes.
 - [x] exact packaged plugin installs and activates on clean WordPress 7.1 + MySQL 8.
@@ -115,22 +116,34 @@ Completed in isolation before live cutover:
 - [x] self-update regression test rejects destructive incomplete manifests and validates required dependencies.
 - [x] self-contained migration test preserves rollback metadata and writes a user-owned canonical runtime identity.
 - [x] approximately 2.4 MiB media reconstruction passes in isolated WordPress testing.
-- [x] external tester kit is generated from the exact plugin version metadata rather than a hard-coded prior version.
+- [x] Direct Runtime self-webhook recursion has a dedicated regression test.
+- [x] external tester kit derives its plugin version from package metadata rather than a hard-coded prior version.
 
-Production observations before 1.1.0 cutover:
+### Live migration / production validation completed on TakKa Note with 1.1.1 runtime code
 
-- [x] TakKa Note's existing canonical signed runtime remains healthy before migration.
-- [x] TakKa Note's existing 1.0.1 chunk-media route successfully staged two chunks, reconstructed a PNG with matching full SHA-256, created the attachment, and the test attachment was then deleted.
-- [x] current production plugin/version and self-update backup inventory were captured before any 1.1.0 replacement.
-- [x] current production 1.0.1 does not expose the self-contained onboarding v2 route, proving 1.1.0 is an actual architecture change rather than a same-build reinstall.
+- [x] the previous production transport remained available until Direct Runtime validation was complete.
+- [x] full 60-file source manifest was verified before live replacement; canonical manifest SHA-256 was `875fad803cd985a2ece7615b90a48202e75c4069a52422a84935b2a982479379`.
+- [x] live plugin update completed with an independent filesystem backup and post-copy version/guard verification.
+- [x] user-owned Direct Runtime identity reports `status=canonical`, `transport=direct-github-webhook`, `ownership=user-owned`, and `operator_relay=false`.
+- [x] `AGENTS.md` and `wordpress-bridge/WEBHOOK_RUNTIME.md` describe the same user-owned direct architecture.
+- [x] Direct Runtime health succeeds from the user-owned runtime repository.
+- [x] 2,458,838-byte PNG was split into five runtime payload files, reconstructed without shrinking or alternate transport, verified by full SHA-256, registered in Media Library, and source payloads were removed after success.
+- [x] the test media attachment and all temporary media E2E routes were removed after verification.
+- [x] live completed-response idempotency was verified with a reversible draft side effect: identical request ID/payload returned the same post ID without a second post, while changed payload with the same request ID returned HTTP 409.
+- [x] the idempotency test draft was removed after verification.
+- [x] central/operator Onboarding Service was deactivated only after Direct Runtime health/media/idempotency validation.
+- [x] Direct Runtime remained healthy after central/operator Onboarding Service deactivation.
+- [x] the retired central onboarding callback now returns the controlled HTTP 410 tombstone.
+- [x] temporary cutover/test code was removed from the active child theme and its `functions.php` returned to the exact pre-test SHA-256.
 
-Still required before stable 1.1.0 publication/cutover:
+### 1.1.2 package-finalization gates
 
-- [ ] 1.1.0 branch CI passes after the version separation changes.
-- [ ] exact 1.1.0 distribution artifact SHA-256 is recorded.
-- [ ] full-manifest live preflight is performed without writes and does not reveal undeclared existing-file deletion.
-- [ ] coexistence/migration behavior with the currently active production Onboarding Service is resolved before replacing live plugin files.
-- [ ] Direct Runtime is established in parallel while the current canonical signed runtime remains usable.
-- [ ] Direct Runtime health, retry/idempotency, and media upload are proven on the live site before canonical cutover.
-- [ ] only after successful Direct validation is the old operator-owned runtime path retired for this site.
-- [ ] download/article license notice matches `LICENSE.md`.
+- [x] packaged `plugin/wp-agent-bridge/README.md` no longer describes the old 1.0.1/relay onboarding model.
+- [x] root README and packaged README describe the same self-contained ownership/transport model.
+- [x] license notices in repository documentation match `WP Agent Bridge License 1.0` restrictions.
+- [ ] all CI workflows pass on the exact 1.1.2 candidate commit.
+- [ ] exact 1.1.2 plugin ZIP SHA-256 is recorded here after the successful package workflow.
+- [ ] TakKa Note is updated to the exact 1.1.2 package candidate and Direct Runtime health still succeeds.
+- [ ] final external tester kit is generated from merged 1.1.2 `main` and its artifact digest is recorded.
+
+Do not call 1.1.2 stable or distribute it as the final tester build until every unchecked package-finalization gate above is completed.
