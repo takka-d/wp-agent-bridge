@@ -141,9 +141,11 @@ Do not submit the current licensed distribution to the WordPress.org Plugin Dire
 - [x] packaged `plugin/wp-agent-bridge/README.md` no longer describes the old 1.0.1/relay onboarding model.
 - [x] root README and packaged README describe the same self-contained ownership/transport model.
 - [x] license notices in repository documentation match `WP Agent Bridge License 1.0` restrictions.
-- [ ] all CI workflows pass on the exact 1.1.2 candidate commit.
-- [ ] exact 1.1.2 plugin ZIP SHA-256 is recorded here after the successful package workflow.
+- [x] all seven CI workflows pass on the exact 1.1.2 package candidate.
+- [x] exact 1.1.2 plugin ZIP SHA-256: `c70ce2215ced00122bf8be2996b7c7004ca38609fadc427484ad0a2c2d168a7f`.
 - [ ] TakKa Note is updated to the exact 1.1.2 package candidate and Direct Runtime health still succeeds.
 - [ ] final external tester kit is generated from merged 1.1.2 `main` and its artifact digest is recorded.
+
+The successful pre-merge 1.1.2 tester-kit workflow produced artifact digest `746e80987e57a7c5a39cddc77b0529138c04273b8b0ebb12543fe32835eb6453`; the merged-main artifact is recorded separately after merge.
 
 Do not call 1.1.2 stable or distribute it as the final tester build until every unchecked package-finalization gate above is completed.
