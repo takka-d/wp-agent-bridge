@@ -1,83 +1,98 @@
-# WP Agent Bridge 1.0.1 外部テスト結果
+# WP Agent Bridge 自己完結runtime 外部テスト結果
 
-テスター名は本名でなくて構いません。秘密情報は記載しないでください。
+この記録はテスター本人の確認用です。GitHubユーザー名、WordPress URL、記事本文、command/result全文、token、private key、Webhook secret等をWP Agent Bridge運営者へ提出する必要はありません。
 
-## 基本情報
+## 環境
 
-- テスト日時:
-- テスター識別名:
 - WordPressバージョン:
 - PHPバージョン:
-- ブラウザ / ChatGPTアプリ:
-- WordPressサイトURL(公開して問題ない場合のみ):
+- ChatGPT利用環境:
 
 ## 1. fresh install
 
-- [ ] `wp-agent-bridge-1.0.1.zip` を新規インストールできた
+- [ ] テスト対象ZIPを新規インストールできた
 - [ ] 有効化できた
 - [ ] 既存のWP Agent Bridge / TakKa WordPress Bridgeは入っていなかった
 
 補足:
 
-## 2. GitHub認可
+## 2. user-owned private runtime repository
 
-- [ ] `Tools > WP Bridge Setup` に `Status: Not connected` が表示された
-- [ ] `Connect GitHub` を押した
-- [ ] GitHub認可画面が表示された
-- [ ] Organization全体の管理権限を追加していない
-- Repository invitationの手動Accept: 必要だった / 不要だった / 不明
+- [ ] `Tools > WP Agent Bridge`に`Status: Not connected`が表示された
+- [ ] 自分自身のGitHub accountにprivate runtime repositoryを作成した
+- [ ] operator-owned Organization/repositoryへ参加していない
+- [ ] repositoryをpublicにしていない
 
-認可画面や遷移で気づいた点:
+## 3. site-specific GitHub App
 
-## 3. WordPress接続完了
+- [ ] `Connect GitHub`からGitHub App manifest画面へ移動した
+- [ ] GitHub Appのownerはテスター本人のGitHub accountだった
+- [ ] GitHub Appはprivateだった
+- [ ] `Only select repositories`を選択した
+- [ ] runtime repository 1個だけを選択した
+- [ ] PAT / private key / Webhook secret / Bridge Keyを手入力していない
 
-- [ ] `GitHub connection completed.` が表示された
-- [ ] `Status: Connected` になった
-- Repository:
-- Runtime branch:
-- Installation ID(表示された場合):
+## 4. WordPress接続完了
 
-## 4. GitHub repositoryアクセス
+- [ ] `GitHub direct connection completed.`が表示された
+- [ ] `Status: Connected (direct GitHub webhook)`になった
+- [ ] Repositoryはテスター本人所有のprivate repoだった
+- [ ] Runtime branchは`wp-agent-bridge-runtime`だった
 
-- [ ] 自分用runtime repositoryをGitHubで開けた
-- [ ] `AGENTS.md` を確認できた
-- [ ] `wordpress-bridge/` を確認できた
-- [ ] Organization管理権限は必要なかった
+## 5. canonical runtime marker
 
-## 5. ChatGPT GitHub接続
+- [ ] `AGENTS.md`を確認できた
+- [ ] `wordpress-bridge/RUNTIME_CONNECTION.json`を確認できた
+- [ ] `status = canonical`
+- [ ] `transport = direct-github-webhook`
+- [ ] `ownership = user-owned`
+- [ ] `operator_relay = false`
+- [ ] markerのrepository名は実際に開いているrepository自身と一致した
 
-- ChatGPTのGitHubはテスト前から接続済みだった: はい / いいえ
-- [ ] テスター本人のGitHubアカウントで接続できた
-- [ ] ChatGPTから作成されたruntime repositoryを認識できた
-- ChatGPTが認識したRepository:
+## 6. ChatGPT GitHub接続
 
-## 6. Bridge E2E
+- [ ] テスター本人のGitHub accountをChatGPTへ接続した
+- [ ] ChatGPTから自分のruntime repositoryを認識できた
+- [ ] operator-owned runtimeを探す必要がなかった
 
-- [ ] `site.info` が成功した
-- [ ] `cache.flush` が成功した
+## 7. Bridge E2E
+
+- [ ] `site.info`が成功した
+- [ ] `cache.flush`が成功した
 - [ ] 記事・設定・テーマ・プラグインを変更せず完了した
-- ChatGPTの最終結果:
+- [ ] command/resultは自分のprivate runtime repository内だけに保存された
+- [ ] operator-owned relay/repositoryを経由しなかった
 
-## 7. chunked media transport
+補足:
 
-- [ ] `03_画像転送テスト用_約2.4MB.png` を使用した
-- [ ] 画像全体を1つのcommand JSONへ直埋めせずchunk分割した
+## 8. self-contained media transport
+
+- [ ] 約2.4 MiB PNGを使用した
+- [ ] 画像全体を1つのcommand JSONへ直埋めしなかった
+- [ ] `wordpress-bridge/media/pending/*.b64`を使用した
+- [ ] 必要に応じて複数payload + `data_paths`へ分割した
 - [ ] 別のWordPress連携経路へ迂回しなかった
-- [ ] 各chunkのbytes / SHA-256検証が成功した
 - [ ] 元画像全体のbytes / SHA-256検証が成功した
-- [ ] WordPressメディアライブラリへ登録できた
-- Attachment ID:
-- Attachment URL:
-- 元ファイルbytes:
-- 元ファイルSHA-256:
-- Chunk数:
+- [ ] WordPress Media Libraryへ登録できた
+- [ ] 成功後に一時`.b64` payloadが削除された
 
-## 8. 最終状態
+Attachment ID(ローカル記録のみ):
 
-- [ ] WordPressの `WP Bridge Setup` は `Status: Connected` のまま
-- [ ] GitHub Appの削除・再インストールはしていない
-- [ ] Organization側設定は変更していない
-- [ ] 秘密情報を共有していない
+## 9. retry / pending recovery
+
+自然にpending残留が発生した場合のみ記録する。
+
+- [ ] 次のvalid pushで古いpendingも再走査された
+- [ ] 同じrequest_idの副作用は二重実行されなかった
+- [ ] result/completed/pending bookkeepingが復旧した
+- [ ] 該当なし
+
+## 10. 最終状態
+
+- [ ] WordPressの`WP Bridge Setup`はConnectedのまま
+- [ ] site-specific GitHub Appはruntime repo 1個だけへアクセス可能
+- [ ] operator-owned Organization / relay / runtime repositoryを使用していない
+- [ ] 秘密情報を第三者へ共有していない
 
 ## 総合結果
 
@@ -85,10 +100,9 @@
 - [ ] 失敗
 - [ ] 一部成功 / 要確認
 
-失敗または要確認の場合:
+失敗または要確認の場合、必要なら**秘密情報・サイト内容・個人情報を除去したエラーコード/症状だけ**を報告する。
 
 - 止まった手順番号:
-- 画面に表示されたエラー全文:
-- 直前に行った操作:
-- スクリーンショット有無:
+- エラーコード/症状:
+- 直前の操作:
 - その他:
