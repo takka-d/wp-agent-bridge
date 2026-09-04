@@ -50,6 +50,8 @@ jobs:
           grep -q "'default_events' => \['push'\]" "$plugin/includes/class-takka-wordpress-bridge-onboarding.php"
           grep -q "'public' => false" "$plugin/includes/class-takka-wordpress-bridge-onboarding.php"
           grep -q 'No operator-owned relay' "$plugin/includes/class-takka-wordpress-bridge-direct-runtime.php"
+          grep -q 'single-git-tree-commit' "$plugin/includes/class-takka-wordpress-bridge-direct-media.php"
+          grep -q 'one Git tree cleanup commit' "$plugin/includes/class-takka-wordpress-bridge-direct-runtime-identity.php"
           grep -q 'Direct_Runtime_V2::init' "$plugin/takka-wordpress-bridge.php"
           grep -q 'Direct_Onboarding_Guard::init' "$plugin/takka-wordpress-bridge.php"
 
@@ -115,6 +117,16 @@ jobs:
           $GLOBALS['fake_gh_files'] = [];
           $GLOBALS['fake_fail_result_put_once'] = false;
           $GLOBALS['fake_branch_sha'] = str_repeat('a', 40);
+          $GLOBALS['fake_git_commits'] = [
+              str_repeat('a', 40) => ['tree' => str_repeat('1', 40)],
+          ];
+          $GLOBALS['fake_git_trees'] = [
+              str_repeat('1', 40) => ['entries' => []],
+          ];
+          $GLOBALS['fake_git_sequence'] = 0;
+          $GLOBALS['fake_fail_atomic_cleanup_ref_once'] = false;
+          $GLOBALS['fake_atomic_cleanup_patch_attempts'] = 0;
+          $GLOBALS['fake_atomic_cleanup_apply_count'] = 0;
 
           function fake_put(string $path, string $content): void {
               $GLOBALS['fake_gh_files'][$path] = ['content' => $content, 'sha' => sha1($content)];
@@ -139,7 +151,6 @@ jobs:
 
               $prefix = '/repos/test-user/runtime-repo/contents/';
               if (strpos($path, $prefix) === 0) {
-                  $file = rawurldecode(substr($path, strlen($prefix)));
                   $file = implode('/', array_map('rawurldecode', explode('/', substr($path, strlen($prefix)))));
 
                   if ($method === 'GET' && $file === 'wordpress-bridge/commands/pending') {
@@ -213,6 +224,83 @@ jobs:
 
               if ($method === 'GET' && $path === '/repos/test-user/runtime-repo/git/ref/heads/wp-agent-bridge-runtime') {
                   return gh_response(200, ['object' => ['sha' => $GLOBALS['fake_branch_sha']]]);
+              }
+
+              $commit_prefix = '/repos/test-user/runtime-repo/git/commits/';
+              if ($method === 'GET' && strpos($path, $commit_prefix) === 0) {
+                  $sha = substr($path, strlen($commit_prefix));
+                  if (!isset($GLOBALS['fake_git_commits'][$sha])) {
+                      return gh_response(404, ['message' => 'Commit not found']);
+                  }
+                  return gh_response(200, [
+                      'sha' => $sha,
+                      'tree' => ['sha' => $GLOBALS['fake_git_commits'][$sha]['tree']],
+                  ]);
+              }
+
+              if ($method === 'POST' && $path === '/repos/test-user/runtime-repo/git/trees') {
+                  $body = json_decode((string) ($args['body'] ?? ''), true);
+                  if (!is_array($body) || !isset($body['base_tree']) || !isset($body['tree']) || !is_array($body['tree'])) {
+                      return gh_response(400, ['message' => 'bad mock tree request']);
+                  }
+                  $GLOBALS['fake_git_sequence']++;
+                  $tree_sha = sha1('tree-' . $GLOBALS['fake_git_sequence'] . '-' . wp_json_encode($body, JSON_UNESCAPED_SLASHES));
+                  $GLOBALS['fake_git_trees'][$tree_sha] = [
+                      'base_tree' => (string) $body['base_tree'],
+                      'entries' => $body['tree'],
+                  ];
+                  return gh_response(201, ['sha' => $tree_sha]);
+              }
+
+              if ($method === 'POST' && $path === '/repos/test-user/runtime-repo/git/commits') {
+                  $body = json_decode((string) ($args['body'] ?? ''), true);
+                  if (!is_array($body) || empty($body['tree']) || empty($body['parents'][0])) {
+                      return gh_response(400, ['message' => 'bad mock commit request']);
+                  }
+                  if (!isset($GLOBALS['fake_git_trees'][(string) $body['tree']])) {
+                      return gh_response(422, ['message' => 'unknown mock tree']);
+                  }
+                  $GLOBALS['fake_git_sequence']++;
+                  $commit_sha = sha1('commit-' . $GLOBALS['fake_git_sequence'] . '-' . wp_json_encode($body, JSON_UNESCAPED_SLASHES));
+                  $GLOBALS['fake_git_commits'][$commit_sha] = [
+                      'tree' => (string) $body['tree'],
+                      'parent' => (string) $body['parents'][0],
+                  ];
+                  return gh_response(201, ['sha' => $commit_sha]);
+              }
+
+              if ($method === 'PATCH' && $path === '/repos/test-user/runtime-repo/git/refs/heads/wp-agent-bridge-runtime') {
+                  $GLOBALS['fake_atomic_cleanup_patch_attempts']++;
+                  $body = json_decode((string) ($args['body'] ?? ''), true);
+                  $target = is_array($body) ? (string) ($body['sha'] ?? '') : '';
+                  if ($target === '' || !isset($GLOBALS['fake_git_commits'][$target])) {
+                      return gh_response(422, ['message' => 'unknown mock commit']);
+                  }
+                  if ($GLOBALS['fake_fail_atomic_cleanup_ref_once']) {
+                      $GLOBALS['fake_fail_atomic_cleanup_ref_once'] = false;
+                      // Simulate a concurrent writer moving the branch without touching the staged media.
+                      $GLOBALS['fake_git_sequence']++;
+                      $moved_tree = sha1('moved-tree-' . $GLOBALS['fake_git_sequence']);
+                      $moved_commit = sha1('moved-commit-' . $GLOBALS['fake_git_sequence']);
+                      $GLOBALS['fake_git_trees'][$moved_tree] = ['entries' => []];
+                      $GLOBALS['fake_git_commits'][$moved_commit] = ['tree' => $moved_tree, 'parent' => $GLOBALS['fake_branch_sha']];
+                      $GLOBALS['fake_branch_sha'] = $moved_commit;
+                      return gh_response(409, ['message' => 'simulated concurrent ref update']);
+                  }
+                  $commit = $GLOBALS['fake_git_commits'][$target];
+                  if (!hash_equals((string) ($commit['parent'] ?? ''), $GLOBALS['fake_branch_sha'])) {
+                      return gh_response(409, ['message' => 'non-fast-forward mock update']);
+                  }
+                  $tree = $GLOBALS['fake_git_trees'][(string) $commit['tree']] ?? null;
+                  if (!is_array($tree)) return gh_response(422, ['message' => 'missing mock tree']);
+                  foreach ((array) ($tree['entries'] ?? []) as $entry) {
+                      if (is_array($entry) && array_key_exists('sha', $entry) && $entry['sha'] === null) {
+                          unset($GLOBALS['fake_gh_files'][(string) ($entry['path'] ?? '')]);
+                      }
+                  }
+                  $GLOBALS['fake_atomic_cleanup_apply_count']++;
+                  $GLOBALS['fake_branch_sha'] = $target;
+                  return gh_response(200, ['ref' => 'refs/heads/wp-agent-bridge-runtime', 'object' => ['sha' => $target]]);
               }
 
               $blob_prefix = '/repos/test-user/runtime-repo/git/blobs/';
@@ -347,17 +435,24 @@ jobs:
               t_fail('Bookkeeping-only recovery did not create completed command.');
           }
 
-          // 3) Large Direct Media: keep >2 MiB media outside command JSON in the
-          // user's own runtime repository, reconstruct it, upload it, and delete
-          // the temporary .b64 source.
+          // 3) Large Direct Media: keep >2 MiB media outside command JSON,
+          // reconstruct it from multiple runtime files, upload it, then remove all
+          // temporary .b64 sources in one Git tree/ref update. The first ref update
+          // is forced to conflict to verify bounded optimistic retry.
           $png = "\x89PNG\r\n\x1a\n";
           $png .= png_chunk('IHDR', pack('NNCCCCC', 1, 1, 8, 6, 0, 0, 0));
           $png .= png_chunk('tEXt', "Comment\0" . str_repeat('A', 2400000));
           $png .= png_chunk('IDAT', gzcompress("\x00\x00\x00\x00\x00", 9));
           $png .= png_chunk('IEND', '');
           if (strlen($png) <= 1572864 || strlen($png) > 6291456) t_fail('Large media fixture is outside the target window.');
-          $media_source = 'wordpress-bridge/media/pending/self-contained-large.b64';
-          fake_put($media_source, base64_encode($png));
+
+          $split_at = (int) floor(strlen($png) / 2);
+          $media_sources = [
+              'wordpress-bridge/media/pending/self-contained-large.0.b64',
+              'wordpress-bridge/media/pending/self-contained-large.1.b64',
+          ];
+          fake_put($media_sources[0], base64_encode(substr($png, 0, $split_at)));
+          fake_put($media_sources[1], base64_encode(substr($png, $split_at)));
           $media_command_path = 'wordpress-bridge/commands/pending/self-contained-media.json';
           fake_put($media_command_path, wp_json_encode([
               'id' => 'self-contained-media',
@@ -366,7 +461,7 @@ jobs:
               'method' => 'POST',
               'route' => '/wp-agent-bridge-runtime/v1/media-upload',
               'body' => [
-                  'data_path' => $media_source,
+                  'data_paths' => $media_sources,
                   'filename' => 'self-contained-large.png',
                   'expected_bytes' => strlen($png),
                   'expected_sha256' => hash('sha256', $png),
@@ -374,8 +469,19 @@ jobs:
                   'alt_text' => 'Self-contained media test',
               ],
           ], JSON_UNESCAPED_SLASHES));
+          $GLOBALS['fake_fail_atomic_cleanup_ref_once'] = true;
           deliver_push([$media_command_path]);
-          if (isset($GLOBALS['fake_gh_files'][$media_source])) t_fail('Direct Media did not delete its temporary GitHub source file.');
+          foreach ($media_sources as $media_source) {
+              if (isset($GLOBALS['fake_gh_files'][$media_source])) {
+                  t_fail('Direct Media did not atomically delete temporary GitHub source: ' . $media_source);
+              }
+          }
+          if ($GLOBALS['fake_atomic_cleanup_patch_attempts'] !== 2) {
+              t_fail('Atomic Direct Media cleanup did not retry exactly once after the simulated branch race.');
+          }
+          if ($GLOBALS['fake_atomic_cleanup_apply_count'] !== 1) {
+              t_fail('Atomic Direct Media cleanup applied a partial or duplicate deletion tree.');
+          }
           if (isset($GLOBALS['fake_gh_files'][$media_command_path])) t_fail('Direct Media command remained pending.');
 
           $found_attachment = 0;
@@ -391,7 +497,7 @@ jobs:
           if ($found_attachment < 1) t_fail('Direct Media did not create the expected attachment.');
           wp_delete_attachment($found_attachment, true);
 
-          echo "Self-contained Direct Runtime recovery, idempotency, and >2 MiB media tests passed.\n";
+          echo "Self-contained Direct Runtime recovery, idempotency, and atomic >2 MiB media tests passed.\n";
           PHP
 
           /tmp/wp eval-file /tmp/wpab-direct-runtime-test.php --path=/tmp/wpab-direct-test
