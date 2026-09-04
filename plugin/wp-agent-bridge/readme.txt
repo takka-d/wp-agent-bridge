@@ -3,7 +3,7 @@ Contributors: takka-d
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.1.2
+Stable tag: 1.1.3
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
@@ -48,7 +48,9 @@ PATs, manual Webhook secrets, private keys, Bridge Keys, and GitHub Actions work
 
 == Media transfer ==
 
-Media files up to 6 MiB can be transferred without embedding the entire Base64 payload in one command JSON. The preferred self-contained path stores one or more Base64 payload files under `wordpress-bridge/media/pending/` in the user's own private runtime repository. A small command calls `/wp-agent-bridge-runtime/v1/media-upload` with the payload path(s), filename, original byte count, and original SHA-256. WordPress reconstructs and verifies the original file before adding it to the media library, then removes the temporary payload files after success.
+Media files up to 6 MiB can be transferred without embedding the entire Base64 payload in one command JSON. The preferred self-contained path stores one or more Base64 payload files under `wordpress-bridge/media/pending/` in the user's own private runtime repository. When Git Data operations are available, related payload files and the upload command should be published to the runtime branch together in one tree/commit/ref update rather than one branch update per file.
+
+A small command calls `/wp-agent-bridge-runtime/v1/media-upload` with the payload path(s), filename, original byte count, and original SHA-256. WordPress reconstructs and verifies the original file before adding it to the media library, then removes all temporary payload files in one Git tree cleanup commit. If the runtime branch moved concurrently, cleanup retries from the new head up to a bounded limit instead of deleting each payload in a separate commit.
 
 A bounded authenticated chunk REST route remains available as a fallback transport.
 
@@ -71,6 +73,12 @@ This is a custom proprietary/source-available license, not an open-source licens
 High-impact writes remain subject to the Bridge's preview, confirmation, state-hash, plan-hash, impact-hash, active-theme/plugin, and sensitive-key protections.
 
 == Changelog ==
+
+= 1.1.3 =
+* Publishes multi-file media payloads and upload commands as one Git Data branch update when the connected ChatGPT GitHub surface supports Git Data operations.
+* Removes successful runtime media payloads in one Git tree cleanup commit instead of one commit per `.b64` file.
+* Retries media cleanup after concurrent runtime-branch movement and verifies source blob SHAs before deletion.
+* Adds regression coverage for multi-part media reconstruction and a simulated cleanup ref conflict.
 
 = 1.1.2 =
 * Aligns packaged version metadata and bundled documentation with the self-contained Direct Runtime architecture validated in 1.1.1.
