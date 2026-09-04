@@ -28,11 +28,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build tested plugin ZIP
+        id: build
         shell: bash
         run: |
           set -euo pipefail
           version="$(sed -n 's/^ \* Version: //p' plugin/wp-agent-bridge/takka-wordpress-bridge.php | head -n1 | tr -d '\r')"
-          test "$version" = '1.0.1'
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           mkdir -p tester-kit
           (cd plugin && zip -qr "../tester-kit/wp-agent-bridge-${version}.zip" wp-agent-bridge)
           sha256sum "tester-kit/wp-agent-bridge-${version}.zip"
@@ -65,19 +67,21 @@ jobs:
 
       - name: Add self-contained Japanese test guide and result sheet
         shell: bash
+        env:
+          VERSION: ${{ steps.build.outputs.version }}
         run: |
           set -euo pipefail
           cp docs/EXTERNAL_TEST_GUIDE_JA.md tester-kit/01_テスト手順.md
           cp docs/EXTERNAL_TEST_RESULT.md tester-kit/02_テスト結果記入.md
           sha256sum \
-            tester-kit/wp-agent-bridge-1.0.1.zip \
+            "tester-kit/wp-agent-bridge-${VERSION}.zip" \
             tester-kit/03_画像転送テスト用_約2.4MB.png \
             > tester-kit/SHA256SUMS
-          cat > tester-kit/最初に読んでください.txt <<'EOF'
-          WP Agent Bridge 自己完結runtime 外部テストセット
+          cat > tester-kit/最初に読んでください.txt <<EOF
+          WP Agent Bridge ${VERSION} 自己完結runtime 外部テストセット
 
           1. まず「01_テスト手順.md」を読んでください。
-          2. WordPressへ入れるファイルは「wp-agent-bridge-1.0.1.zip」です。
+          2. WordPressへ入れるファイルは「wp-agent-bridge-${VERSION}.zip」です。
           3. GitHub runtime repositoryとsite-specific GitHub Appはテスター本人が所有します。
           4. 「03_画像転送テスト用_約2.4MB.png」は、画像全体を1個のcommand JSONへ入れずuser-owned runtime経由で送る確認用です。
           5. 結果は「02_テスト結果記入.md」にローカル記録できます。GitHubユーザー名やWordPress URLを運営者へ提出する必要はありません。
@@ -88,7 +92,7 @@ jobs:
       - name: Upload external tester kit
         uses: actions/upload-artifact@v4
         with:
-          name: wp-agent-bridge-external-tester-kit-1.0.1-self-contained
+          name: wp-agent-bridge-external-tester-kit-${{ steps.build.outputs.version }}-self-contained
           path: tester-kit/
           if-no-files-found: error
           retention-days: 30
