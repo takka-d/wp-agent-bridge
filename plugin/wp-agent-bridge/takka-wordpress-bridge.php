@@ -60,6 +60,17 @@ require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v088.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v089-secure.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v090-secure-status.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v093-public-readiness.php';
+
+// Self-contained runtime. All GitHub App credentials remain on this WordPress
+// installation and normal runtime traffic goes directly between the user's own
+// private repository and this site. No operator-owned relay is required.
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-github.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-github-recovery.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-runtime.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-runtime-v2.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-media.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-hardening.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-onboarding-guard.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-runtime-media-chunks.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-onboarding.php';
 
@@ -87,5 +98,10 @@ TakKa_WordPress_Bridge_V088::init();
 TakKa_WordPress_Bridge_V089_Secure::init();
 TakKa_WordPress_Bridge_V090_Secure_Status::init();
 TakKa_WordPress_Bridge_V093_Public_Readiness::init();
+TakKa_WordPress_Bridge_Direct_Runtime::init();
+TakKa_WordPress_Bridge_Direct_Runtime_V2::init();
+TakKa_WordPress_Bridge_Direct_Media::init();
+TakKa_WordPress_Bridge_Direct_Hardening::init();
+TakKa_WordPress_Bridge_Direct_Onboarding_Guard::init();
 TakKa_WordPress_Bridge_Runtime_Media_Chunks::init();
 TakKa_WordPress_Bridge_Onboarding::init();
