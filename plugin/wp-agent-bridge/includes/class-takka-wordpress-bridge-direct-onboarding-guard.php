@@ -21,6 +21,7 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
     {
         add_action('admin_init', [self::class, 'preserve_legacy_connection'], 1);
         add_action('admin_post_takka_bridge_connect_github', [self::class, 'block_unsafe_reconnect'], 1);
+        add_action('rest_api_init', [self::class, 'register_tombstone_route'], 40);
         add_filter('rest_request_after_callbacks', [self::class, 'restore_legacy_after_direct_setup'], 990, 3);
     }
 
@@ -54,6 +55,27 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
         );
         wp_safe_redirect($url);
         exit;
+    }
+
+    /**
+     * Keep the old callback path as an explicit tombstone only. This prevents a
+     * stale browser/OAuth flow from silently re-enabling the retired
+     * operator-owned onboarding design, while making old health checks fail in a
+     * controlled and self-explanatory way.
+     */
+    public static function register_tombstone_route(): void
+    {
+        register_rest_route('takka-bridge-onboarding/v1', '/complete', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => static function () {
+                return new WP_Error(
+                    'wpab_central_onboarding_retired',
+                    'The operator-owned onboarding callback is retired. Start the self-contained GitHub setup from WordPress Tools > WP Agent Bridge.',
+                    ['status' => 410]
+                );
+            },
+            'permission_callback' => '__return_true',
+        ]);
     }
 
     public static function restore_legacy_after_direct_setup($response, array $handler, WP_REST_Request $request)
