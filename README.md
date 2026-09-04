@@ -58,7 +58,7 @@ WordPress側では、元ファイルの`expected_bytes`と`expected_sha256`を�
 
 GitHub pushはdurable queueではないため、WebhookやGitHub書き戻しを一度取りこぼす可能性があります。Direct Runtimeはvalidなpushごとに現在の`commands/pending/`も再走査します。
 
-同一`request_id`はWordPress側でcompleted responseを再利用するため、`WordPress実行成功 → GitHub result書き戻し失敗`が起きても、後続pushで副作用を二重実行せずbookkeepingを復旧する設計です。
+同一`request_id`はWordPress側でcompleted responseを再利用するため、`WordPress実行成功 → GitHub result書き戻し失敗`が起きても、後続pushで副作用を二重実行せずbookkeepingを復旧する設計です。実行中command自身がruntime repositoryへresult/media等を書き戻したpushについても、同じrequest_idを再実行しないloop guardを持ちます。
 
 ## 更新安全性
 
@@ -75,7 +75,7 @@ Bridge self-updateは完全manifestを要求します。manifestに含まれな�
 
 ## 配布
 
-公開ZIPにはWP Agent Bridge本体だけを含めます。運営者用Onboarding Service、diagnostics、開発用command/result履歴、秘密情報、無関係なproject dataは含めません。
+公開ZIPにはWP Agent Bridge本体だけを含めます。旧central/operator Onboarding Service、diagnostics、開発用command/result履歴、秘密情報、無関係なproject dataは含めません。自己完結GitHub onboardingはWP Agent Bridge本体に含まれます。
 
 WordPress.org Plugin Directoryからの配布は予定していません。
 
@@ -89,6 +89,8 @@ WordPress.org Plugin Directoryからの配布は予定していません。
 
 ## Status
 
-**1.1.0 release candidate。** 1.0.1は従来のsigned-runtime/chunk-media系として既に実運用されているため、自己完結runtimeへのアーキテクチャ変更は同一バージョンへ上書きせず1.1.0として分離します。
+**1.1.2 release candidate。** 自己完結runtimeのrelease lineは1.1.0から開始し、1.1.1でDirect Runtime自身のGitHub書き戻しpushによる再帰再実行を防ぐloop guardを追加しました。1.1.2は、1.1.1で実機検証したruntime実装を維持したまま、配布ZIP内README・version metadata・公開release documentationを自己完結方式へ一致させる版です。
 
-自己完結版は、clean WordPress 7.1、既存guard/rollback、request-id idempotency、self-update破壊再発防止、GitHub書き戻し失敗後のpending recovery、migration rollback metadata、約2.4 MiB画像のuser-owned repo経由転送を含む隔離テストを通過済みです。TakKa Noteの現行1.0.1では、既存canonical signed runtimeのhealthとchunked media uploadを実機確認済みですが、自己完結1.1.0へのlive cutoverはまだ行っていません。live更新前に完全manifest preflightと既存Onboarding Serviceとの移行条件を確定します。
+隔離CIでは、clean WordPress 7.1 + MySQL 8、既存guard/rollback、request-id idempotency、self-update破壊再発防止、GitHub書き戻し失敗後のpending recovery、migration rollback metadata、約2.4 MiB画像転送を確認しています。
+
+TakKa Noteの実環境では1.1.1で、user-owned private runtime repository、site-specific GitHub App signed Webhook、canonical runtime identity、Direct Runtime health、2,458,838-byte PNGの複数payload転送と全体SHA-256検証、source cleanup、同一request_idのcompleted-response replay、異なるpayloadでの409 rejectionを確認しました。旧central/operator Onboarding ServiceはDirect Runtime検証後に停止し、旧callbackは410 tombstoneへ移行しています。テスト用media・draft・一時REST routeは削除済みです。
