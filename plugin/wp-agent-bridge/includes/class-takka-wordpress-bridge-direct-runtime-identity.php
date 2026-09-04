@@ -114,13 +114,28 @@ final class TakKa_WordPress_Bridge_Direct_Runtime_Identity
 
     private static function sync_file(string $token, string $repository, string $branch, string $path, string $content)
     {
-        $current = TakKa_WordPress_Bridge_Direct_GitHub::get_text_file($token, $repository, $branch, $path);
-        if (!is_wp_error($current)) {
-            if (hash_equals(hash('sha256', $current), hash('sha256', $content))) {
-                return ['changed' => false, 'sha256' => hash('sha256', $content)];
+        if ($content === '') {
+            $meta = TakKa_WordPress_Bridge_Direct_GitHub::get_content_metadata($token, $repository, $branch, $path);
+            if (!is_wp_error($meta)) {
+                $encoded = array_key_exists('content', $meta) && is_string($meta['content'])
+                    ? preg_replace('/\s+/', '', $meta['content'])
+                    : null;
+                $size = array_key_exists('size', $meta) ? (int) $meta['size'] : null;
+                if ($size === 0 || $encoded === '') {
+                    return ['changed' => false, 'sha256' => hash('sha256', '')];
+                }
+            } elseif (TakKa_WordPress_Bridge_Direct_GitHub_Recovery::error_status($meta) !== 404) {
+                return $meta;
             }
-        } elseif (TakKa_WordPress_Bridge_Direct_GitHub_Recovery::error_status($current) !== 404) {
-            return $current;
+        } else {
+            $current = TakKa_WordPress_Bridge_Direct_GitHub::get_text_file($token, $repository, $branch, $path);
+            if (!is_wp_error($current)) {
+                if (hash_equals(hash('sha256', $current), hash('sha256', $content))) {
+                    return ['changed' => false, 'sha256' => hash('sha256', $content)];
+                }
+            } elseif (TakKa_WordPress_Bridge_Direct_GitHub_Recovery::error_status($current) !== 404) {
+                return $current;
+            }
         }
 
         $written = TakKa_WordPress_Bridge_Direct_GitHub::put_text_file(
