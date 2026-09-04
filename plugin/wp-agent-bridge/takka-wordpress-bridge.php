@@ -69,6 +69,7 @@ require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-github-rec
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-runtime.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-runtime-v2.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-media.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-runtime-identity.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-hardening.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-onboarding-guard.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-runtime-media-chunks.php';
