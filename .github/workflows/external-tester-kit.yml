@@ -27,7 +27,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build tested plugin ZIP
+      - name: Build reproducible tested plugin ZIP
         id: build
         shell: bash
         run: |
@@ -36,8 +36,18 @@ jobs:
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           mkdir -p tester-kit
-          (cd plugin && zip -qr "../tester-kit/wp-agent-bridge-${version}.zip" wp-agent-bridge)
-          sha256sum "tester-kit/wp-agent-bridge-${version}.zip"
+          archive="tester-kit/wp-agent-bridge-${version}.zip"
+          verify_archive="$(mktemp --suffix=.zip)"
+
+          # git archive derives ZIP timestamps from the commit rather than the
+          # checkout time, so the same commit produces byte-identical packages.
+          git archive --format=zip --prefix=wp-agent-bridge/ HEAD:plugin/wp-agent-bridge > "$archive"
+          git archive --format=zip --prefix=wp-agent-bridge/ HEAD:plugin/wp-agent-bridge > "$verify_archive"
+          cmp "$archive" "$verify_archive"
+          rm -f "$verify_archive"
+
+          sha256sum "$archive"
+          echo "reproducible_archive=OK"
 
       - name: Generate deterministic large PNG media fixture
         shell: bash
