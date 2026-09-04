@@ -114,11 +114,17 @@ jobs:
           $root = WP_PLUGIN_DIR . '/wp-agent-bridge';
           $bootstrap = file_get_contents($root . '/takka-wordpress-bridge.php');
           if (!is_string($bootstrap)) su_fail('Could not read bootstrap.');
+          if (!preg_match('/^[ \t\/*#@]*Version:\s*(.+)$/mi', $bootstrap, $version_match)) {
+              su_fail('Could not read Version header from bootstrap.');
+          }
+          $target_version = trim((string) $version_match[1]);
+          if ($target_version === '') su_fail('Bootstrap Version header was empty.');
+
           $one = [su_entry('takka-wordpress-bridge.php', $bootstrap)];
           $base_params = [
               'confirm' => true,
               'allow_same_version' => true,
-              'target_version' => '1.0.1',
+              'target_version' => $target_version,
               'manifest_sha256' => su_manifest_sha($one),
               'files' => $one,
           ];
@@ -149,7 +155,7 @@ jobs:
           $params = [
               'confirm' => true,
               'allow_same_version' => true,
-              'target_version' => '1.0.1',
+              'target_version' => $target_version,
               'full_manifest' => true,
               'delete_paths' => ['obsolete-self-update-test.txt'],
               'confirm_delete_paths' => true,
@@ -166,7 +172,7 @@ jobs:
               su_fail('Safe self-update class disappeared after complete manifest update.');
           }
 
-          echo "Self-update safety passed: partial manifest blocked, implicit deletion blocked, missing required PHP blocked, explicit deletion succeeded.\n";
+          echo "Self-update safety passed for {$target_version}: partial manifest blocked, implicit deletion blocked, missing required PHP blocked, explicit deletion succeeded.\n";
           PHP
 
           /tmp/wp eval-file /tmp/wpab-self-update-test.php --path=/tmp/wpab-self-update

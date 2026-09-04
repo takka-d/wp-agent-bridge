@@ -89,4 +89,6 @@ WordPress.org Plugin Directoryからの配布は予定していません。
 
 ## Status
 
-自己完結型runtimeを隔離branchで検証中です。clean WordPress 7.1、既存guard/rollback、request-id idempotency、self-update破壊再発防止、GitHub書き戻し失敗後のpending recovery、および約2.4 MiB画像を利用者repo経由で転送する隔離テストを通過してから、実サイトへの移行可否を判断します。実サイトを先に更新する運用は行いません。
+**1.1.0 release candidate。** 1.0.1は従来のsigned-runtime/chunk-media系として既に実運用されているため、自己完結runtimeへのアーキテクチャ変更は同一バージョンへ上書きせず1.1.0として分離します。
+
+自己完結版は、clean WordPress 7.1、既存guard/rollback、request-id idempotency、self-update破壊再発防止、GitHub書き戻し失敗後のpending recovery、migration rollback metadata、約2.4 MiB画像のuser-owned repo経由転送を含む隔離テストを通過済みです。TakKa Noteの現行1.0.1では、既存canonical signed runtimeのhealthとchunked media uploadを実機確認済みですが、自己完結1.1.0へのlive cutoverはまだ行っていません。live更新前に完全manifest preflightと既存Onboarding Serviceとの移行条件を確定します。
