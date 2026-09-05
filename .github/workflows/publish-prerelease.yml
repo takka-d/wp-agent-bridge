@@ -1,0 +1,209 @@
+name: Publish 1.1.4 external-test prerelease
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/release/v1.1.4-rc1.json'
+      - '.github/workflows/publish-prerelease.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/release/v1.1.4-rc1.json'
+      - '.github/workflows/publish-prerelease.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Validate prerelease request
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path('.github/release/v1.1.4-rc1.json').read_text())
+          expected = {
+              'tag': 'v1.1.4-rc1',
+              'version': '1.1.4',
+              'channel': 'external-test-prerelease',
+              'plugin_zip_sha256': 'f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0',
+              'stable': False,
+              'prerelease': True,
+          }
+          if data != expected:
+              raise SystemExit(f'Unexpected prerelease request: {data!r}')
+          PY
+
+      - name: Build reproducible plugin and tester assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^ \* Version: //p' plugin/wp-agent-bridge/takka-wordpress-bridge.php | head -n1 | tr -d '\r')"
+          test "$version" = '1.1.4'
+          mkdir -p release-assets
+          archive="release-assets/wp-agent-bridge-${version}.zip"
+          verify_archive="$(mktemp --suffix=.zip)"
+
+          cat > /tmp/build-wpab-zip.py <<'PY'
+          import stat
+          import subprocess
+          import sys
+          import zipfile
+          from pathlib import Path
+
+          output = Path(sys.argv[1])
+          source_root = 'plugin/wp-agent-bridge/'
+          raw = subprocess.check_output(['git', 'ls-tree', '-r', '-z', 'HEAD', '--', source_root])
+          entries = []
+          for record in raw.split(b'\0'):
+              if not record:
+                  continue
+              metadata, raw_path = record.split(b'\t', 1)
+              mode, kind, blob_sha = metadata.decode('ascii').split()
+              if kind != 'blob':
+                  continue
+              path = raw_path.decode('utf-8')
+              if not path.startswith(source_root):
+                  raise SystemExit(f'unexpected source path: {path}')
+              relative = path[len(source_root):]
+              archive_name = 'wp-agent-bridge/' + relative
+              data = subprocess.check_output(['git', 'cat-file', 'blob', blob_sha])
+              info = zipfile.ZipInfo(archive_name, date_time=(1980, 1, 1, 0, 0, 0))
+              info.create_system = 3
+              permissions = 0o755 if mode == '100755' else 0o644
+              info.external_attr = ((stat.S_IFREG | permissions) & 0xFFFF) << 16
+              info.compress_type = zipfile.ZIP_STORED
+              entries.append((archive_name, info, data))
+          if not entries:
+              raise SystemExit('no plugin files found')
+          entries.sort(key=lambda item: item[0])
+          with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_STORED, allowZip64=True) as archive:
+              for _, info, data in entries:
+                  archive.writestr(info, data)
+          PY
+
+          python3 /tmp/build-wpab-zip.py "$archive"
+          sleep 2
+          python3 /tmp/build-wpab-zip.py "$verify_archive"
+          cmp "$archive" "$verify_archive"
+          rm -f "$verify_archive" /tmp/build-wpab-zip.py
+
+          actual_sha="$(sha256sum "$archive" | awk '{print $1}')"
+          test "$actual_sha" = 'f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0'
+
+          cp docs/EXTERNAL_TEST_GUIDE_JA.md release-assets/EXTERNAL_TEST_GUIDE_JA.md
+          cp docs/EXTERNAL_TEST_RESULT.md release-assets/EXTERNAL_TEST_RESULT.md
+
+          python3 - <<'PY'
+          import binascii
+          import struct
+          import zlib
+          from pathlib import Path
+
+          def chunk(kind: bytes, data: bytes) -> bytes:
+              return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', binascii.crc32(kind + data) & 0xffffffff)
+
+          png = bytearray(b'\x89PNG\r\n\x1a\n')
+          png += chunk(b'IHDR', struct.pack('>IIBBBBB', 1, 1, 8, 6, 0, 0, 0))
+          png += chunk(b'tEXt', b'Comment\x00' + (b'A' * 2_400_000))
+          png += chunk(b'IDAT', zlib.compress(b'\x00\x00\x00\x00\x00', 9))
+          png += chunk(b'IEND', b'')
+          path = Path('release-assets/media-test-fixture-2.4MiB.png')
+          path.write_bytes(png)
+          size = path.stat().st_size
+          if not 1_572_864 < size <= 6_291_456:
+              raise SystemExit(f'fixture size out of target range: {size}')
+          PY
+
+          (
+            cd release-assets
+            sha256sum \
+              wp-agent-bridge-1.1.4.zip \
+              media-test-fixture-2.4MiB.png \
+              EXTERNAL_TEST_GUIDE_JA.md \
+              EXTERNAL_TEST_RESULT.md \
+              > SHA256SUMS
+          )
+
+      - name: Upload verified release assets for publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: wp-agent-bridge-1.1.4-rc1-release-assets
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified assets
+        uses: actions/download-artifact@v4
+        with:
+          name: wp-agent-bridge-1.1.4-rc1-release-assets
+          path: release-assets
+
+      - name: Publish immutable-purpose prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v1.1.4-rc1
+        run: |
+          set -euo pipefail
+          test "$(sha256sum release-assets/wp-agent-bridge-1.1.4.zip | awk '{print $1}')" = 'f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0'
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing to mutate an existing prerelease." >&2
+            exit 1
+          fi
+
+          cat > /tmp/release-notes.md <<'EOF'
+          ## WP Agent Bridge 1.1.4 RC1 — external test
+
+          This is an **external-test prerelease**, not a stable/general-public release declaration.
+
+          Normal runtime architecture:
+
+          `ChatGPT → user's private runtime repository → site-specific private GitHub App signed Webhook → user's WordPress → same runtime repository → ChatGPT`
+
+          The operator-owned runtime/relay, GitHub Actions command worker, old Bridge Key, `takka-d/chatgpt-data`, and WPVibe are not used in the normal WordPress command path.
+
+          ### Test package
+
+          Install `wp-agent-bridge-1.1.4.zip` on a fresh WordPress test environment and follow `EXTERNAL_TEST_GUIDE_JA.md`.
+
+          Plugin ZIP SHA-256:
+
+          `f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0`
+
+          `media-test-fixture-2.4MiB.png` is included only for the documented media-transport test. `SHA256SUMS` covers all attached test assets.
+
+          Do not submit secrets, GitHub usernames, WordPress URLs, article contents, command/result payloads, private keys, Webhook secrets, cookies, or nonces as a test requirement.
+          EOF
+
+          gh release create "$TAG" \
+            release-assets/wp-agent-bridge-1.1.4.zip \
+            release-assets/SHA256SUMS \
+            release-assets/EXTERNAL_TEST_GUIDE_JA.md \
+            release-assets/EXTERNAL_TEST_RESULT.md \
+            release-assets/media-test-fixture-2.4MiB.png \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title 'WP Agent Bridge 1.1.4 RC1 — External Test' \
+            --notes-file /tmp/release-notes.md \
+            --prerelease
+
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,name,isPrerelease,isDraft,url
