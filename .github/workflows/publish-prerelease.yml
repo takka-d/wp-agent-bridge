@@ -4,12 +4,12 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - '.github/release/v1.1.5-rc1.json'
+      - '.github/release/v1.1.5-rc2.json'
       - '.github/workflows/publish-prerelease.yml'
   push:
     branches: [main]
     paths:
-      - '.github/release/v1.1.5-rc1.json'
+      - '.github/release/v1.1.5-rc2.json'
       - '.github/workflows/publish-prerelease.yml'
   workflow_dispatch:
 
@@ -31,12 +31,12 @@ jobs:
           import json
           from pathlib import Path
 
-          data = json.loads(Path('.github/release/v1.1.5-rc1.json').read_text())
+          data = json.loads(Path('.github/release/v1.1.5-rc2.json').read_text())
           expected = {
-              'tag': 'v1.1.5-rc1',
+              'tag': 'v1.1.5-rc2',
               'version': '1.1.5',
               'channel': 'external-test-prerelease',
-              'plugin_zip_sha256': '3a77ad1e253b80beed59cb9fe4cdde0877355f8e2da7f94a1cc0146b54bb7d1e',
+              'plugin_zip_sha256': '787a5319bb2b5a061f75df3865bd008b713375e3b773456ec8ca8e5c16fd52bf',
               'stable': False,
               'prerelease': True,
           }
@@ -99,7 +99,7 @@ jobs:
           rm -f "$verify_archive" /tmp/build-wpab-zip.py
 
           actual_sha="$(sha256sum "$archive" | awk '{print $1}')"
-          test "$actual_sha" = '3a77ad1e253b80beed59cb9fe4cdde0877355f8e2da7f94a1cc0146b54bb7d1e'
+          test "$actual_sha" = '787a5319bb2b5a061f75df3865bd008b713375e3b773456ec8ca8e5c16fd52bf'
 
           cp docs/EXTERNAL_TEST_GUIDE_JA.md release-assets/EXTERNAL_TEST_GUIDE_JA.md
           cp docs/EXTERNAL_TEST_RESULT.md release-assets/EXTERNAL_TEST_RESULT.md
@@ -138,7 +138,7 @@ jobs:
       - name: Upload verified release assets for publish job
         uses: actions/upload-artifact@v4
         with:
-          name: wp-agent-bridge-1.1.5-rc1-release-assets
+          name: wp-agent-bridge-1.1.5-rc2-release-assets
           path: release-assets/
           if-no-files-found: error
           retention-days: 1
@@ -153,17 +153,17 @@ jobs:
       - name: Download verified assets
         uses: actions/download-artifact@v4
         with:
-          name: wp-agent-bridge-1.1.5-rc1-release-assets
+          name: wp-agent-bridge-1.1.5-rc2-release-assets
           path: release-assets
 
       - name: Publish immutable-purpose prerelease
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: v1.1.5-rc1
+          TAG: v1.1.5-rc2
         run: |
           set -euo pipefail
-          test "$(sha256sum release-assets/wp-agent-bridge-1.1.5.zip | awk '{print $1}')" = '3a77ad1e253b80beed59cb9fe4cdde0877355f8e2da7f94a1cc0146b54bb7d1e'
+          test "$(sha256sum release-assets/wp-agent-bridge-1.1.5.zip | awk '{print $1}')" = '787a5319bb2b5a061f75df3865bd008b713375e3b773456ec8ca8e5c16fd52bf'
 
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $TAG already exists; refusing to mutate an existing prerelease." >&2
@@ -171,7 +171,7 @@ jobs:
           fi
 
           cat > /tmp/release-notes.md <<'EOF'
-          ## WP Agent Bridge 1.1.5 RC1 — external test
+          ## WP Agent Bridge 1.1.5 RC2 — external test
 
           This is an **external-test prerelease**, not a stable/general-public release declaration.
 
@@ -179,7 +179,7 @@ jobs:
 
           `ChatGPT → user's private runtime repository → site-specific private GitHub App signed Webhook → user's WordPress → same runtime repository → ChatGPT`
 
-          1.1.5 changes media routing for files that exist only as ChatGPT conversation attachments or local sandbox/container files. Those sources now prefer the existing authenticated `/wp-agent-bridge-media/v1/upload-chunk` path instead of spending time trying to stage the local file into GitHub `media/pending/*.b64`. The staged GitHub media path remains available for sources already manageable by the GitHub connector.
+          RC2 includes the runtime tool-discovery fix. A ChatGPT session must not stop merely because GitHub write actions are not initially visible. It must discover the connected GitHub write actions first, and for ChatGPT-local media it should write bounded normal runtime command JSON to `/wp-agent-bridge-media/v1/upload-chunk` rather than requiring a GitHub local-file upload parameter.
 
           ### Test package
 
@@ -187,7 +187,7 @@ jobs:
 
           Plugin ZIP SHA-256:
 
-          `3a77ad1e253b80beed59cb9fe4cdde0877355f8e2da7f94a1cc0146b54bb7d1e`
+          `787a5319bb2b5a061f75df3865bd008b713375e3b773456ec8ca8e5c16fd52bf`
 
           `media-test-fixture-2.4MiB.png` is included for the documented ChatGPT-local chunk-upload test. `SHA256SUMS` covers all attached test assets.
 
@@ -202,7 +202,7 @@ jobs:
             release-assets/media-test-fixture-2.4MiB.png \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title 'WP Agent Bridge 1.1.5 RC1 — External Test' \
+            --title 'WP Agent Bridge 1.1.5 RC2 — External Test' \
             --notes-file /tmp/release-notes.md \
             --prerelease
 
