@@ -52,4 +52,15 @@ if (!is_string($identity)
     exit(1);
 }
 
+$hardening = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-hardening.php');
+if (!is_string($hardening)
+    || strpos($hardening, 'replace_runtime_webhook') === false
+    || strpos($hardening, 'serialized_webhook') === false
+    || strpos($hardening, 'PRIMARY_LOCK_OPTION') === false
+    || strpos($hardening, 'TakKa_WordPress_Bridge_Direct_Runtime_V2::webhook($request)') === false
+    || strpos($hardening, "'retryable' => true") === false) {
+    fwrite(STDERR, "Direct Runtime primary webhook serialization hardening is missing.\n");
+    exit(1);
+}
+
 echo "media-binary-chunk-staging-test: ok\n";
