@@ -35,16 +35,28 @@ final class TakKa_WordPress_Bridge_Abilities_Fallback
 
     public static function init(): void
     {
-        if (!function_exists('wp_register_ability') || !function_exists('wp_register_ability_category')) {
-            return;
-        }
-
+        // Plugins can load before the Abilities API registration helpers are
+        // available. Always register the lifecycle callbacks first instead of
+        // returning early based on function_exists() during plugin bootstrap.
         add_action('wp_abilities_api_categories_init', [self::class, 'register_category']);
         add_action('wp_abilities_api_init', [self::class, 'register_abilities']);
+
+        // Also tolerate late loading/hot updates after the lifecycle action has
+        // already fired. This makes registration converge on the next request.
+        if (did_action('wp_abilities_api_categories_init') && function_exists('wp_register_ability_category')) {
+            self::register_category();
+        }
+        if (did_action('wp_abilities_api_init') && function_exists('wp_register_ability')) {
+            self::register_abilities();
+        }
     }
 
     public static function register_category(): void
     {
+        if (!function_exists('wp_register_ability_category')) {
+            return;
+        }
+
         wp_register_ability_category(
             'wp-agent-bridge',
             [
@@ -56,6 +68,10 @@ final class TakKa_WordPress_Bridge_Abilities_Fallback
 
     public static function register_abilities(): void
     {
+        if (!function_exists('wp_register_ability')) {
+            return;
+        }
+
         wp_register_ability(
             'wp-agent-bridge/run-command',
             [
