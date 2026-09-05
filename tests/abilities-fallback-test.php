@@ -27,10 +27,10 @@ $requiredAbility = [
     "wp_register_ability",
     "'public' => true",
     "'show_in_rest' => true",
-    "/wp-agent-bridge-media/v1/upload-chunk",
     "current_user_can('manage_options')",
     "action' => 'rest.call",
     "X-TakKa-Signature",
+    "GitHub connector availability is not required",
 ];
 foreach ($requiredAbility as $needle) {
     if (strpos($ability, $needle) === false) {
