@@ -3,7 +3,7 @@ Contributors: takka-d
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.1.3
+Stable tag: 1.1.4
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
@@ -48,15 +48,17 @@ PATs, manual Webhook secrets, private keys, Bridge Keys, and GitHub Actions work
 
 == Media transfer ==
 
-Media files up to 6 MiB can be transferred without embedding the entire Base64 payload in one command JSON. The preferred self-contained path stores one or more Base64 payload files under `wordpress-bridge/media/pending/` in the user's own private runtime repository. When Git Data operations are available, related payload files and the upload command should be published to the runtime branch together in one tree/commit/ref update rather than one branch update per file.
+Media files up to 6 MiB can be transferred without embedding the entire Base64 payload in one command JSON. The preferred self-contained path stores one or more Base64 payload files under `wordpress-bridge/media/pending/` in the user's own private runtime repository.
 
-A small command calls `/wp-agent-bridge-runtime/v1/media-upload` with the payload path(s), filename, original byte count, and original SHA-256. WordPress reconstructs and verifies the original file before adding it to the media library, then removes all temporary payload files in one Git tree cleanup commit. If the runtime branch moved concurrently, cleanup retries from the new head up to a bounded limit instead of deleting each payload in a separate commit.
+For reliable staging, the original binary is split first, each binary chunk is Base64-encoded independently, and each `.b64` payload is kept at or below 8,000 Base64 characters. When Git Data operations are available, every staged blob is read back and verified before related payload files and the upload command are published to the runtime branch together in one tree/commit/ref update.
+
+A small command calls `/wp-agent-bridge-runtime/v1/media-upload` with the ordered payload paths, filename, original byte count, and original SHA-256. WordPress decodes each payload independently, concatenates the binary chunks in order, verifies the reconstructed byte count and SHA-256, and only then adds the file to the media library. Successful uploads remove all temporary payload files in one Git tree cleanup commit. If the runtime branch moved concurrently, cleanup retries from the new head up to a bounded limit instead of deleting each payload in a separate commit.
 
 A bounded authenticated chunk REST route remains available as a fallback transport.
 
 == Delivery recovery ==
 
-A GitHub push is not treated as a durable queue by itself. Every valid runtime push also reconciles the current `wordpress-bridge/commands/pending/` directory. Self-generated media/result/completed bookkeeping pushes are ignored by the recovery scanner so they cannot recursively redispatch the command that created them. If WordPress completed a command but GitHub bookkeeping failed, the same request ID is replayed from WordPress's completed-response idempotency rather than repeating the side effect, and the pending/result/completed files are repaired.
+A GitHub push is not treated as a durable queue by itself. Every valid runtime push also reconciles the current `wordpress-bridge/commands/pending/` directory. Self-generated media/result/completed bookkeeping pushes are ignored by the recovery scanner so they cannot recursively redispatch the command that created them. Authenticated runtime push handling is serialized before the primary executor so reconciliation cannot race an already-running command and persist a temporary idempotency-in-progress response as a terminal result. If WordPress completed a command but GitHub bookkeeping failed, the same request ID is replayed from WordPress's completed-response idempotency rather than repeating the side effect, and the pending/result/completed files are repaired.
 
 == Self-update safety ==
 
@@ -73,6 +75,11 @@ This is a custom proprietary/source-available license, not an open-source licens
 High-impact writes remain subject to the Bridge's preview, confirmation, state-hash, plan-hash, impact-hash, active-theme/plugin, and sensitive-key protections.
 
 == Changelog ==
+
+= 1.1.4 =
+* Serializes authenticated Direct Runtime push handling before the primary executor, preventing concurrent recovery from persisting a temporary `idempotency_in_progress` response as terminal bookkeeping.
+* Hardens media staging guidance: split the original binary first, Base64-encode chunks independently, keep payloads at or below 8,000 Base64 characters, and verify staged blobs by read-back before publishing the atomic command commit.
+* Adds a 41,946-byte media staging regression fixture matching the size of the previously observed truncated payload case.
 
 = 1.1.3 =
 * Publishes multi-file media payloads and upload commands as one Git Data branch update when the connected ChatGPT GitHub surface supports Git Data operations.
