@@ -3,7 +3,7 @@ Contributors: takka-d
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.1.4
+Stable tag: 1.1.5
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
@@ -30,7 +30,7 @@ The project is designed around these principles:
 * Completed-response request IDs for retry-safe delivery.
 * Pending-directory reconciliation after missed Webhook/bookkeeping delivery.
 * Protected handling for user data, post meta, options, and other sensitive WordPress state.
-* Media transport that keeps large Base64 payloads out of a single runtime command JSON.
+* Media transport selected according to whether the source is ChatGPT-local or already GitHub-manageable.
 
 == Installation ==
 
@@ -48,13 +48,11 @@ PATs, manual Webhook secrets, private keys, Bridge Keys, and GitHub Actions work
 
 == Media transfer ==
 
-Media files up to 6 MiB can be transferred without embedding the entire Base64 payload in one command JSON. The preferred self-contained path stores one or more Base64 payload files under `wordpress-bridge/media/pending/` in the user's own private runtime repository.
+Media files up to 6 MiB are supported. The runtime instructions select transport from the source of the file rather than forcing every image through GitHub media payload files.
 
-For reliable staging, the original binary is split first, each binary chunk is Base64-encoded independently, and each `.b64` payload is kept at or below 8,000 Base64 characters. When Git Data operations are available, every staged blob is read back and verified before related payload files and the upload command are published to the runtime branch together in one tree/commit/ref update.
+For a ChatGPT conversation attachment or sandbox/container file that cannot be passed to the GitHub connector as a local file reference, the preferred path is `/wp-agent-bridge-media/v1/upload-chunk`. The local binary is split into ordered chunks, each chunk is Base64-encoded and integrity-checked, and sequential normal runtime commands send the chunks to WordPress. The final chunk triggers whole-file reconstruction, byte-count/SHA-256 validation, Media Library creation, and WordPress-side temporary-file cleanup.
 
-A small command calls `/wp-agent-bridge-runtime/v1/media-upload` with the ordered payload paths, filename, original byte count, and original SHA-256. WordPress decodes each payload independently, concatenates the binary chunks in order, verifies the reconstructed byte count and SHA-256, and only then adds the file to the media library. Successful uploads remove all temporary payload files in one Git tree cleanup commit. If the runtime branch moved concurrently, cleanup retries from the new head up to a bounded limit instead of deleting each payload in a separate commit.
-
-A bounded authenticated chunk REST route remains available as a fallback transport.
+For media already available to the GitHub connector as manageable text/blob input, the self-contained staged-media path remains available under `wordpress-bridge/media/pending/`. The original binary is split first, each chunk is Base64-encoded independently, staged blobs are verified before publication, and the payload files plus upload command can be published atomically in one Git tree/commit/ref update. WordPress verifies the reconstructed file and removes successful temporary payloads in one bounded-retry cleanup commit.
 
 == Delivery recovery ==
 
@@ -75,6 +73,11 @@ This is a custom proprietary/source-available license, not an open-source licens
 High-impact writes remain subject to the Bridge's preview, confirmation, state-hash, plan-hash, impact-hash, active-theme/plugin, and sensitive-key protections.
 
 == Changelog ==
+
+= 1.1.5 =
+* Routes ChatGPT-local, conversation-uploaded, and sandbox media through the existing authenticated chunk-upload path instead of trying to stage local files into GitHub `media/pending/*.b64` first.
+* Keeps the staged GitHub media path for sources that are already manageable by the GitHub connector.
+* Updates generated canonical runtime guidance so fresh installations and later runtime-identity syncs preserve this source-aware media routing.
 
 = 1.1.4 =
 * Serializes authenticated Direct Runtime push handling before the primary executor, preventing concurrent recovery from persisting a temporary `idempotency_in_progress` response as terminal bookkeeping.

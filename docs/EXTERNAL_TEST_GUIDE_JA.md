@@ -70,6 +70,8 @@ WP Agent Bridge運営者のOrganizationへ参加したり、運営者所有repos
 - `operator_relay: false`
 - repository名が今開いているrepository自身と一致
 
+`AGENTS.md`では、ChatGPT-local / conversation-uploaded fileに対して`/wp-agent-bridge-media/v1/upload-chunk`を優先し、GitHubへ`.b64` payloadを無理に作ろうとしない指示があることも確認する。
+
 ## 6. ChatGPTから自分のruntimeを認識する
 
 ChatGPTのGitHub接続を**テスター本人のGitHubアカウント**へ接続する。
@@ -97,33 +99,41 @@ ChatGPTへ次のように依頼する。
 - result/completedが同じ自分のprivate repoへ返る。
 - 運営者所有relay/repositoryを経由しない。
 
-## 8. 大きな画像転送
+## 8. ChatGPT-local画像転送
 
-同梱の約2.4 MiB PNGを使う。これはWordPress側6 MiB上限以内だが、全体Base64を1つのcommand JSONへ入れる方式は使わない。
+同梱の約2.4 MiB PNGを**このChatGPT会話へ添付して**使う。ファイルはChatGPT-local sourceとして扱い、GitHub connectorにローカルfile parameterがない場合は`wordpress-bridge/media/pending/*.b64`へ転写しようとしない。
 
 ChatGPTへ次のように依頼する。
 
 ```text
-この画像をuser-owned WP Agent Bridge runtimeだけを使ってWordPress Media Libraryへアップロードして。元ファイル全体のbytesとSHA-256を最初に計算してから、元binaryを先に小さく分割し、各binary chunkを独立してBase64化して。1本の巨大Base64文字列を後から任意位置で分割しないで。各.b64 payloadは8,000 Base64文字以下を基準にして、wordpress-bridge/media/pending/へ置いて。Git Data操作が使える場合は、各blobを作成後にblob SHAでread-backし、意図したBase64文字列の長さとSHA-256が一致することを全payloadで確認してから、payload群とupload commandを1つのtree/commit/ref更新としてruntime branchへ公開して。data_pathsは順序どおり指定し、WordPress側で各payloadを個別にstrict Base64 decodeしてbinaryを連結し、元ファイル全体のbytesとSHA-256を検証してからMedia Libraryへ登録して。成功後に一時payloadをまとめて削除して。resultが見えてもpendingが消えるかcompletedが見えるまでは次のruntime branch更新を始めないで。
+この添付画像を、今確認したuser-owned WP Agent Bridge runtimeだけを使ってWordPress Media Libraryへアップロードして。AGENTS.mdのChatGPT-local media手順に従い、GitHubのmedia/pendingへローカルファイルを転写しようとせず、/wp-agent-bridge-media/v1/upload-chunkを使って。元ファイル全体のbytesとSHA-256を最初に計算し、binaryを順序付きchunkに分割して、各chunkのbytesとSHA-256も検証してから、そのchunkだけをBase64化してnormal runtime REST commandとして順番に送って。各chunk commandのpending消失またはcompletedを確認してから次を送り、最終chunkで全体bytes/SHA-256一致を確認してMedia Libraryへ登録して。別のWordPress連携サービスへは迂回しないで。
 ```
 
 確認ポイント:
 
-- payload保存先はテスター本人のprivate runtime repoだけ。
-- command JSONへ画像全体のBase64を直埋めしない。
-- **元binaryを先に分割し、各chunkを独立Base64化している。**
-- 各preferred `.b64` payloadが8,000 Base64文字以下である。
-- Git Data操作を利用できる場合、各staged blobをbranch更新前にread-back検証している。
-- payload群とupload commandが1つのruntime branch更新で投入される。
-- `data_paths`からWordPressが各payloadを個別decodeし、binary chunkを順序どおり連結する。
-- 元画像のbytes / SHA-256一致後にMedia Libraryへ登録する。
-- 成功後に`media/pending/*.b64`が1つのGit tree cleanup commitでまとめて削除される。
-- cleanup中にbranchが動いた場合も、一部payloadだけを先に削除せず最新HEADから再試行される。
+- ChatGPT-local sourceを`media/pending/*.b64`へコピーしようとして長時間停止しない。
+- `/wp-agent-bridge-media/v1/upload-chunk`を使用する。
+- command/resultはテスター本人のprivate runtime repoだけを使う。
+- 元画像全体のbytes / SHA-256を最初に計算する。
+- binaryを順序付きchunkへ分割し、各chunkのbytes / SHA-256も検証する。
+- 各chunkだけをBase64化する。
+- 各command完了を確認してから次のchunkを送る。
+- 最終chunkでWordPressが元画像全体のbytes / SHA-256を検証する。
+- WordPress Media Libraryへ登録される。
+- WordPress側の一時chunk stagingが成功後にcleanupされる。
 - 別のWordPress連携サービスへ迂回しない。
 
 失敗時は画像を縮小して成功扱いにせず、その時点で停止する。
 
-## 9. pending取りこぼし復旧
+## 9. GitHub-staged media経路（任意）
+
+これは1.1.5のlocal-fileテストとは別の任意確認です。media sourceが既にGitHub connectorでmanageableなtext/blobとして扱える場合のみ、`wordpress-bridge/media/pending/*.b64` + `/wp-agent-bridge-runtime/v1/media-upload`を使用してよいです。
+
+この経路では、元binaryを先に分割して各chunkを独立Base64化し、staged blobを検証し、可能ならpayload群+commandを1つのGit tree/commit/ref更新で公開し、成功後に1つのbounded-retry cleanup commitでpayloadを削除することを確認します。
+
+ChatGPT-local添付ファイルを、この任意経路を試すためだけにGitHubへ手作業的に転写してはいけません。
+
+## 10. pending取りこぼし復旧
 
 通常利用者が意図的にGitHub障害を作る必要はありません。もしテスト中に`WordPressでは処理されたように見えるがpendingが残る`状態が自然発生した場合のみ、別の無害な`site.info` commandを1件投入する。
 
@@ -134,7 +144,7 @@ ChatGPTへ次のように依頼する。
 - result/completed/pending bookkeepingだけが復旧する。
 - 実行中commandへ別pushのrecoveryが重なっても、一時的な`idempotency_in_progress`をterminal resultとして確定しない。
 
-## 10. テスト後
+## 11. テスト後
 
 - **ツール > WP Agent Bridge** で`Status: Connected (direct GitHub webhook)`のままであること。
 - GitHub Appのrepository accessがテスト用private runtime repo 1個だけであること。
@@ -150,5 +160,5 @@ ChatGPTへ次のように依頼する。
 5. canonical markerが`ownership=user-owned` / `operator_relay=false`になる。
 6. ChatGPTから自分のruntime repoを認識できる。
 7. `site.info` / `cache.flush`がuser-owned repo → signed Webhook → user WordPress → user-owned repoで完了する。
-8. 約2.4 MiB画像を縮小・別経路なしでMedia Libraryへ送れ、送信前payload欠損をread-back検証で検知でき、payload cleanupの競合で取り残しや部分削除が起きない。
+8. 約2.4 MiBのChatGPT-local添付画像を、GitHub `.b64` stagingで詰まらずauthenticated chunk routeからMedia Libraryへ送れ、全体bytes / SHA-256検証に成功する。
 9. 運営者所有のGitHub/WordPress/relayへruntime command/resultやWordPress内容を送らない。

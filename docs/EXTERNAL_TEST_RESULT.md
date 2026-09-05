@@ -39,7 +39,7 @@
 - [ ] Repositoryはテスター本人所有のprivate repoだった
 - [ ] Runtime branchは`wp-agent-bridge-runtime`だった
 
-## 5. canonical runtime marker
+## 5. canonical runtime marker / media routing
 
 - [ ] `AGENTS.md`を確認できた
 - [ ] `wordpress-bridge/RUNTIME_CONNECTION.json`を確認できた
@@ -48,6 +48,7 @@
 - [ ] `ownership = user-owned`
 - [ ] `operator_relay = false`
 - [ ] markerのrepository名は実際に開いているrepository自身と一致した
+- [ ] `AGENTS.md`はChatGPT-local / conversation-uploaded fileに`/wp-agent-bridge-media/v1/upload-chunk`を優先するよう案内した
 
 ## 6. ChatGPT GitHub接続
 
@@ -65,22 +66,35 @@
 
 補足:
 
-## 8. self-contained media transport
+## 8. ChatGPT-local media transport
 
-- [ ] 約2.4 MiB PNGを使用した
-- [ ] 画像全体を1つのcommand JSONへ直埋めしなかった
-- [ ] `wordpress-bridge/media/pending/*.b64`を使用した
-- [ ] 必要に応じて複数payload + `data_paths`へ分割した
-- [ ] Git Data操作を利用できる場合、payload群とupload commandを1つのtree/commit/ref更新でruntime branchへ投入した
+- [ ] 約2.4 MiB PNGをChatGPT会話へ添付して使用した
+- [ ] ChatGPT-local sourceを`wordpress-bridge/media/pending/*.b64`へ転写しようとして停止しなかった
+- [ ] `/wp-agent-bridge-media/v1/upload-chunk`を使用した
+- [ ] 元画像全体のbytes / SHA-256を計算した
+- [ ] binaryを順序付きchunkへ分割した
+- [ ] 各chunkのbytes / SHA-256を検証した
+- [ ] 各chunkだけをBase64化してnormal runtime commandとして順番に送った
+- [ ] 各chunk command完了を確認してから次へ進んだ
 - [ ] 別のWordPress連携経路へ迂回しなかった
-- [ ] 元画像全体のbytes / SHA-256検証が成功した
+- [ ] 最終chunkで元画像全体のbytes / SHA-256検証が成功した
 - [ ] WordPress Media Libraryへ登録できた
-- [ ] 成功後に一時`.b64` payloadがまとめて削除された
-- [ ] cleanup競合が起きても一部payloadだけが先に削除された状態にならなかった
+- [ ] WordPress側の一時chunk stagingが成功後にcleanupされた
 
 Attachment ID(ローカル記録のみ):
 
-## 9. retry / pending recovery
+## 9. GitHub-staged media transport（任意）
+
+- [ ] 該当sourceが最初からGitHub connectorでmanageableだった
+- [ ] `wordpress-bridge/media/pending/*.b64`を使用した
+- [ ] 元binaryを先に分割し、各chunkを独立Base64化した
+- [ ] staged blobを検証した
+- [ ] Git Data操作を利用できる場合、payload群とupload commandを1つのtree/commit/ref更新でruntime branchへ投入した
+- [ ] 元画像全体のbytes / SHA-256検証が成功した
+- [ ] 成功後に一時`.b64` payloadが1つのcleanup commitでまとめて削除された
+- [ ] 該当なし
+
+## 10. retry / pending recovery
 
 自然にpending残留が発生した場合のみ記録する。
 
@@ -89,7 +103,7 @@ Attachment ID(ローカル記録のみ):
 - [ ] result/completed/pending bookkeepingが復旧した
 - [ ] 該当なし
 
-## 10. 最終状態
+## 11. 最終状態
 
 - [ ] **Tools > WP Agent Bridge**で`Status: Connected (direct GitHub webhook)`のまま
 - [ ] site-specific GitHub Appはruntime repo 1個だけへアクセス可能

@@ -6,11 +6,11 @@ ChatGPTからWordPressの記事・ページ・設定などを更新するため�
 
 ## 現在の配布状態
 
-- Version: `1.1.4`
-- Status: **release candidate / external tester distribution ready**
-- External-test prerelease: [`v1.1.4-rc1`](https://github.com/takka-d/wp-agent-bridge/releases/tag/v1.1.4-rc1)
-- テスト用plugin ZIP: [`wp-agent-bridge-1.1.4.zip`](https://github.com/takka-d/wp-agent-bridge/releases/download/v1.1.4-rc1/wp-agent-bridge-1.1.4.zip)
-- 再現可能なplugin ZIP SHA-256: `f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0`
+- Version: `1.1.5`
+- Status: **release candidate / validation in progress**
+- 1.1.5はChatGPT-local／会話添付ファイルの転送経路をsource-awareにした更新です。
+- 1.1.5の外部テスト用prereleaseと再現可能なZIP SHA-256は、merged-main packaging完了後に記録します。
+- 既存の`v1.1.4-rc1`は1.1.4時点のテスト成果物として保持し、上書きしません。
 - broader public / stable releaseはまだ宣言していません。
 
 ## 構成
@@ -46,7 +46,7 @@ GitHub Appは利用者自身のGitHubアカウントに作成し、対象のpriv
 | データ / 資格情報 | 保存・処理される場所 | WP Agent Bridge運営者側へ送信 |
 | --- | --- | --- |
 | command / result | 利用者のprivate runtime repository | しない |
-| media一時payload | 利用者のprivate runtime repository | しない |
+| media一時payload | 利用者のprivate runtime repositoryまたは利用者のWordPress一時領域 | しない |
 | 記事本文・WordPress設定 | 利用者のWordPress、および依頼内容に必要な範囲のruntime command/result | しない |
 | GitHub App private key / Webhook secret | 利用者のWordPress内で暗号化保存 | しない |
 
@@ -117,27 +117,39 @@ repository名と`site_host`も、実際の接続先と一致している必要�
 
 ## 画像・ファイル転送
 
-WordPress側のmedia上限は6 MiBです。runtime command JSON自体は2 MiB以下に制限します。
+WordPress側のmedia上限は6 MiBです。転送経路は**ファイルのsourceに応じて選びます**。
 
-自己完結runtimeでは、大きな画像を1個のcommand JSONへBase64直埋めしません。Base64 payloadを利用者自身のruntime repositoryの`wordpress-bridge/media/pending/*.b64`へ置き、小さいcommandから`/wp-agent-bridge-runtime/v1/media-upload`を呼び出します。
+### ChatGPTローカル／会話添付／sandboxファイル
 
-1. ChatGPT側で元ファイルのbytes / SHA-256を計算する。
-2. **元binaryを先に小分けし、各binary chunkを独立してBase64化する。** 1本の巨大Base64文字列を作ってから任意位置で切る方式は使わない。
-3. 各`.b64` payloadは8,000 Base64文字以下を基準とする。
-4. Git Data操作が利用できる場合は各payloadをblobとして先にstagingし、**blob SHAでread-backして文字数とSHA-256を照合した後**、payload群とupload commandを1つのtree / commit / ref更新でruntime branchへ公開する。
-5. WordPress側がordered `data_paths`を1ファイルずつstrict Base64 decodeし、binary chunkを順序どおり連結する。
-6. 再構成後に`expected_bytes` / `expected_sha256`を検証してMedia Libraryへ登録する。
-7. 成功後は、使用した`.b64` payloadを1つのGit tree cleanup commitでまとめて削除する。
-8. cleanup中にruntime branchが別commitで進んだ場合は、一部ファイルを先に削除せず最新HEADからbounded retryする。
-9. resultが先に見えた場合も、対応するpending commandが消えるかcompletedが確認できるまで次のruntime branch更新を開始しない。
+GitHub connectorがローカルファイル参照を直接repositoryへ渡せない場合、`media/pending/*.b64`へ無理にコピーしようとせず、既存のauthenticated chunk routeを優先します。
 
-この手順は、過去に確認した「期待41,946 bytesに対してGitHub上のpayload自体が約17,907 Base64文字までしか存在せず、WordPressで13,429 bytesにしか復元できなかった」種類の送信前欠損を、WordPress実行前のblob read-back検証で検知するためのものです。
+`/wp-agent-bridge-media/v1/upload-chunk`
+
+1. 元binary全体のbytes / SHA-256を計算する。
+2. binaryを順序付きchunkへ分割する。Bridge上限は1chunk 1,200,000 decoded bytes、32 chunks、全体6 MiB。
+3. 各chunkの`chunk_bytes` / `chunk_sha256`を計算し、そのchunkだけをBase64化する。
+4. `upload_id`、chunk index/count、filename、全体integrity、chunk integrity、`data_b64`をnormal runtime REST commandとして順次送る。
+5. 各chunkのcommand完了を確認してから次へ進む。
+6. 最終chunkでWordPressが全体を再構成・検証し、Media Libraryへ登録してWordPress側の一時ファイルをcleanupする。
+
+この経路はGitHubの`wordpress-bridge/media/pending/`を使わないため、ChatGPT内にしかないローカル画像をGitHubファイルAPIへ転写するための余分なBase64 stagingを避けられます。
+
+### GitHub connectorが既に扱えるmedia
+
+remote／既存staged sourceなど、GitHub connectorがlarge local fileをモデル経由で再serializeせず扱える場合は従来の`wordpress-bridge/media/pending/*.b64`経路も利用できます。
+
+1. 元binary全体のbytes / SHA-256を計算する。
+2. 元binaryを先に分割し、各binary chunkを独立してBase64化する。
+3. staged payloadを検証する。
+4. Git Data操作が利用できる場合はpayload群とupload commandを1つのtree / commit / ref更新で公開する。
+5. `/wp-agent-bridge-runtime/v1/media-upload`がordered payloadを再構成し、bytes / SHA-256を検証する。
+6. 成功後は一時payloadを1つのGit tree cleanup commitでまとめて削除し、branch競合時はbounded retryする。
 
 ## 配送失敗からの復旧
 
 GitHub pushはdurable queueではないため、WebhookやGitHub書き戻しを一度取りこぼす可能性があります。Direct Runtimeはvalidなpushごとに現在の`commands/pending/`も再走査します。
 
-1.1.4では、authenticated runtime pushをprimary executorへ渡す前にWordPress側で直列化します。これにより、別pushのrecovery scanがまだ実行中の同一commandへ重なり、request-id idempotencyが返したtemporaryな`idempotency_in_progress`をGitHub result/completedへterminal resultとして確定する競合を防ぎます。
+1.1.4以降では、authenticated runtime pushをprimary executorへ渡す前にWordPress側で直列化します。これにより、別pushのrecovery scanがまだ実行中の同一commandへ重なり、request-id idempotencyが返したtemporaryな`idempotency_in_progress`をGitHub result/completedへterminal resultとして確定する競合を防ぎます。
 
 同一`request_id`はWordPress側でcompleted responseを再利用するため、`WordPress実行成功 → GitHub result書き戻し失敗`が起きても、後続pushで副作用を二重実行せずbookkeepingを復旧する設計です。
 
@@ -166,8 +178,6 @@ Bridge self-updateは完全manifestを要求します。manifestに含まれな�
 
 外部テスト手順は[`docs/EXTERNAL_TEST_GUIDE_JA.md`](docs/EXTERNAL_TEST_GUIDE_JA.md)、release gateは[`PUBLIC_RELEASE.md`](PUBLIC_RELEASE.md)を参照してください。
 
-1.1.4の外部テスト版はGitHub prerelease [`v1.1.4-rc1`](https://github.com/takka-d/wp-agent-bridge/releases/tag/v1.1.4-rc1)として公開しています。WordPressへ入れるテスト対象はRelease assetの`wp-agent-bridge-1.1.4.zip`です。GitHub Actions artifactはCI検証用の期限付き成果物であり、通常の配布リンクには使用しません。
-
 WordPress.org Plugin Directoryからの配布は予定していません。
 
 ## License
@@ -180,10 +190,6 @@ WordPress.org Plugin Directoryからの配布は予定していません。
 
 ## Status
 
-**1.1.4 release candidate / external tester distribution ready.**
+**1.1.5 release candidate / validation in progress.**
 
-1.1.4は、1.1.3のatomic media cleanupに加えて、送信前payloadの欠損検知とDirect Runtime webhookの同時実行競合を対象にした更新です。41,946-byte回帰fixtureを使ったCIを含む全PR検証が成功し、merged `main`から再現可能なplugin ZIPを生成しました。
-
-TakKa Note実環境では1.1.4へ更新後、8個の独立Base64 payloadから16,596-byte WebPを再構成し、期待SHA-256 `8e83796467ccabeb224c43f83dfc6c32f326e3e1f83b78c3a10b78497b0b4d0c`と完全一致することを確認しました。Media Library登録、1回のsingle-Git-tree cleanup、pending消去、completed作成まで確認し、検証用Media attachmentはその後削除済みです。
-
-1.1.4 plugin ZIP SHA-256: `f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0`。
+1.1.5は、ChatGPT-local／会話添付／sandbox fileでGitHub側の`.b64` stagingを既定にせず、既存のauthenticated chunk uploadを優先するsource-aware routingをruntime identityへ組み込む更新です。TakKa Noteのcanonical runtimeでは同じ方針を先行反映済みで、1.1.5ではfresh installやruntime identity再同期後もその方針が維持されます。
