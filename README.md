@@ -9,7 +9,7 @@ ChatGPTからWordPressの記事・ページ・設定などを更新するため�
 - Version: `1.1.4`
 - Status: **release candidate / external tester distribution ready**
 - 再現可能なplugin ZIP SHA-256: `f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0`
-- merged `main` external tester kit artifact ID: `9963218724`（GitHub Actions artifact、2026-10-05失効予定）
+- final merged `main` external tester kit artifact ID: `9964384063`（GitHub Actions artifact、2026-10-05失効予定）
 - broader public / stable releaseはまだ宣言していません。
 
 ## 構成

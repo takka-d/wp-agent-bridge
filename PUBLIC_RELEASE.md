@@ -6,9 +6,9 @@
 - Status: **release candidate / external tester distribution ready**
 - Source merge commit: `dd6fbdb435cbee8c6d0e740724b8338c519f7201`
 - Reproducible plugin ZIP SHA-256: `f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0`
-- Merged-main external tester kit artifact ID: `9963218724`
-- Artifact container SHA-256: `568172ea64b0a9ba7bbd05f8974c3c39091fc4e58f9503b22adbebb52e0fe35b`
-- Artifact expiration: `2026-10-05T04:50:05Z`
+- Final merged-main external tester kit artifact ID: `9964384063`
+- Artifact container SHA-256: `9e55778d65795ebfa072de820f246e6e4f65a546585191061033ed97201c144c`
+- Artifact expiration: `2026-10-05T06:22:20Z`
 - Broader public/stable release: **not declared**
 
 The GitHub Actions artifact is an outer, temporary distribution container. The reproducibility guarantee applies to the inner `wp-agent-bridge-1.1.4.zip` plugin package identified by the plugin ZIP SHA-256 above.
