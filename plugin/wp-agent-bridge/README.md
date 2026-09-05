@@ -1,4 +1,4 @@
-# WP Agent Bridge 1.1.3
+# WP Agent Bridge 1.1.4
 
 ChatGPTからWordPressを更新するためのWordPressプラグインです。
 
@@ -32,8 +32,11 @@ PAT、private key、Webhook secret、Bridge Key、GitHub Actions workflowを利�
 - Draft Themeのpreview / publish / rollback
 - media upload
   - 最大6 MiB decoded
-  - 大きなファイルはcommand JSONへ全Base64を直埋めせず、`wordpress-bridge/media/pending/*.b64`を利用
-  - `data_path` / `data_paths`で複数payloadを再構成可能
+  - 大きなファイルはcommand JSONへ全Base64を直埋めしない
+  - 元binaryを先に小分けし、各chunkを独立してBase64化
+  - `.b64` payloadは8,000 Base64文字以下を基準にする
+  - staged blobはruntime branchへ公開する前にblob SHAでread-back検証
+  - `data_path` / `data_paths`で複数payloadを順序どおり再構成可能
   - Git Data APIを利用できる場合、payload群とupload commandを1つのtree/commit/ref更新としてruntime branchへ投入
   - 元ファイル全体のbytes / SHA-256を検証
   - 成功後の一時payloadは1つのGit tree cleanup commitでまとめて削除
@@ -42,6 +45,8 @@ PAT、private key、Webhook secret、Bridge Key、GitHub Actions workflowを利�
 - request-ID completed-response idempotency
   - 同一request_id + 同一payloadは元のresponseを再生
   - 同一request_id + 異なるpayloadは409で拒否
+- authenticated runtime pushのprimary executionを直列化
+  - recovery pushが実行中commandへ重なり、temporaryな`idempotency_in_progress`をterminal resultとして確定する競合を防止
 - missed Webhook / GitHub bookkeeping競合後のpending reconciliation
 - self-update full-manifest / SHA-256 / PHP parse / backup / rollback guards
 - WP-Cron管理
