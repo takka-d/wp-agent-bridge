@@ -7,8 +7,9 @@ ChatGPTからWordPressの記事・ページ・設定などを更新するため�
 ## 現在の配布状態
 
 - Version: `1.1.4`
-- Status: **release candidate / validation in progress**
-- 1.1.4の再現可能なplugin ZIP SHA-256はrelease packaging完了後に記録します。
+- Status: **release candidate / external tester distribution ready**
+- 再現可能なplugin ZIP SHA-256: `f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0`
+- merged `main` external tester kit artifact ID: `9963218724`（GitHub Actions artifact、2026-10-05失効予定）
 - broader public / stable releaseはまだ宣言していません。
 
 ## 構成
@@ -164,6 +165,8 @@ Bridge self-updateは完全manifestを要求します。manifestに含まれな�
 
 外部テスト手順は[`docs/EXTERNAL_TEST_GUIDE_JA.md`](docs/EXTERNAL_TEST_GUIDE_JA.md)、release gateは[`PUBLIC_RELEASE.md`](PUBLIC_RELEASE.md)を参照してください。
 
+現在の1.1.4 tester kitはGitHub Actions artifactとして生成済みですが、Actions artifactは期限付きであり、恒久的な公開ダウンロード先とは扱いません。broader public/stable release用の配布先は別途確定します。
+
 WordPress.org Plugin Directoryからの配布は予定していません。
 
 ## License
@@ -176,8 +179,10 @@ WordPress.org Plugin Directoryからの配布は予定していません。
 
 ## Status
 
-**1.1.4 release candidate / validation in progress.**
+**1.1.4 release candidate / external tester distribution ready.**
 
-1.1.4は、1.1.3のatomic media cleanupに加えて、送信前payloadの欠損検知とDirect Runtime webhookの同時実行競合を対象にした更新です。41,946-byteの回帰fixtureを使い、binary-first chunkingで元bytes / SHA-256を完全再構成できることをCIで確認します。
+1.1.4は、1.1.3のatomic media cleanupに加えて、送信前payloadの欠損検知とDirect Runtime webhookの同時実行競合を対象にした更新です。41,946-byte回帰fixtureを使ったCIを含む全PR検証が成功し、merged `main`から再現可能なplugin ZIPを生成しました。
 
-1.1.4の再現可能なplugin ZIP SHA-256とTakKa Note実環境検証結果は、release packagingとlive validation完了後にこの欄へ記録します。
+TakKa Note実環境では1.1.4へ更新後、8個の独立Base64 payloadから16,596-byte WebPを再構成し、期待SHA-256 `8e83796467ccabeb224c43f83dfc6c32f326e3e1f83b78c3a10b78497b0b4d0c`と完全一致することを確認しました。Media Library登録、1回のsingle-Git-tree cleanup、pending消去、completed作成まで確認し、検証用Media attachmentはその後削除済みです。
+
+1.1.4 plugin ZIP SHA-256: `f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0`。
