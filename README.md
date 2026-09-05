@@ -8,8 +8,9 @@ ChatGPTからWordPressの記事・ページ・設定などを更新するため�
 
 - Version: `1.1.4`
 - Status: **release candidate / external tester distribution ready**
+- External-test prerelease: [`v1.1.4-rc1`](https://github.com/takka-d/wp-agent-bridge/releases/tag/v1.1.4-rc1)
+- テスト用plugin ZIP: [`wp-agent-bridge-1.1.4.zip`](https://github.com/takka-d/wp-agent-bridge/releases/download/v1.1.4-rc1/wp-agent-bridge-1.1.4.zip)
 - 再現可能なplugin ZIP SHA-256: `f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0`
-- final merged `main` external tester kit artifact ID: `9964384063`（GitHub Actions artifact、2026-10-05失効予定）
 - broader public / stable releaseはまだ宣言していません。
 
 ## 構成
@@ -165,7 +166,7 @@ Bridge self-updateは完全manifestを要求します。manifestに含まれな�
 
 外部テスト手順は[`docs/EXTERNAL_TEST_GUIDE_JA.md`](docs/EXTERNAL_TEST_GUIDE_JA.md)、release gateは[`PUBLIC_RELEASE.md`](PUBLIC_RELEASE.md)を参照してください。
 
-現在の1.1.4 tester kitはGitHub Actions artifactとして生成済みですが、Actions artifactは期限付きであり、恒久的な公開ダウンロード先とは扱いません。broader public/stable release用の配布先は別途確定します。
+1.1.4の外部テスト版はGitHub prerelease [`v1.1.4-rc1`](https://github.com/takka-d/wp-agent-bridge/releases/tag/v1.1.4-rc1)として公開しています。WordPressへ入れるテスト対象はRelease assetの`wp-agent-bridge-1.1.4.zip`です。GitHub Actions artifactはCI検証用の期限付き成果物であり、通常の配布リンクには使用しません。
 
 WordPress.org Plugin Directoryからの配布は予定していません。
 

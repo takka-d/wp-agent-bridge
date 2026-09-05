@@ -6,12 +6,26 @@
 - Status: **release candidate / external tester distribution ready**
 - Source merge commit: `dd6fbdb435cbee8c6d0e740724b8338c519f7201`
 - Reproducible plugin ZIP SHA-256: `f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0`
-- Final merged-main external tester kit artifact ID: `9964384063`
-- Artifact container SHA-256: `9e55778d65795ebfa072de820f246e6e4f65a546585191061033ed97201c144c`
-- Artifact expiration: `2026-10-05T06:22:20Z`
+- External-test prerelease: `v1.1.4-rc1`
+- Release page: `https://github.com/takka-d/wp-agent-bridge/releases/tag/v1.1.4-rc1`
+- Plugin asset: `https://github.com/takka-d/wp-agent-bridge/releases/download/v1.1.4-rc1/wp-agent-bridge-1.1.4.zip`
+- Release target commit: `8aca8f3df18370a4935cfd9a1511342589a1fc5f`
 - Broader public/stable release: **not declared**
 
-The GitHub Actions artifact is an outer, temporary distribution container. The reproducibility guarantee applies to the inner `wp-agent-bridge-1.1.4.zip` plugin package identified by the plugin ZIP SHA-256 above.
+The GitHub prerelease is the persistent external-test download endpoint. GitHub Actions artifacts remain temporary CI outputs and are not the public test-download target.
+
+## Release assets
+
+`v1.1.4-rc1` is a GitHub prerelease and contains:
+
+- `wp-agent-bridge-1.1.4.zip`
+  - SHA-256: `f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0`
+- `EXTERNAL_TEST_GUIDE_JA.md`
+- `EXTERNAL_TEST_RESULT.md`
+- `media-test-fixture-2.4MiB.png`
+- `SHA256SUMS`
+
+The prerelease is explicitly for external testing and does not declare 1.1.4 stable/general-public.
 
 ## Release architecture
 
@@ -101,6 +115,8 @@ Two concrete failures observed during TakKa Note validation led to 1.1.4:
 - [x] external tester kit workflow passes.
 - [x] deterministic ZIP is rebuilt twice across a wall-clock delay and compared byte-for-byte.
 - [x] merged-main package output is `wp-agent-bridge-1.1.4.zip` with SHA-256 `f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0`.
+- [x] prerelease publishing workflow rebuilds and verifies the same known plugin SHA before release creation.
+- [x] `v1.1.4-rc1` was created as `prerelease=true`, `draft=false` and contains the verified plugin asset plus tester documentation/fixture/checksums.
 
 ## TakKa Note live validation
 
@@ -118,13 +134,16 @@ Two concrete failures observed during TakKa Note validation led to 1.1.4:
 
 ## Distribution state
 
-1.1.4 has passed the current external-tester gates. The current tester kit is a **temporary GitHub Actions artifact**, not a permanent public download endpoint. The repository currently still has the historical `v1.0.0-rc1` prerelease as its only GitHub Release.
+1.1.4 has passed the current external-tester gates and now has a persistent GitHub prerelease endpoint:
+
+`https://github.com/takka-d/wp-agent-bridge/releases/tag/v1.1.4-rc1`
 
 Therefore:
 
 - **external tester readiness is complete**;
-- **broader public/stable release is not yet declared**;
-- a permanent 1.1.4 public download endpoint must be established separately before a TakKa Note article links ordinary visitors directly to a test ZIP.
+- a permanent test ZIP download endpoint now exists;
+- **broader public/stable release is still not declared**;
+- TakKa Note may link the prerelease explicitly as an external-test/RC download without presenting it as stable.
 
 ## License
 
