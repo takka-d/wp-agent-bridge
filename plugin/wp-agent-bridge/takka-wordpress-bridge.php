@@ -75,6 +75,7 @@ require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-hardening.
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-onboarding-guard.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-runtime-media-chunks.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-abilities-fallback.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-mcp-server.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-onboarding.php';
 
 TakKa_WordPress_Bridge_Envelope::init();
@@ -109,4 +110,5 @@ TakKa_WordPress_Bridge_Direct_Hardening::init();
 TakKa_WordPress_Bridge_Direct_Onboarding_Guard::init();
 TakKa_WordPress_Bridge_Runtime_Media_Chunks::init();
 TakKa_WordPress_Bridge_Abilities_Fallback::init();
+TakKa_WordPress_Bridge_MCP_Server::init();
 TakKa_WordPress_Bridge_Onboarding::init();
