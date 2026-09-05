@@ -1,4 +1,4 @@
-# WP Agent Bridge 1.1.4
+# WP Agent Bridge 1.1.5
 
 ChatGPTからWordPressを更新するためのWordPressプラグインです。
 
@@ -32,16 +32,13 @@ PAT、private key、Webhook secret、Bridge Key、GitHub Actions workflowを利�
 - Draft Themeのpreview / publish / rollback
 - media upload
   - 最大6 MiB decoded
-  - 大きなファイルはcommand JSONへ全Base64を直埋めしない
-  - 元binaryを先に小分けし、各chunkを独立してBase64化
-  - `.b64` payloadは8,000 Base64文字以下を基準にする
-  - staged blobはruntime branchへ公開する前にblob SHAでread-back検証
-  - `data_path` / `data_paths`で複数payloadを順序どおり再構成可能
+  - **ChatGPTローカル／会話添付／sandboxファイルは `/wp-agent-bridge-media/v1/upload-chunk` を優先**
+  - ローカルbinaryを順序付きchunkへ分割し、各chunkのbytes / SHA-256と全体bytes / SHA-256を検証
+  - GitHub connectorが既に扱えるmediaでは`wordpress-bridge/media/pending/*.b64`経路も利用可能
+  - staged mediaは元binaryを先に分割し、各chunkを独立してBase64化
   - Git Data APIを利用できる場合、payload群とupload commandを1つのtree/commit/ref更新としてruntime branchへ投入
-  - 元ファイル全体のbytes / SHA-256を検証
   - 成功後の一時payloadは1つのGit tree cleanup commitでまとめて削除
   - cleanup時にbranchが競合した場合は最新HEADからbounded retry
-  - bounded chunk upload routeもfallbackとして保持
 - request-ID completed-response idempotency
   - 同一request_id + 同一payloadは元のresponseを再生
   - 同一request_id + 異なるpayloadは409で拒否
@@ -68,6 +65,8 @@ PAT、private key、Webhook secret、Bridge Key、GitHub Actions workflowを利�
 - `wordpress-bridge/media/pending/`
 
 `RUNTIME_CONNECTION.json`は`status: canonical`、`transport: direct-github-webhook`、`ownership: user-owned`、`operator_relay: false`を示します。
+
+1.1.5では生成される`AGENTS.md`もsource-aware media routingを明示します。ChatGPT内にしか存在しないローカルファイルをGitHubの`.b64` stagingへ無理に流そうとせず、既存のauthenticated chunk uploadを選択します。
 
 ## License
 
