@@ -25,6 +25,10 @@ $requiredAbility = [
     "wp-agent-bridge/status",
     "wp_register_ability_category",
     "wp_register_ability",
+    "add_action('wp_abilities_api_categories_init'",
+    "add_action('wp_abilities_api_init'",
+    "did_action('wp_abilities_api_categories_init')",
+    "did_action('wp_abilities_api_init')",
     "'public' => true",
     "'show_in_rest' => true",
     "current_user_can('manage_options')",
@@ -37,6 +41,16 @@ foreach ($requiredAbility as $needle) {
         fwrite(STDERR, "Missing abilities fallback behavior: {$needle}\n");
         exit(1);
     }
+}
+
+$earlyReturn = <<<'PHP'
+if (!function_exists('wp_register_ability') || !function_exists('wp_register_ability_category')) {
+            return;
+        }
+PHP;
+if (strpos($ability, $earlyReturn) !== false) {
+    fwrite(STDERR, "Abilities fallback still returns before registering lifecycle callbacks.\n");
+    exit(1);
 }
 
 echo "abilities-fallback-test: ok\n";
