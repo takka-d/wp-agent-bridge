@@ -30,6 +30,12 @@ jobs:
           set -euo pipefail
           php tests/direct-webhook-loop-guard-test.php
 
+      - name: Media binary-chunk staging regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/media-binary-chunk-staging-test.php
+
       - name: Verify release metadata
         shell: bash
         run: |
