@@ -42,6 +42,12 @@ jobs:
           set -euo pipefail
           php tests/abilities-fallback-test.php
 
+      - name: Dedicated MCP server fallback regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/mcp-server-fallback-test.php
+
       - name: Verify release metadata
         shell: bash
         run: |
