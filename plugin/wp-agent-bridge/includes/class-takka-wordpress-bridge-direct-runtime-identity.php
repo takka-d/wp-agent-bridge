@@ -93,7 +93,7 @@ final class TakKa_WordPress_Bridge_Direct_Runtime_Identity
             . "ChatGPT-local media: `/wp-agent-bridge-media/v1/upload-chunk` via normal runtime commands; this bypasses GitHub media payload files.\n"
             . "GitHub-staged media: `wordpress-bridge/media/pending/<id>.b64` -> `/wp-agent-bridge-runtime/v1/media-upload`.\n"
             . "Choose chunk upload first when the source exists only as a local conversation/sandbox file and the GitHub connector has no file-parameter upload action.\n"
-            . "Successful staged-media cleanup is performed as one Git tree commit with bounded retry if the runtime branch moved.\n"
+            . "Successful staged-media cleanup is performed as one Git tree cleanup commit with bounded retry if the runtime branch moved.\n"
             . "Operator-owned relay: none.\n"
             . "Normal WordPress commands do not use GitHub Actions, old Bridge Key, `takka-d/chatgpt-data`, or WPVibe.\n";
 
