@@ -36,6 +36,12 @@ jobs:
           set -euo pipefail
           php tests/media-binary-chunk-staging-test.php
 
+      - name: WordPress Abilities API fallback regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/abilities-fallback-test.php
+
       - name: Verify release metadata
         shell: bash
         run: |
