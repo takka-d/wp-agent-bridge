@@ -1,0 +1,8 @@
+{
+  "tag": "v1.1.4-rc1",
+  "version": "1.1.4",
+  "channel": "external-test-prerelease",
+  "plugin_zip_sha256": "f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0",
+  "stable": false,
+  "prerelease": true
+}
