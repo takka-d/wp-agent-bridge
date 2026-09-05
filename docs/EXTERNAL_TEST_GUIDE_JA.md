@@ -104,17 +104,20 @@ ChatGPTへ次のように依頼する。
 ChatGPTへ次のように依頼する。
 
 ```text
-この画像をuser-owned WP Agent Bridge runtimeだけを使ってWordPress Media Libraryへアップロードして。画像全体のBase64を1個のcommand JSONへ入れず、wordpress-bridge/media/pending/のBase64 payloadファイルを使うself-contained media transportで送って。必要ならpayloadを複数ファイルに分割してdata_pathsを使って。Git Data操作が使える場合はpayload群とupload commandを別々にbranchへcommitせず、blobを先に作って1つのtree/commit/ref更新としてまとめて公開して。元ファイルのbytesとSHA-256をWordPress側で検証し、成功後に一時payloadを削除して。resultが見えてもpendingが消えるかcompletedが見えるまでは次のruntime branch更新を始めないで。
+この画像をuser-owned WP Agent Bridge runtimeだけを使ってWordPress Media Libraryへアップロードして。元ファイル全体のbytesとSHA-256を最初に計算してから、元binaryを先に小さく分割し、各binary chunkを独立してBase64化して。1本の巨大Base64文字列を後から任意位置で分割しないで。各.b64 payloadは8,000 Base64文字以下を基準にして、wordpress-bridge/media/pending/へ置いて。Git Data操作が使える場合は、各blobを作成後にblob SHAでread-backし、意図したBase64文字列の長さとSHA-256が一致することを全payloadで確認してから、payload群とupload commandを1つのtree/commit/ref更新としてruntime branchへ公開して。data_pathsは順序どおり指定し、WordPress側で各payloadを個別にstrict Base64 decodeしてbinaryを連結し、元ファイル全体のbytesとSHA-256を検証してからMedia Libraryへ登録して。成功後に一時payloadをまとめて削除して。resultが見えてもpendingが消えるかcompletedが見えるまでは次のruntime branch更新を始めないで。
 ```
 
 確認ポイント:
 
 - payload保存先はテスター本人のprivate runtime repoだけ。
 - command JSONへ画像全体のBase64を直埋めしない。
-- Git Data操作を利用できる場合、payload群とupload commandが1つのruntime branch更新で投入される。
-- `data_path`または`data_paths`からWordPressが元画像を再構成する。
+- **元binaryを先に分割し、各chunkを独立Base64化している。**
+- 各preferred `.b64` payloadが8,000 Base64文字以下である。
+- Git Data操作を利用できる場合、各staged blobをbranch更新前にread-back検証している。
+- payload群とupload commandが1つのruntime branch更新で投入される。
+- `data_paths`からWordPressが各payloadを個別decodeし、binary chunkを順序どおり連結する。
 - 元画像のbytes / SHA-256一致後にMedia Libraryへ登録する。
-- 成功後に`media/pending/*.b64`がまとめて削除される。
+- 成功後に`media/pending/*.b64`が1つのGit tree cleanup commitでまとめて削除される。
 - cleanup中にbranchが動いた場合も、一部payloadだけを先に削除せず最新HEADから再試行される。
 - 別のWordPress連携サービスへ迂回しない。
 
@@ -129,6 +132,7 @@ ChatGPTへ次のように依頼する。
 - 次のvalid pushで既存`commands/pending/`も再走査される。
 - 同じ`request_id`のWordPress副作用は二重実行されない。
 - result/completed/pending bookkeepingだけが復旧する。
+- 実行中commandへ別pushのrecoveryが重なっても、一時的な`idempotency_in_progress`をterminal resultとして確定しない。
 
 ## 10. テスト後
 
@@ -146,5 +150,5 @@ ChatGPTへ次のように依頼する。
 5. canonical markerが`ownership=user-owned` / `operator_relay=false`になる。
 6. ChatGPTから自分のruntime repoを認識できる。
 7. `site.info` / `cache.flush`がuser-owned repo → signed Webhook → user WordPress → user-owned repoで完了する。
-8. 約2.4 MiB画像を縮小・別経路なしでMedia Libraryへ送れ、payload cleanupの競合で取り残しや部分削除が起きない。
+8. 約2.4 MiB画像を縮小・別経路なしでMedia Libraryへ送れ、送信前payload欠損をread-back検証で検知でき、payload cleanupの競合で取り残しや部分削除が起きない。
 9. 運営者所有のGitHub/WordPress/relayへruntime command/resultやWordPress内容を送らない。
