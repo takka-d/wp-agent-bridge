@@ -6,9 +6,9 @@ ChatGPTからWordPressの記事・ページ・設定などを更新するため�
 
 ## 現在の配布状態
 
-- Version: `1.1.3`
-- Status: **release candidate / external tester distribution ready**
-- 再現可能なplugin ZIP SHA-256: `24c8c20bf36ace6592d7857865de848e4762ebaa6773f63089bebc4d1c270326`
+- Version: `1.1.4`
+- Status: **release candidate / validation in progress**
+- 1.1.4の再現可能なplugin ZIP SHA-256はrelease packaging完了後に記録します。
 - broader public / stable releaseはまだ宣言していません。
 
 ## 構成
@@ -117,22 +117,27 @@ repository名と`site_host`も、実際の接続先と一致している必要�
 
 WordPress側のmedia上限は6 MiBです。runtime command JSON自体は2 MiB以下に制限します。
 
-自己完結runtimeでは、大きな画像を1個のcommand JSONへBase64直埋めしません。Base64 payloadを利用者自身のruntime repositoryの`wordpress-bridge/media/pending/*.b64`へ置き、小さいcommandから`/wp-agent-bridge-runtime/v1/media-upload`を呼び出します。必要なら複数payloadへ分割できます。
+自己完結runtimeでは、大きな画像を1個のcommand JSONへBase64直埋めしません。Base64 payloadを利用者自身のruntime repositoryの`wordpress-bridge/media/pending/*.b64`へ置き、小さいcommandから`/wp-agent-bridge-runtime/v1/media-upload`を呼び出します。
 
 1. ChatGPT側で元ファイルのbytes / SHA-256を計算する。
-2. Git Data操作が利用できる場合はpayload群をblobとして先にstagingし、payload群とupload commandを**1つのtree / commit / ref更新**でruntime branchへ公開する。
-3. WordPress側が`data_path` / `data_paths`から元ファイルを再構成し、`expected_bytes` / `expected_sha256`を検証してMedia Libraryへ登録する。
-4. 成功後は、使用した`.b64` payloadを**1つのGit tree cleanup commit**でまとめて削除する。
-5. cleanup中にruntime branchが別commitで進んだ場合は、一部ファイルを先に削除せず最新HEADからbounded retryする。
-6. resultが先に見えた場合も、対応するpending commandが消えるかcompletedが確認できるまで次のruntime branch更新を開始しない。
+2. **元binaryを先に小分けし、各binary chunkを独立してBase64化する。** 1本の巨大Base64文字列を作ってから任意位置で切る方式は使わない。
+3. 各`.b64` payloadは8,000 Base64文字以下を基準とする。
+4. Git Data操作が利用できる場合は各payloadをblobとして先にstagingし、**blob SHAでread-backして文字数とSHA-256を照合した後**、payload群とupload commandを1つのtree / commit / ref更新でruntime branchへ公開する。
+5. WordPress側がordered `data_paths`を1ファイルずつstrict Base64 decodeし、binary chunkを順序どおり連結する。
+6. 再構成後に`expected_bytes` / `expected_sha256`を検証してMedia Libraryへ登録する。
+7. 成功後は、使用した`.b64` payloadを1つのGit tree cleanup commitでまとめて削除する。
+8. cleanup中にruntime branchが別commitで進んだ場合は、一部ファイルを先に削除せず最新HEADからbounded retryする。
+9. resultが先に見えた場合も、対応するpending commandが消えるかcompletedが確認できるまで次のruntime branch更新を開始しない。
 
-これにより、画像1枚につきpayload数だけbranchを動かす方式と、payloadを1個ずつcleanup commitする方式を避け、画像アップロード時のGitHub 409競合窓を縮小します。bounded chunk REST routeもfallbackとして保持します。
+この手順は、過去に確認した「期待41,946 bytesに対してGitHub上のpayload自体が約17,907 Base64文字までしか存在せず、WordPressで13,429 bytesにしか復元できなかった」種類の送信前欠損を、WordPress実行前のblob read-back検証で検知するためのものです。
 
 ## 配送失敗からの復旧
 
 GitHub pushはdurable queueではないため、WebhookやGitHub書き戻しを一度取りこぼす可能性があります。Direct Runtimeはvalidなpushごとに現在の`commands/pending/`も再走査します。
 
-同一`request_id`はWordPress側でcompleted responseを再利用するため、`WordPress実行成功 → GitHub result書き戻し失敗`が起きても、後続pushで副作用を二重実行せずbookkeepingを復旧する設計です。実行中command自身がruntime repositoryへresult/media等を書き戻したpushについても、同じrequest_idを再実行しないloop guardを持ちます。
+1.1.4では、authenticated runtime pushをprimary executorへ渡す前にWordPress側で直列化します。これにより、別pushのrecovery scanがまだ実行中の同一commandへ重なり、request-id idempotencyが返したtemporaryな`idempotency_in_progress`をGitHub result/completedへterminal resultとして確定する競合を防ぎます。
+
+同一`request_id`はWordPress側でcompleted responseを再利用するため、`WordPress実行成功 → GitHub result書き戻し失敗`が起きても、後続pushで副作用を二重実行せずbookkeepingを復旧する設計です。
 
 ## セキュリティ
 
@@ -171,12 +176,8 @@ WordPress.org Plugin Directoryからの配布は予定していません。
 
 ## Status
 
-**1.1.3 release candidate / external tester distribution ready.**
+**1.1.4 release candidate / validation in progress.**
 
-1.1.3は、画像upload時にruntime branchを細かく動かすことで起きていた競合を減らす更新です。複数payloadとupload commandをGit Data APIで1回のbranch更新として投入できる手順へ変更し、WordPress側のpayload cleanupも1ファイル1commitではなく1つのGit tree commitに集約しました。cleanup時にbranchが進んだ場合は最新HEADから再構築してbounded retryします。
+1.1.4は、1.1.3のatomic media cleanupに加えて、送信前payloadの欠損検知とDirect Runtime webhookの同時実行競合を対象にした更新です。41,946-byteの回帰fixtureを使い、binary-first chunkingで元bytes / SHA-256を完全再構成できることをCIで確認します。
 
-隔離CIでは、clean WordPress 7.1 + MySQL 8、既存guard/rollback、request-id idempotency、self-update破壊再発防止、GitHub書き戻し失敗後のpending recovery、migration rollback metadataに加え、約2.4 MiB画像を複数payloadから再構成し、cleanup ref更新を1回意図的に409競合させた後、部分削除なしで再試行できることを確認しています。
-
-1.1.3 plugin ZIP SHA-256: `24c8c20bf36ace6592d7857865de848e4762ebaa6773f63089bebc4d1c270326`。
-
-TakKa Note実環境への1.1.3反映と実画像での再検証は、release candidateのCI通過後に行います。
+1.1.4の再現可能なplugin ZIP SHA-256とTakKa Note実環境検証結果は、release packagingとlive validation完了後にこの欄へ記録します。
