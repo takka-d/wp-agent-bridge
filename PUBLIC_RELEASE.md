@@ -2,30 +2,14 @@
 
 ## Current candidate
 
-- Version: `1.1.4`
-- Status: **release candidate / external tester distribution ready**
-- Source merge commit: `dd6fbdb435cbee8c6d0e740724b8338c519f7201`
-- Reproducible plugin ZIP SHA-256: `f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0`
-- External-test prerelease: `v1.1.4-rc1`
-- Release page: `https://github.com/takka-d/wp-agent-bridge/releases/tag/v1.1.4-rc1`
-- Plugin asset: `https://github.com/takka-d/wp-agent-bridge/releases/download/v1.1.4-rc1/wp-agent-bridge-1.1.4.zip`
-- Release target commit: `8aca8f3df18370a4935cfd9a1511342589a1fc5f`
+- Version: `1.1.5`
+- Status: **release candidate / validation in progress**
+- Source includes merged local-media routing fix: `766a8dc468d36aff7cae7118e6f7dea310f0e866`
+- Reproducible plugin ZIP SHA-256: **pending merged-main packaging**
+- External-test prerelease: **pending**
 - Broader public/stable release: **not declared**
 
-The GitHub prerelease is the persistent external-test download endpoint. GitHub Actions artifacts remain temporary CI outputs and are not the public test-download target.
-
-## Release assets
-
-`v1.1.4-rc1` is a GitHub prerelease and contains:
-
-- `wp-agent-bridge-1.1.4.zip`
-  - SHA-256: `f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0`
-- `EXTERNAL_TEST_GUIDE_JA.md`
-- `EXTERNAL_TEST_RESULT.md`
-- `media-test-fixture-2.4MiB.png`
-- `SHA256SUMS`
-
-The prerelease is explicitly for external testing and does not declare 1.1.4 stable/general-public.
+The existing `v1.1.4-rc1` prerelease remains an immutable 1.1.4 test artifact and must not be overwritten with 1.1.5 bytes.
 
 ## Release architecture
 
@@ -51,6 +35,13 @@ A connected runtime repository must identify itself with `wordpress-bridge/RUNTI
 
 `AGENTS.md` and `wordpress-bridge/WEBHOOK_RUNTIME.md` must describe the same architecture.
 
+For 1.1.5, generated runtime guidance must also make media source selection explicit:
+
+- ChatGPT-local / conversation-uploaded / sandbox files -> `/wp-agent-bridge-media/v1/upload-chunk` through normal runtime commands;
+- media already manageable by the GitHub connector -> staged `wordpress-bridge/media/pending/*.b64` transport remains available.
+
+The local-file path must not waste time trying to copy a sandbox file into GitHub payload files when the connector has no local-file parameter.
+
 ## Delivery / replay safety
 
 Required behaviors:
@@ -67,18 +58,24 @@ Required behaviors:
 
 WordPress decoded-media limit: 6 MiB.
 
-For the self-contained GitHub media path:
+### ChatGPT-local media
+
+1. Compute whole-file byte count and SHA-256 from the original local binary.
+2. Split the binary into ordered chunks; maximum 1,200,000 decoded bytes/chunk, 32 chunks, 6 MiB total.
+3. Base64-encode each chunk independently and include per-chunk bytes/SHA-256 plus whole-file integrity fields.
+4. Send each chunk sequentially to `/wp-agent-bridge-media/v1/upload-chunk` through normal runtime REST commands.
+5. Wait for command completion before the next chunk.
+6. Final chunk reconstruction must verify the whole file before attachment creation and clean WordPress-side temporary staging.
+
+### GitHub-staged media
 
 1. Compute expected byte count and SHA-256 from the complete source binary.
-2. Split the **original binary** first.
+2. Split the original binary first.
 3. Base64-encode each binary chunk independently.
-4. Keep each `.b64` payload at or below 8,000 Base64 characters for the preferred Git Data staging path.
-5. Read each staged blob back by blob SHA and verify the exact staged text before moving the runtime branch.
-6. Publish all verified payload files plus the upload command in one Git tree/commit/ref update when Git Data operations are available.
-7. WordPress strict-decodes each payload independently, concatenates the binary chunks in order, then checks full `expected_bytes` and `expected_sha256` before attachment creation.
-8. Successful upload removes all temporary payload files in one Git tree cleanup commit with bounded retry after branch movement.
-
-The bounded authenticated chunk REST route remains a fallback.
+4. Verify staged blobs before moving the runtime branch.
+5. Publish verified payload files plus upload command in one Git tree/commit/ref update when available.
+6. WordPress reconstructs and verifies before attachment creation.
+7. Successful upload removes temporary payloads in one Git tree cleanup commit with bounded retry.
 
 ## Self-update safety
 
@@ -93,57 +90,43 @@ Bridge self-update must:
 - capture a backup before replacement;
 - restore the previous plugin if replacement fails.
 
-## 1.1.4 regression reason
+## 1.1.5 regression reason
 
-Two concrete failures observed during TakKa Note validation led to 1.1.4:
+The GitHub connector used by ChatGPT can write text/blob data to repositories but does not expose an arbitrary local/sandbox file-reference parameter for repository writes. Previous generated runtime guidance treated GitHub staged media as the preferred path even when the source existed only inside the ChatGPT conversation/sandbox. That caused avoidable local-file-to-Base64-to-GitHub staging work and could leave image workflows appearing stuck.
 
-1. A historical media request expected 41,946 bytes, but the GitHub runtime payload itself was already truncated before WordPress read it. WordPress therefore reconstructed only 13,429 bytes. 1.1.4 hardens the staging contract with binary-first chunking, small independent Base64 payloads, and pre-publish blob read-back verification.
-2. Concurrent authenticated runtime pushes could let recovery overlap a still-running primary command. The duplicate request correctly returned `takka_bridge_idempotency_in_progress`, but the legacy primary path could persist that temporary response as terminal result/completed bookkeeping. 1.1.4 serializes runtime push processing before primary/recovery dispatch.
+1.1.5 makes the existing authenticated chunk route the preferred transport for those local sources while retaining the staged GitHub media path for sources that are already GitHub-manageable.
 
 ## CI / packaging gates
 
-- [x] PHP syntax checks pass.
-- [x] release metadata is internally consistent at 1.1.4.
-- [x] obvious-secret/development-payload checks pass.
-- [x] Direct Runtime self-webhook loop regression passes.
-- [x] 41,946-byte binary-first media staging regression passes.
-- [x] clean WordPress package test passes.
-- [x] runtime idempotency test passes.
-- [x] self-update safety test passes.
-- [x] self-contained runtime test passes.
-- [x] self-contained migration safety test passes.
-- [x] external tester kit workflow passes.
-- [x] deterministic ZIP is rebuilt twice across a wall-clock delay and compared byte-for-byte.
-- [x] merged-main package output is `wp-agent-bridge-1.1.4.zip` with SHA-256 `f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0`.
-- [x] prerelease publishing workflow rebuilds and verifies the same known plugin SHA before release creation.
-- [x] `v1.1.4-rc1` was created as `prerelease=true`, `draft=false` and contains the verified plugin asset plus tester documentation/fixture/checksums.
+- [ ] PHP syntax checks pass for the final 1.1.5 candidate.
+- [ ] release metadata is internally consistent at 1.1.5.
+- [ ] obvious-secret/development-payload checks pass.
+- [ ] Direct Runtime self-webhook loop regression passes.
+- [ ] media transport regression passes with source-aware routing assertions.
+- [ ] clean WordPress package test passes.
+- [ ] runtime idempotency test passes.
+- [ ] self-update safety test passes.
+- [ ] self-contained runtime test passes.
+- [ ] self-contained migration safety test passes.
+- [ ] external tester kit workflow passes.
+- [ ] deterministic 1.1.5 plugin ZIP is rebuilt and verified.
+- [ ] merged-main 1.1.5 plugin ZIP SHA-256 is recorded.
+- [ ] 1.1.5 external-test prerelease is created without altering `v1.1.4-rc1`.
 
 ## TakKa Note live validation
 
 - [x] canonical runtime marker remains `status=canonical`, `transport=direct-github-webhook`, `ownership=user-owned`, `operator_relay=false`.
-- [x] TakKa Note was updated to WP Agent Bridge 1.1.4 from the reproducible merged-main package.
-- [x] installed version reported `1.1.4` and the updater verified the exact plugin ZIP SHA-256 `f63179ebe454b4ee42bf6b5bb1e3e23f935ee976b81ec8bc69e750828b1871c0` before replacement.
-- [x] the temporary update route added to the active child theme was removed immediately after installation; `functions.php` returned to its exact pre-update SHA-256.
-- [x] an 8-payload live media request reconstructed a 16,596-byte WebP exactly.
-- [x] reconstructed media SHA-256 matched `8e83796467ccabeb224c43f83dfc6c32f326e3e1f83b78c3a10b78497b0b4d0c`.
-- [x] Media Library attachment creation succeeded.
-- [x] source payload cleanup succeeded in one Git tree commit on the first attempt.
-- [x] the matching pending command disappeared and completed command was written.
-- [x] `wordpress-bridge/media/pending/` returned to `.gitkeep` only.
-- [x] the live-test Media attachment was force-deleted after verification.
+- [x] current live `AGENTS.md` already directs ChatGPT-local media to authenticated chunk upload and keeps GitHub-staged media as a separate path.
+- [ ] TakKa Note plugin is updated from 1.1.4 to the reproducible 1.1.5 package.
+- [ ] runtime identity sync after the 1.1.5 update preserves the local-media routing guidance.
+- [ ] a ChatGPT-local image is uploaded through the chunk route on TakKa Note and whole-file integrity is confirmed.
+- [ ] validation attachment/temp data is removed after verification.
 
 ## Distribution state
 
-1.1.4 has passed the current external-tester gates and now has a persistent GitHub prerelease endpoint:
+1.1.5 is being prepared specifically so fresh installations and future runtime-identity syncs retain the already-adopted local-media routing fix. External tester readiness will be declared only after merged-main packaging and live validation.
 
-`https://github.com/takka-d/wp-agent-bridge/releases/tag/v1.1.4-rc1`
-
-Therefore:
-
-- **external tester readiness is complete**;
-- a permanent test ZIP download endpoint now exists;
-- **broader public/stable release is still not declared**;
-- TakKa Note may link the prerelease explicitly as an external-test/RC download without presenting it as stable.
+Broader public/stable release remains undeclared.
 
 ## License
 
