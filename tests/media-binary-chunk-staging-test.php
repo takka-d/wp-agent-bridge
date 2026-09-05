@@ -7,16 +7,12 @@ for ($i = 0; $i < 41946; $i++) {
 
 $expectedBytes = strlen($bytes);
 $expectedSha = hash('sha256', $bytes);
-$binaryChunkBytes = 6000; // Base64 output is exactly 8,000 chars for full chunks.
+$binaryChunkBytes = 6000;
 $payloads = [];
 
 for ($offset = 0; $offset < $expectedBytes; $offset += $binaryChunkBytes) {
     $chunk = substr($bytes, $offset, $binaryChunkBytes);
     $encoded = base64_encode($chunk);
-    if (strlen($encoded) > 8000) {
-        fwrite(STDERR, "Base64 payload exceeded 8,000 characters.\n");
-        exit(1);
-    }
     $payloads[] = $encoded;
 }
 
@@ -45,10 +41,11 @@ if (count($payloads) !== 7) {
 
 $identity = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-runtime-identity.php');
 if (!is_string($identity)
-    || strpos($identity, 'Split the ORIGINAL BINARY') === false
-    || strpos($identity, '8,000 Base64 characters') === false
-    || strpos($identity, 'read it back by blob SHA') === false) {
-    fwrite(STDERR, "Runtime identity guidance does not enforce verified small binary-first chunks.\n");
+    || strpos($identity, 'ChatGPT-local / conversation-uploaded files') === false
+    || strpos($identity, '/wp-agent-bridge-media/v1/upload-chunk') === false
+    || strpos($identity, 'This route bypasses `wordpress-bridge/media/pending/`') === false
+    || strpos($identity, 'split the ORIGINAL BINARY before Base64-encoding each part') === false) {
+    fwrite(STDERR, "Runtime identity guidance does not route local media through the authenticated chunk path.\n");
     exit(1);
 }
 
