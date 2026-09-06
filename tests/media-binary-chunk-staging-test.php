@@ -41,11 +41,15 @@ if (count($payloads) !== 7) {
 
 $identity = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-runtime-identity.php');
 if (!is_string($identity)
-    || strpos($identity, 'ChatGPT-local / conversation-uploaded files') === false
+    || strpos($identity, 'ChatGPT-local / conversation-uploaded files — preferred batched path') === false
+    || strpos($identity, '/wp-agent-bridge-runtime/v1/media-upload') === false
+    || strpos($identity, 'ordered `data_paths` array') === false
+    || strpos($identity, 'ONE tree/commit/ref update') === false
+    || strpos($identity, 'there is only one upload command and one upload result to wait for') === false
     || strpos($identity, '/wp-agent-bridge-media/v1/upload-chunk') === false
-    || strpos($identity, 'This route bypasses `wordpress-bridge/media/pending/`') === false
-    || strpos($identity, 'split the ORIGINAL BINARY before Base64-encoding each part') === false) {
-    fwrite(STDERR, "Runtime identity guidance does not route local media through the authenticated chunk path.\n");
+    || strpos($identity, 'Sequential chunk-command fallback') === false
+    || strpos($identity, 'split the ORIGINAL BINARY') === false) {
+    fwrite(STDERR, "Runtime identity guidance does not prefer batched staged-media transport with a sequential chunk fallback.\n");
     exit(1);
 }
 
