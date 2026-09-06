@@ -8,8 +8,8 @@ ChatGPTからWordPressの記事・ページ・設定などを更新するため�
 
 - Version: `1.1.5`
 - Status: **release candidate / validation in progress**
-- 1.1.5はChatGPT-local／会話添付ファイルの転送経路をsource-awareにした更新です。
-- 1.1.5の外部テスト用prereleaseと再現可能なZIP SHA-256は、merged-main packaging完了後に記録します。
+- merged `main`にはv0.9.6互換レイヤーとして、Site Icon専用操作、media upload capability、ローカル/connector画像のbatched staged upload案内、複数theme fileのlist/search/read-manyを含みます。
+- v0.9.6機能を含むmerged-mainの1.1.5 ZIP、外部テストキット、配布参照は別工程で更新します。
 - 既存の`v1.1.4-rc1`は1.1.4時点のテスト成果物として保持し、上書きしません。
 - broader public / stable releaseはまだ宣言していません。
 
@@ -60,17 +60,6 @@ GitHub Appは利用者自身のGitHubアカウントに作成し、対象のpriv
 
 ## 導入
 
-```mermaid
-flowchart TD
-    I["1. WP Agent BridgeをWordPressへinstall"] --> T["2. Tools > WP Agent Bridge"]
-    T --> R["3. 自分のGitHubにprivate runtime repositoryを作成"]
-    R --> C["4. Connect GitHub"]
-    C --> M["5. GitHub App Manifestからsite-specific private Appを作成"]
-    M --> S["6. Only select repositoriesでruntime repo 1個だけ選択"]
-    S --> B["7. runtime branch / marker / queueを自動初期化"]
-    B --> G["8. ChatGPTから同じGitHub repoへアクセス"]
-```
-
 1. WP Agent BridgeのZIPをWordPressへアップロードし、有効化する。
 2. **ツール > WP Agent Bridge** を開く。
 3. 画面の案内から、利用者自身のGitHubアカウントに専用private runtime repositoryを作成する。
@@ -106,44 +95,68 @@ repository名と`site_host`も、実際の接続先と一致している必要�
 - post meta、taxonomy、menu等の管理
 - plugin / themeの管理
 - theme fileの編集
+- `theme.files.list` / `theme.files.search` / `theme.file.read.many`による複数theme fileの一括調査
 - Draft Themeのpreview / publish / rollback
 - media upload
+- `site.icon.get` / `site.icon.set` / `site.icon.clear`によるSite Icon(favicon)管理
+- `media.upload.capabilities`によるmedia経路確認
 - WP-Cron管理
 - WordPress REST APIを利用した各種操作
 
 変更操作には、操作内容に応じてpreview、confirm、SHA-256、plan hash、impact hash、stale-write rejection、active theme/plugin protection等のguardを適用します。
 
+Site Iconは汎用option patcherでscalar `site_icon`を書き換えるのではなく、専用guard付きsurfaceを使用します。既存画像ならattachment IDから設定でき、新規画像ならmedia uploadとSite Icon設定を1コマンドで実行できます。
+
 任意のshell command、任意のWP-CLI文字列、無制限のSQL writeは公開しません。
 
 ## 画像・ファイル転送
 
-WordPress側のmedia上限は6 MiBです。転送経路は**ファイルのsourceに応じて選びます**。
+WordPress側のmedia上限は6 MiBです。転送経路はsourceとconnector capabilityに応じて選びます。
 
-### ChatGPTローカル／会話添付／sandboxファイル
+### ChatGPTローカル／会話添付／sandbox／connectorから取得したファイル
 
-GitHub connectorがローカルファイル参照を直接repositoryへ渡せない場合、`media/pending/*.b64`へ無理にコピーしようとせず、既存のauthenticated chunk routeを優先します。
-
-`/wp-agent-bridge-media/v1/upload-chunk`
+GitHub connectorに任意のローカルfile parameterがなくても、それ自体はblockerではありません。GitHubがUTF-8 text/blobを書ける場合は、**batched staged-media pathを優先**します。
 
 1. 元binary全体のbytes / SHA-256を計算する。
-2. binaryを順序付きchunkへ分割する。Bridge上限は1chunk 1,200,000 decoded bytes、32 chunks、全体6 MiB。
-3. 各chunkの`chunk_bytes` / `chunk_sha256`を計算し、そのchunkだけをBase64化する。
-4. `upload_id`、chunk index/count、filename、全体integrity、chunk integrity、`data_b64`をnormal runtime REST commandとして順次送る。
-5. 各chunkのcommand完了を確認してから次へ進む。
-6. 最終chunkでWordPressが全体を再構成・検証し、Media Libraryへ登録してWordPress側の一時ファイルをcleanupする。
+2. 元binaryを順序付きのbounded chunkへ分割してから、各chunkを独立してBase64化する。
+3. Base64文字列を`wordpress-bridge/media/pending/*.b64`へUTF-8 textとしてstageする。
+4. ordered `data_paths`、`filename`、`expected_bytes`、`expected_sha256`を持つ `/wp-agent-bridge-runtime/v1/media-upload` commandを**1件だけ**作る。
+5. `create_blob` / `create_tree` / `create_commit` / `update_ref`が利用できる場合は、payload群とcommandを1つのtree/commit/ref更新で公開する。
+6. `create_file`しか使えない場合も、payload群を先にstageし、最後にupload command 1件だけを作る。
+7. WordPressが全chunkを再構成・検証してMedia Libraryへ登録し、成功後にstaged payloadをcleanupする。
 
-この経路はGitHubの`wordpress-bridge/media/pending/`を使わないため、ChatGPT内にしかないローカル画像をGitHubファイルAPIへ転写するための余分なBase64 stagingを避けられます。
+Google Drive等のconnectorから取得した画像も、ChatGPT側で取得した後は同じlocal binaryとして扱います。WordPress側にGoogle Drive credentialは不要です。
 
-### GitHub connectorが既に扱えるmedia
+同じ新規画像をSite Iconへ設定する場合は、media-upload commandに`set_site_icon=true`と`confirm_site_icon=true`を追加できます。必要なら`expected_site_icon_id`でstale-writeを拒否します。
 
-remote／既存staged sourceなど、GitHub connectorがlarge local fileをモデル経由で再serializeせず扱える場合は従来の`wordpress-bridge/media/pending/*.b64`経路も利用できます。
+### Sequential chunk-command fallback
 
-1. 元binary全体のbytes / SHA-256を計算する。
-2. 元binaryを先に分割し、各binary chunkを独立してBase64化する。
-3. staged payloadを検証する。
-4. Git Data操作が利用できる場合はpayload群とupload commandを1つのtree / commit / ref更新で公開する。
-5. `/wp-agent-bridge-runtime/v1/media-upload`がordered payloadを再構成し、bytes / SHA-256を検証する。
-6. 成功後は一時payloadを1つのGit tree cleanup commitでまとめて削除し、branch競合時はbounded retryする。
+`/wp-agent-bridge-media/v1/upload-chunk`は、GitHub connectorがbounded Base64 text/blobを確実にstageできない場合、またはbatched staged-media書き込みが実際に失敗した場合だけ使用します。ローカルfile parameterがないという理由だけで、この遅い経路へ落としません。
+
+fallbackでもwhole-file / per-chunk bytes・SHA-256、順序、decoded上限を検証します。
+
+### 既存GitHub-staged / remote media
+
+GitHub connectorが既にmanageableなmediaも、同じ`wordpress-bridge/media/pending/*.b64` + `/wp-agent-bridge-runtime/v1/media-upload`のbatched pathを使えます。元binaryを先に分割し、各chunkを独立Base64化し、可能ならpayload群+commandを1つのGit tree/commit/ref更新で公開し、WordPress側で再構成・integrity確認・bounded cleanupを行います。
+
+## Site Icon / favicon
+
+v0.9.6では専用のguarded surfaceを使います。
+
+- `site.icon.get`: 現在のattachment ID、URL、MIME、dimensions等を取得
+- `site.icon.set`: 既存Media Library画像をattachment IDで設定。`confirm=true`必須、`expected_current_id`によるstale-write protection対応
+- `site.icon.clear`: attachment自体を削除せずSite Icon設定だけ解除。`confirm=true`必須、`expected_current_id`対応
+- `media.upload.capabilities`: local / connector / Driveを含むmedia upload経路を確認
+
+## 複数theme file調査
+
+v0.9.6では、WPVibeや単一file readの反復を避けるため、server-side theme inspectionに次を追加しています。
+
+- `theme.files.list`: optional glob付きのbounded file list
+- `theme.files.search`: bounded substring searchとline/context取得
+- `theme.file.read.many`: 最大20file rangeを1回のBridge commandで取得
+
+いずれもtheme root境界内に制限され、任意filesystem readにはしません。
 
 ## 配送失敗からの復旧
 
@@ -192,4 +205,4 @@ WordPress.org Plugin Directoryからの配布は予定していません。
 
 **1.1.5 release candidate / validation in progress.**
 
-1.1.5は、ChatGPT-local／会話添付／sandbox fileでGitHub側の`.b64` stagingを既定にせず、既存のauthenticated chunk uploadを優先するsource-aware routingをruntime identityへ組み込む更新です。TakKa Noteのcanonical runtimeでは同じ方針を先行反映済みで、1.1.5ではfresh installやruntime identity再同期後もその方針が維持されます。
+v0.9.6のfunctional sourceはPR #32で`main`へmerge済みです。Site Icon、connector/local media、複数theme file inspectionについてWPVibeへ迂回する必要を減らす機能はsource側へ入っており、実環境installer検証、Markdown同期、merged-main ZIP、tester kit、配布参照は分離して更新します。

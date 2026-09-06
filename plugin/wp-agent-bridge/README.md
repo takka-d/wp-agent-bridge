@@ -29,16 +29,24 @@ PAT、private key、Webhook secret、Bridge Key、GitHub Actions workflowを利�
 - 本文・table・post meta・option・taxonomy・menu等のguarded editing
 - plugin / theme管理
 - theme file編集
+- `theme.files.list` / `theme.files.search` / `theme.file.read.many`による複数theme fileのbounded inspection
 - Draft Themeのpreview / publish / rollback
 - media upload
   - 最大6 MiB decoded
-  - **ChatGPTローカル／会話添付／sandboxファイルは `/wp-agent-bridge-media/v1/upload-chunk` を優先**
-  - ローカルbinaryを順序付きchunkへ分割し、各chunkのbytes / SHA-256と全体bytes / SHA-256を検証
-  - GitHub connectorが既に扱えるmediaでは`wordpress-bridge/media/pending/*.b64`経路も利用可能
-  - staged mediaは元binaryを先に分割し、各chunkを独立してBase64化
+  - ChatGPT-local / conversation / sandbox / connector-downloaded fileは、GitHubがUTF-8 text/blobを書ける場合、`wordpress-bridge/media/pending/*.b64` + `/wp-agent-bridge-runtime/v1/media-upload`の**batched staged-media pathを優先**
+  - GitHub local-file parameterは不要。元binaryを先に分割し、各chunkを独立Base64化してtext payloadとしてstageする
+  - `data_paths`、whole-file bytes / SHA-256を持つupload commandは1件だけ作る
   - Git Data APIを利用できる場合、payload群とupload commandを1つのtree/commit/ref更新としてruntime branchへ投入
-  - 成功後の一時payloadは1つのGit tree cleanup commitでまとめて削除
-  - cleanup時にbranchが競合した場合は最新HEADからbounded retry
+  - `create_file`しか使えない場合もpayload群を先にstageし、最後にsingle upload commandを作る
+  - `/wp-agent-bridge-media/v1/upload-chunk`はbatched stagingが使えない、または実際に失敗した場合のsequential fallback
+  - 成功後のstaged payloadはbounded cleanupで削除
+- Site Icon / favicon
+  - `site.icon.get`
+  - `site.icon.set` (`confirm=true`、`expected_current_id`対応)
+  - `site.icon.clear` (`confirm=true`、`expected_current_id`対応)
+  - `media.upload.capabilities`
+  - upload時に`set_site_icon=true` + `confirm_site_icon=true`を付けて、Media Library登録とSite Icon設定を1コマンドで実行可能
+- Google Drive等からChatGPT側で取得した画像もlocal binaryとして同じbatched media pathへ流せる。WordPress側のGoogle credentialは不要
 - request-ID completed-response idempotency
   - 同一request_id + 同一payloadは元のresponseを再生
   - 同一request_id + 異なるpayloadは409で拒否
@@ -66,7 +74,13 @@ PAT、private key、Webhook secret、Bridge Key、GitHub Actions workflowを利�
 
 `RUNTIME_CONNECTION.json`は`status: canonical`、`transport: direct-github-webhook`、`ownership: user-owned`、`operator_relay: false`を示します。
 
-1.1.5では生成される`AGENTS.md`もsource-aware media routingを明示します。ChatGPT内にしか存在しないローカルファイルをGitHubの`.b64` stagingへ無理に流そうとせず、既存のauthenticated chunk uploadを選択します。
+v0.9.6を含む1.1.5の生成`AGENTS.md`は、次も明示します。
+
+- GitHub connectorのwrite actionを確認してからblocker判定すること
+- ChatGPT-local / connector-downloaded mediaはbatched staged-mediaを優先すること
+- sequential chunk routeはfallbackであること
+- dedicated Site Icon surfaceを使うこと
+- `theme.files.list` / `theme.files.search` / `theme.file.read.many`でmulti-file inspectionを1commandへまとめられること
 
 ## License
 
