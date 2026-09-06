@@ -7,10 +7,11 @@ $bootstrap = file_get_contents($root . '/plugin/wp-agent-bridge/takka-wordpress-
 $site = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v096-site.php');
 $hook = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v096-media-hook.php');
 $themeFiles = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v096-theme-files.php');
+$health = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v096-health.php');
 $identity = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-runtime-identity.php');
 $options = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v08-options.php');
 
-foreach (compact('bootstrap', 'site', 'hook', 'themeFiles', 'identity', 'options') as $name => $value) {
+foreach (compact('bootstrap', 'site', 'hook', 'themeFiles', 'health', 'identity', 'options') as $name => $value) {
     if (!is_string($value) || $value === '') {
         fwrite(STDERR, "missing source: {$name}\n");
         exit(1);
@@ -21,9 +22,11 @@ foreach ([
     'class-takka-wordpress-bridge-v096-site.php',
     'class-takka-wordpress-bridge-v096-media-hook.php',
     'class-takka-wordpress-bridge-v096-theme-files.php',
+    'class-takka-wordpress-bridge-v096-health.php',
     'TakKa_WordPress_Bridge_V096_Site::init()',
     'TakKa_WordPress_Bridge_V096_Media_Hook::init()',
     'TakKa_WordPress_Bridge_V096_Theme_Files::init()',
+    'TakKa_WordPress_Bridge_V096_Health::init()',
 ] as $needle) {
     if (strpos($bootstrap, $needle) === false) {
         fwrite(STDERR, "bootstrap missing {$needle}\n");
@@ -79,6 +82,17 @@ foreach ([
     }
 }
 
+foreach ([
+    "private const VERSION = '0.9.6';",
+    "add_filter('rest_request_after_callbacks', [self::class, 'finalize'], 600, 3);",
+    'version_compare($current, self::VERSION, \'<\')',
+] as $needle) {
+    if (strpos($health, $needle) === false) {
+        fwrite(STDERR, "health version finalizer missing {$needle}\n");
+        exit(1);
+    }
+}
+
 if (strpos($options, 'Surgical option patching currently supports array-valued options only.') === false) {
     fwrite(STDERR, "expected safe scalar-option guard changed unexpectedly\n");
     exit(1);
@@ -98,7 +112,7 @@ foreach ([
     }
 }
 
-$combined = $site . "\n" . $hook . "\n" . $themeFiles;
+$combined = $site . "\n" . $hook . "\n" . $themeFiles . "\n" . $health;
 foreach (['shell_exec(', 'passthru(', 'proc_open(', 'popen(', 'system('] as $forbidden) {
     if (strpos($combined, $forbidden) !== false) {
         fwrite(STDERR, "unsafe execution primitive present: {$forbidden}\n");
@@ -113,4 +127,4 @@ foreach (['google_client_secret', 'drive_refresh_token', 'drive_access_token'] a
     }
 }
 
-echo "Site Icon, connector media, and theme-file batch regression passed.\n";
+echo "Site Icon, connector media, theme-file batch, and health-version regression passed.\n";
