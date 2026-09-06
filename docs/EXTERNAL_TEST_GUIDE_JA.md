@@ -1,6 +1,6 @@
 # WP Agent Bridge 自己完結runtime 外部テスト手順
 
-このテストでは、テスター本人が所有するGitHub・ChatGPT・WordPressだけを使い、WP Agent Bridgeの初回接続、通常操作、配送復旧、大きな画像転送を確認します。
+このテストでは、テスター本人が所有するGitHub・ChatGPT・WordPressだけを使い、WP Agent Bridgeの初回接続、通常操作、配送復旧、画像転送、Site Icon専用surface、複数theme file inspectionを確認します。
 
 **テスターのGitHubユーザー名、WordPress URL、記事本文、command/result、secret等をWP Agent Bridge運営者へ提出することはテスト条件ではありません。**
 
@@ -70,7 +70,13 @@ WP Agent Bridge運営者のOrganizationへ参加したり、運営者所有repos
 - `operator_relay: false`
 - repository名が今開いているrepository自身と一致
 
-`AGENTS.md`では、ChatGPT-local / conversation-uploaded fileに対して`/wp-agent-bridge-media/v1/upload-chunk`を優先し、GitHubへ`.b64` payloadを無理に作ろうとしない指示があることも確認する。
+`AGENTS.md`ではv0.9.6の案内として、少なくとも次を確認する。
+
+- ChatGPT-local / conversation / sandbox / connector-downloaded mediaは、GitHubがUTF-8 text/blobを書ける場合、batched staged-mediaを優先する。
+- 任意のGitHub local-file parameterがなくてもblockerとは判断しない。
+- `/wp-agent-bridge-media/v1/upload-chunk`はbatched stagingが使えない、または実際に失敗した場合のfallbackである。
+- `site.icon.get` / `site.icon.set` / `site.icon.clear` / `media.upload.capabilities`が案内される。
+- `theme.files.list` / `theme.files.search` / `theme.file.read.many`が案内される。
 
 ## 6. ChatGPTから自分のruntimeを認識する
 
@@ -99,41 +105,101 @@ ChatGPTへ次のように依頼する。
 - result/completedが同じ自分のprivate repoへ返る。
 - 運営者所有relay/repositoryを経由しない。
 
-## 8. ChatGPT-local画像転送
+## 8. v0.9.6 Site Icon / media capability E2E
 
-同梱の約2.4 MiB PNGを**このChatGPT会話へ添付して**使う。ファイルはChatGPT-local sourceとして扱い、GitHub connectorにローカルfile parameterがない場合は`wordpress-bridge/media/pending/*.b64`へ転写しようとしない。
+まず変更を伴わないreadを確認する。
 
 ChatGPTへ次のように依頼する。
 
 ```text
-この添付画像を、今確認したuser-owned WP Agent Bridge runtimeだけを使ってWordPress Media Libraryへアップロードして。AGENTS.mdのChatGPT-local media手順に従い、GitHubのmedia/pendingへローカルファイルを転写しようとせず、/wp-agent-bridge-media/v1/upload-chunkを使って。元ファイル全体のbytesとSHA-256を最初に計算し、binaryを順序付きchunkに分割して、各chunkのbytesとSHA-256も検証してから、そのchunkだけをBase64化してnormal runtime REST commandとして順番に送って。各chunk commandのpending消失またはcompletedを確認してから次を送り、最終chunkで全体bytes/SHA-256一致を確認してMedia Libraryへ登録して。別のWordPress連携サービスへは迂回しないで。
+WP Agent Bridgeのv0.9.6 surfaceでmedia.upload.capabilitiesとsite.icon.getを実行して。現在のSite Icon attachment IDとmedia upload capabilityを取得するだけで、画像や設定は変更しないで。
+```
+
+確認:
+
+- `media.upload.capabilities`が成功する。
+- `site.icon.get`が成功する。
+- current Site Iconが設定済みならattachment IDが取得できる。
+- generic option patcherで`site_icon`を書き換えようとしない。
+
+current Site Iconが設定済みの場合だけ、**同じattachment IDを再設定するno-change E2E**を行う。
+
+```text
+さきほどsite.icon.getで取得した現在のSite Icon attachment IDを、site.icon.setで同じIDのまま再設定して。confirm=trueを使い、expected_current_idにも現在のIDを指定してstale-write guardを通して。別画像には変更しないで。
+```
+
+確認:
+
+- `site.icon.set`が成功する。
+- 設定前後のattachment IDが同じである。
+- visible faviconを別画像へ変更していない。
+
+Site Iconが未設定なら、このno-change set testは「該当なし」としてよい。`site.icon.clear`をテストのためだけに実行しない。
+
+## 9. v0.9.6 複数theme file inspection E2E
+
+active themeに対してread-onlyで確認する。
+
+```text
+WP Agent Bridgeのv0.9.6 theme file surfaceだけを使って、active themeのtheme.files.list、theme.files.search、theme.file.read.manyを順に確認して。書き込みはしないで。read.manyは実在する2ファイル以上、最大20ファイルの範囲内で1回のBridge commandにまとめて。
+```
+
+確認:
+
+- `theme.files.list`が成功する。
+- `theme.files.search`が成功する。
+- `theme.file.read.many`が成功する。
+- `read.many`を単一file readの反復へ分解していない。
+- theme root外を読まない。
+- WPVibeへ迂回しない。
+
+## 10. ChatGPT-local画像転送 — preferred batched path
+
+同梱の約2.4 MiB PNGを**このChatGPT会話へ添付して**使う。ファイルはChatGPT-local sourceとして扱う。
+
+ChatGPTへ次のように依頼する。
+
+```text
+この添付画像を、今確認したuser-owned WP Agent Bridge runtimeだけを使ってWordPress Media Libraryへアップロードして。AGENTS.mdのv0.9.6 media手順に従って、GitHub connectorがUTF-8 text/blobを書けるならbatched staged-media pathを使って。元binary全体のbytesとSHA-256を最初に計算し、元binaryをbounded chunkに分割してから各chunkを独立Base64化し、wordpress-bridge/media/pending/*.b64へtext payloadとしてstageして。ordered data_paths、filename、expected_bytes、expected_sha256を持つ/wp-agent-bridge-runtime/v1/media-upload commandは1件だけ作って。Git Data操作が使えるならpayload群とcommandを1つのtree/commit/ref更新で公開して。別のWordPress連携サービスへは迂回しないで。
 ```
 
 確認ポイント:
 
-- ChatGPT-local sourceを`media/pending/*.b64`へコピーしようとして長時間停止しない。
-- `/wp-agent-bridge-media/v1/upload-chunk`を使用する。
-- command/resultはテスター本人のprivate runtime repoだけを使う。
+- GitHub local-file parameterがないことをblocker扱いしない。
 - 元画像全体のbytes / SHA-256を最初に計算する。
-- binaryを順序付きchunkへ分割し、各chunkのbytes / SHA-256も検証する。
-- 各chunkだけをBase64化する。
-- 各command完了を確認してから次のchunkを送る。
-- 最終chunkでWordPressが元画像全体のbytes / SHA-256を検証する。
+- 元binaryを先に分割し、各chunkを独立してBase64化する。
+- Base64文字列を`wordpress-bridge/media/pending/*.b64`へstageする。
+- upload commandは`/wp-agent-bridge-runtime/v1/media-upload`の1件だけである。
+- commandはordered `data_paths`、whole-file `expected_bytes`、`expected_sha256`を持つ。
+- Git Data操作が使える場合、payload群+commandを1回のtree/commit/ref更新で公開する。
+- WordPressが元画像全体のbytes / SHA-256を検証する。
 - WordPress Media Libraryへ登録される。
-- WordPress側の一時chunk stagingが成功後にcleanupされる。
+- 成功後にstaged payloadがcleanupされる。
 - 別のWordPress連携サービスへ迂回しない。
 
-失敗時は画像を縮小して成功扱いにせず、その時点で停止する。
+失敗時は画像を縮小して成功扱いにしない。
 
-## 9. GitHub-staged media経路（任意）
+## 11. Sequential chunk-command fallback
 
-これは1.1.5のlocal-fileテストとは別の任意確認です。media sourceが既にGitHub connectorでmanageableなtext/blobとして扱える場合のみ、`wordpress-bridge/media/pending/*.b64` + `/wp-agent-bridge-runtime/v1/media-upload`を使用してよいです。
+これはpreferred pathの代替確認であり、通常テストで意図的に選ぶ必要はない。
 
-この経路では、元binaryを先に分割して各chunkを独立Base64化し、staged blobを検証し、可能ならpayload群+commandを1つのGit tree/commit/ref更新で公開し、成功後に1つのbounded-retry cleanup commitでpayloadを削除することを確認します。
+`/wp-agent-bridge-media/v1/upload-chunk`を使用してよいのは、GitHub connectorがbounded Base64 text/blobを可靠にstageできないことが確認された場合、またはbatched staged-media writeが実際に失敗した場合だけとする。
 
-ChatGPT-local添付ファイルを、この任意経路を試すためだけにGitHubへ手作業的に転写してはいけません。
+fallback時もwhole-file / per-chunk bytes・SHA-256を計算し、順序付きcommandを1件ずつ完了確認してから次へ進み、最終chunkでwhole-file integrityを検証する。
 
-## 10. pending取りこぼし復旧
+## 12. upload-and-Site-Icon 1-command flow (任意)
+
+テスト用WordPressでSite Iconを変更してよい場合だけ実施する。既存運用サイトでは必須ではない。
+
+media-upload commandに次を追加し、Media Library登録とSite Icon設定が同じresultで完了することを確認する。
+
+- `set_site_icon=true`
+- `confirm_site_icon=true`
+- 既存Site Iconがある場合は必要に応じて`expected_site_icon_id`
+
+既存運用サイトでは手順8のsame-ID no-change E2Eを優先する。
+
+## 13. pending取りこぼし復旧
 
 通常利用者が意図的にGitHub障害を作る必要はありません。もしテスト中に`WordPressでは処理されたように見えるがpendingが残る`状態が自然発生した場合のみ、別の無害な`site.info` commandを1件投入する。
 
@@ -144,11 +210,12 @@ ChatGPT-local添付ファイルを、この任意経路を試すためだけにG
 - result/completed/pending bookkeepingだけが復旧する。
 - 実行中commandへ別pushのrecoveryが重なっても、一時的な`idempotency_in_progress`をterminal resultとして確定しない。
 
-## 11. テスト後
+## 14. テスト後
 
 - **ツール > WP Agent Bridge** で`Status: Connected (direct GitHub webhook)`のままであること。
 - GitHub Appのrepository accessがテスト用private runtime repo 1個だけであること。
 - operator-owned Organization、relay、runtime repositoryを使っていないこと。
+- テストで作成したMedia Library attachmentが不要ならテスター自身の判断で削除する。
 - 不要になったテスト環境はテスター自身の判断で削除する。
 
 ## 成功条件
@@ -160,5 +227,8 @@ ChatGPT-local添付ファイルを、この任意経路を試すためだけにG
 5. canonical markerが`ownership=user-owned` / `operator_relay=false`になる。
 6. ChatGPTから自分のruntime repoを認識できる。
 7. `site.info` / `cache.flush`がuser-owned repo → signed Webhook → user WordPress → user-owned repoで完了する。
-8. 約2.4 MiBのChatGPT-local添付画像を、GitHub `.b64` stagingで詰まらずauthenticated chunk routeからMedia Libraryへ送れ、全体bytes / SHA-256検証に成功する。
-9. 運営者所有のGitHub/WordPress/relayへruntime command/resultやWordPress内容を送らない。
+8. `media.upload.capabilities`と`site.icon.get`が成功し、Site Icon設定済みならsame-ID `site.icon.set` no-change E2Eがstale-write guard付きで成功する。
+9. `theme.files.list` / `theme.files.search` / `theme.file.read.many`がread-onlyで成功する。
+10. 約2.4 MiBのChatGPT-local添付画像をpreferred batched staged-media pathからMedia Libraryへ送れ、whole-file bytes / SHA-256検証に成功する。
+11. sequential chunk routeをlocal-file parameter不足だけを理由に選ばない。
+12. 運営者所有のGitHub/WordPress/relayへruntime command/resultやWordPress内容を送らない。
