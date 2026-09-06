@@ -6,10 +6,11 @@ $root = dirname(__DIR__);
 $bootstrap = file_get_contents($root . '/plugin/wp-agent-bridge/takka-wordpress-bridge.php');
 $site = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v096-site.php');
 $hook = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v096-media-hook.php');
+$themeFiles = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v096-theme-files.php');
 $identity = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-runtime-identity.php');
 $options = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v08-options.php');
 
-foreach (compact('bootstrap', 'site', 'hook', 'identity', 'options') as $name => $value) {
+foreach (compact('bootstrap', 'site', 'hook', 'themeFiles', 'identity', 'options') as $name => $value) {
     if (!is_string($value) || $value === '') {
         fwrite(STDERR, "missing source: {$name}\n");
         exit(1);
@@ -19,8 +20,10 @@ foreach (compact('bootstrap', 'site', 'hook', 'identity', 'options') as $name =>
 foreach ([
     'class-takka-wordpress-bridge-v096-site.php',
     'class-takka-wordpress-bridge-v096-media-hook.php',
+    'class-takka-wordpress-bridge-v096-theme-files.php',
     'TakKa_WordPress_Bridge_V096_Site::init()',
     'TakKa_WordPress_Bridge_V096_Media_Hook::init()',
+    'TakKa_WordPress_Bridge_V096_Theme_Files::init()',
 ] as $needle) {
     if (strpos($bootstrap, $needle) === false) {
         fwrite(STDERR, "bootstrap missing {$needle}\n");
@@ -53,9 +56,25 @@ foreach ([
     'confirm_site_icon',
     'set_uploaded_attachment',
     'uploaded_attachment_retained',
+    "current_user_can('manage_options')",
 ] as $needle) {
     if (strpos($hook, $needle) === false) {
         fwrite(STDERR, "media hook missing {$needle}\n");
+        exit(1);
+    }
+}
+
+foreach ([
+    'theme.files.list',
+    'theme.files.search',
+    'theme.file.read.many',
+    'RecursiveDirectoryIterator',
+    'MAX_SCAN_BYTES',
+    'MAX_READ_ITEMS',
+    'TakKa_WordPress_Bridge_V095_Outline::read_range',
+] as $needle) {
+    if (strpos($themeFiles, $needle) === false) {
+        fwrite(STDERR, "theme files surface missing {$needle}\n");
         exit(1);
     }
 }
@@ -79,7 +98,7 @@ foreach ([
     }
 }
 
-$combined = $site . "\n" . $hook;
+$combined = $site . "\n" . $hook . "\n" . $themeFiles;
 foreach (['shell_exec(', 'passthru(', 'proc_open(', 'popen(', 'system('] as $forbidden) {
     if (strpos($combined, $forbidden) !== false) {
         fwrite(STDERR, "unsafe execution primitive present: {$forbidden}\n");
@@ -94,4 +113,4 @@ foreach (['google_client_secret', 'drive_refresh_token', 'drive_access_token'] a
     }
 }
 
-echo "Site Icon and local/connector media flow regression passed.\n";
+echo "Site Icon, connector media, and theme-file batch regression passed.\n";
