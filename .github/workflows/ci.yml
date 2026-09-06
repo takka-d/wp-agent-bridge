@@ -42,6 +42,12 @@ jobs:
           set -euo pipefail
           php tests/diagnostics-compat-test.php
 
+      - name: WPVibe server compatibility regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/wpvibe-server-compat-test.php
+
       - name: Verify release metadata
         shell: bash
         run: |
