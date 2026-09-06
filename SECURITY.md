@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-The current self-contained release line is **1.1.x**. The current release candidate is **1.1.2**.
+The current self-contained release line is **1.1.x**. The current release candidate is **1.1.5**.
 
 The older operator-relay / GitHub Actions transport generation is not the current supported architecture for normal end-user operation.
 
@@ -99,6 +99,23 @@ Administrative operations use explicit actions/routes and, depending on the oper
 
 A vulnerability that bypasses one of these boundaries is security-sensitive.
 
+#### Site Icon / favicon
+
+`site_icon` is a scalar WordPress option, but the generic safe option patcher intentionally remains restricted instead of being widened to arbitrary scalar writes.
+
+The v0.9.6 Site Icon surface uses dedicated actions:
+
+- `site.icon.get` for read-only current state;
+- `site.icon.set` with explicit confirmation and optional `expected_current_id` stale-write protection;
+- `site.icon.clear` with explicit confirmation and optional `expected_current_id`, without deleting the attachment;
+- media upload may explicitly request Site Icon assignment with `set_site_icon=true` and `confirm_site_icon=true`, optionally guarded by `expected_site_icon_id`.
+
+This keeps Site Icon support explicit without weakening the generic option-write boundary.
+
+#### Theme file inspection
+
+`theme.files.list`, `theme.files.search`, and `theme.file.read.many` are bounded read surfaces. They remain constrained to the selected active/draft theme root and must not become arbitrary filesystem reads. `theme.file.read.many` is bounded to a finite number of file ranges per Bridge command.
+
 ### Request-ID idempotency and recovery
 
 Every side-effecting Direct Runtime command should use a unique `request_id`.
@@ -117,11 +134,24 @@ Direct Runtime also has a loop guard so GitHub pushes created by its own result/
 
 The decoded WordPress media limit is 6 MiB. A runtime command JSON itself remains limited to 2 MiB.
 
-Large media should not be embedded as one complete Base64 value inside a command JSON. The normal self-contained path stores one or more Base64 payload files under the user's own private runtime repository at `wordpress-bridge/media/pending/` and references them from a small media command.
+Large media should not be embedded as one complete Base64 value inside a command JSON.
 
-Before creating a Media Library attachment, WordPress verifies the reconstructed original file against both `expected_bytes` and `expected_sha256`. Temporary payload files are removed after successful registration.
+For ChatGPT-local, conversation-uploaded, sandbox, or connector-downloaded bytes, the preferred path is the existing batched staged-media route when the GitHub connector can write bounded UTF-8 text/blobs:
 
-A bounded authenticated chunk route remains available as a fallback and performs chunk and whole-file integrity validation.
+1. compute whole-file bytes and SHA-256 from the original binary;
+2. split the original binary into bounded chunks before Base64 encoding;
+3. Base64-encode each chunk independently and stage each Base64 string under the user's private runtime repository at `wordpress-bridge/media/pending/`;
+4. submit one small `/wp-agent-bridge-runtime/v1/media-upload` command referencing ordered `data_paths` plus `expected_bytes` and `expected_sha256`;
+5. reconstruct and verify the whole file before creating the attachment;
+6. remove temporary staged payloads with bounded cleanup after successful registration.
+
+A GitHub local-file parameter is not required for this path because the staged values are bounded UTF-8 Base64 strings.
+
+When Git Data operations are available, payload blobs and the command blob should be published in one tree/commit/ref update so one command-bearing push/Webhook handles the upload.
+
+The authenticated `/wp-agent-bridge-media/v1/upload-chunk` route remains available as a sequential fallback when bounded Base64 text/blob staging cannot be used reliably or the batched staged-media write actually fails. It retains per-chunk and whole-file integrity checks.
+
+Files retrieved by ChatGPT through Google Drive or another connector are treated as local bytes after retrieval. WP Agent Bridge itself does not receive or require the connector's credentials.
 
 ### Self-update safety
 
