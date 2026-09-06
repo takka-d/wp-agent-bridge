@@ -131,7 +131,7 @@ Google Drive等のconnectorから取得した画像も、ChatGPT側で取得し�
 
 ### Sequential chunk-command fallback
 
-`/wp-agent-bridge-media/v1/upload-chunk`は、GitHub connectorがbounded Base64 text/blobを可靠にstageできない場合、またはbatched staged-media書き込みが実際に失敗した場合だけ使用します。ローカルfile parameterがないという理由だけで、この遅い経路へ落としません。
+`/wp-agent-bridge-media/v1/upload-chunk`は、GitHub connectorがbounded Base64 text/blobを確実にstageできない場合、またはbatched staged-media書き込みが実際に失敗した場合だけ使用します。ローカルfile parameterがないという理由だけで、この遅い経路へ落としません。
 
 fallbackでもwhole-file / per-chunk bytes・SHA-256、順序、decoded上限を検証します。
 
