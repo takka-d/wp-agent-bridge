@@ -4,9 +4,9 @@
 
 - Version: `1.1.5`
 - Status: **release candidate / validation in progress**
-- Source includes merged local-media routing fix: `766a8dc468d36aff7cae7118e6f7dea310f0e866`
+- Source includes the merged v0.9.6 Site Icon / media / theme-file compatibility work: `6d00ad31cf556c4efa571abb8f06917e86b24c45`
 - Reproducible plugin ZIP SHA-256: **pending merged-main packaging**
-- External-test prerelease: **pending**
+- External-test prerelease: **pending refresh**
 - Broader public/stable release: **not declared**
 
 The existing `v1.1.4-rc1` prerelease remains an immutable 1.1.4 test artifact and must not be overwritten with 1.1.5 bytes.
@@ -35,12 +35,15 @@ A connected runtime repository must identify itself with `wordpress-bridge/RUNTI
 
 `AGENTS.md` and `wordpress-bridge/WEBHOOK_RUNTIME.md` must describe the same architecture.
 
-For 1.1.5, generated runtime guidance must also make media source selection explicit:
+Generated runtime guidance for the current 1.1.5 candidate must also describe the v0.9.6 compatibility surfaces:
 
-- ChatGPT-local / conversation-uploaded / sandbox files -> `/wp-agent-bridge-media/v1/upload-chunk` through normal runtime commands;
-- media already manageable by the GitHub connector -> staged `wordpress-bridge/media/pending/*.b64` transport remains available.
-
-The local-file path must not waste time trying to copy a sandbox file into GitHub payload files when the connector has no local-file parameter.
+- ChatGPT-local / conversation-uploaded / sandbox / connector-downloaded files -> prefer one batched staged-media upload using `wordpress-bridge/media/pending/*.b64` plus `/wp-agent-bridge-runtime/v1/media-upload` when the GitHub connector can write UTF-8 text/blobs;
+- a GitHub local-file parameter is **not** required: split the original binary, Base64-encode bounded chunks independently, stage those strings as text payloads, then submit one command with ordered `data_paths`;
+- `/wp-agent-bridge-media/v1/upload-chunk` remains a sequential fallback only when the batched staged-media path cannot be used reliably or actually fails;
+- `site.icon.get`, `site.icon.set`, `site.icon.clear`, and `media.upload.capabilities` are the dedicated Site Icon/media capability surface;
+- upload-and-Site-Icon assignment may be performed in one media-upload command with `set_site_icon=true` and `confirm_site_icon=true`;
+- `theme.files.list`, `theme.files.search`, and `theme.file.read.many` close the repeated single-file read gap for server-side theme inspection;
+- files first obtained from Google Drive or another connector are treated as local bytes after retrieval; WordPress itself does not require connector credentials.
 
 ## Delivery / replay safety
 
@@ -58,24 +61,46 @@ Required behaviors:
 
 WordPress decoded-media limit: 6 MiB.
 
-### ChatGPT-local media
+### ChatGPT-local / conversation / connector-downloaded media — preferred batched path
 
 1. Compute whole-file byte count and SHA-256 from the original local binary.
-2. Split the binary into ordered chunks; maximum 1,200,000 decoded bytes/chunk, 32 chunks, 6 MiB total.
-3. Base64-encode each chunk independently and include per-chunk bytes/SHA-256 plus whole-file integrity fields.
-4. Send each chunk sequentially to `/wp-agent-bridge-media/v1/upload-chunk` through normal runtime REST commands.
-5. Wait for command completion before the next chunk.
-6. Final chunk reconstruction must verify the whole file before attachment creation and clean WordPress-side temporary staging.
+2. Split the original binary into ordered bounded chunks before Base64 encoding; keep the decoded total within 6 MiB and use at most 32 chunks.
+3. Base64-encode each binary chunk independently and stage each Base64 string as UTF-8 text under `wordpress-bridge/media/pending/`.
+4. Build one `/wp-agent-bridge-runtime/v1/media-upload` command with `filename`, whole-file `expected_bytes`, whole-file `expected_sha256`, and ordered `data_paths`.
+5. When Git Data operations are available, create the payload blobs and command blob first and publish them in one tree/commit/ref update.
+6. When only ordinary file writes are available, stage all payload files first and create the single pending media-upload command last.
+7. Wait once for the upload result; WordPress reconstructs and verifies the complete file before attachment creation and removes staged payloads with bounded cleanup.
+8. When the same image should become the Site Icon, include `set_site_icon=true`, `confirm_site_icon=true`, and optionally `expected_site_icon_id` in the same upload command.
 
-### GitHub-staged media
+### Sequential chunk-command fallback
 
-1. Compute expected byte count and SHA-256 from the complete source binary.
-2. Split the original binary first.
-3. Base64-encode each binary chunk independently.
-4. Verify staged blobs before moving the runtime branch.
-5. Publish verified payload files plus upload command in one Git tree/commit/ref update when available.
-6. WordPress reconstructs and verifies before attachment creation.
-7. Successful upload removes temporary payloads in one Git tree cleanup commit with bounded retry.
+Use `/wp-agent-bridge-media/v1/upload-chunk` only when the connector cannot reliably stage bounded Base64 text payloads/blobs for the batched route or the batched staged-media write actually fails. The fallback still requires whole-file and per-chunk integrity validation and ordered sequential commands.
+
+### Existing GitHub-staged media
+
+Media already manageable by the GitHub connector uses the same batched `wordpress-bridge/media/pending/*.b64` + `/wp-agent-bridge-runtime/v1/media-upload` route. Compute whole-file integrity first, split the original binary before Base64-encoding each part, verify staged payloads, publish payloads plus command atomically when possible, and let WordPress verify and clean them with bounded retry.
+
+## Site Icon / favicon guards
+
+The generic scalar option patcher is not used for `site_icon`. The dedicated v0.9.6 surface is required:
+
+- `site.icon.get` reads the current attachment ID and metadata;
+- `site.icon.set` requires explicit confirmation and supports `expected_current_id` stale-write protection;
+- `site.icon.clear` requires explicit confirmation and supports `expected_current_id` without deleting the attachment;
+- `media.upload.capabilities` describes supported runtime media workflows;
+- media upload may explicitly request Site Icon assignment in the same operation.
+
+A no-change production E2E should read the current Site Icon ID and set that same ID with stale-write protection rather than changing the visible favicon merely to prove the route works.
+
+## Bounded theme inspection
+
+The v0.9.6 server-side theme inspection surface must provide:
+
+- `theme.files.list` for bounded file enumeration;
+- `theme.files.search` for bounded substring/context search;
+- `theme.file.read.many` for up to 20 bounded file ranges in one Bridge command.
+
+These reads must remain theme-root constrained and must not become arbitrary filesystem reads.
 
 ## Self-update safety
 
@@ -90,41 +115,43 @@ Bridge self-update must:
 - capture a backup before replacement;
 - restore the previous plugin if replacement fails.
 
-## 1.1.5 regression reason
+## v0.9.6 regression reason
 
-The GitHub connector used by ChatGPT can write text/blob data to repositories but does not expose an arbitrary local/sandbox file-reference parameter for repository writes. Previous generated runtime guidance treated GitHub staged media as the preferred path even when the source existed only inside the ChatGPT conversation/sandbox. That caused avoidable local-file-to-Base64-to-GitHub staging work and could leave image workflows appearing stuck.
+The previous release-candidate documentation and generated runtime guidance had two practical gaps despite the existing Bridge core:
 
-1.1.5 makes the existing authenticated chunk route the preferred transport for those local sources while retaining the staged GitHub media path for sources that are already GitHub-manageable.
+1. ChatGPT-local or connector-downloaded images could be treated as if a GitHub local-file parameter were necessary, leading to needless detours or repeated sequential WordPress chunk commands.
+2. Site Icon assignment and multi-file theme inspection could appear unsupported because the generic option patcher intentionally rejects scalar `site_icon` and the earlier theme API exposed single-file reads more prominently.
+
+v0.9.6 adds explicit guarded surfaces and runtime guidance rather than weakening the generic safety guards. The preferred media flow now batches staged Base64 text payloads into one media-upload command when connector write capabilities permit it, with the sequential chunk-command route retained as a fallback.
 
 ## CI / packaging gates
 
-- [ ] PHP syntax checks pass for the final 1.1.5 candidate.
-- [ ] release metadata is internally consistent at 1.1.5.
-- [ ] obvious-secret/development-payload checks pass.
-- [ ] Direct Runtime self-webhook loop regression passes.
-- [ ] media transport regression passes with source-aware routing assertions.
-- [ ] clean WordPress package test passes.
-- [ ] runtime idempotency test passes.
-- [ ] self-update safety test passes.
-- [ ] self-contained runtime test passes.
-- [ ] self-contained migration safety test passes.
-- [ ] external tester kit workflow passes.
-- [ ] deterministic 1.1.5 plugin ZIP is rebuilt and verified.
+- [x] PHP syntax / core CI checks pass for the merged v0.9.6 source.
+- [x] release metadata remains internally consistent at 1.1.5.
+- [x] Direct Runtime regression suite passes on the PR #32 final head.
+- [x] Site Icon / media flow regression passes.
+- [x] clean WordPress package test passes.
+- [x] runtime idempotency test passes.
+- [x] self-update safety test passes.
+- [x] self-contained runtime test passes.
+- [x] self-contained migration safety test passes.
+- [x] external tester kit workflow passes on the PR #32 final head.
+- [ ] deterministic 1.1.5 plugin ZIP is rebuilt from merged `main` including v0.9.6.
 - [ ] merged-main 1.1.5 plugin ZIP SHA-256 is recorded.
-- [ ] 1.1.5 external-test prerelease is created without altering `v1.1.4-rc1`.
+- [ ] 1.1.5 external-test prerelease/test kit is refreshed without altering `v1.1.4-rc1`.
 
 ## TakKa Note live validation
 
-- [x] canonical runtime marker remains `status=canonical`, `transport=direct-github-webhook`, `ownership=user-owned`, `operator_relay=false`.
-- [x] current live `AGENTS.md` already directs ChatGPT-local media to authenticated chunk upload and keeps GitHub-staged media as a separate path.
-- [ ] TakKa Note plugin is updated from 1.1.4 to the reproducible 1.1.5 package.
-- [ ] runtime identity sync after the 1.1.5 update preserves the local-media routing guidance.
-- [ ] a ChatGPT-local image is uploaded through the chunk route on TakKa Note and whole-file integrity is confirmed.
-- [ ] validation attachment/temp data is removed after verification.
+- [ ] apply the merged v0.9.6 files to the current TakKa Note 1.1.5 installation through the temporary installer and confirm the installer result.
+- [ ] `site.icon.get` succeeds in production.
+- [ ] the currently configured Site Icon attachment ID can be sent back through `site.icon.set` with confirmation and stale-write protection without changing the favicon.
+- [ ] `theme.files.list`, `theme.files.search`, and `theme.file.read.many` succeed in production.
+- [ ] generated/runtime guidance reflects batched staged-media as the preferred local/connector path and the sequential chunk route as fallback.
+- [ ] the temporary installer is removed and the child-theme `functions.php` is restored to its verified pre-installer bytes/SHA state.
 
 ## Distribution state
 
-1.1.5 is being prepared specifically so fresh installations and future runtime-identity syncs retain the already-adopted local-media routing fix. External tester readiness will be declared only after merged-main packaging and live validation.
+The functional v0.9.6 source is merged. Documentation, live installer validation, deterministic merged-main package generation, tester-kit refresh, and public article/download references are deliberately handled as separate follow-up stages so distribution artifacts do not get mixed into the functional patch.
 
 Broader public/stable release remains undeclared.
 
