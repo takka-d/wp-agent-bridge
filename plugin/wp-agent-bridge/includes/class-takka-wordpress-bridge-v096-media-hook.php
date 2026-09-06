@@ -25,7 +25,8 @@ final class TakKa_WordPress_Bridge_V096_Media_Hook
     {
         if ($result !== null
             || $request->get_route() !== self::MEDIA_ROUTE
-            || strtoupper($request->get_method()) !== 'POST') {
+            || strtoupper($request->get_method()) !== 'POST'
+            || !current_user_can('manage_options')) {
             return $result;
         }
         $json = $request->get_json_params();
