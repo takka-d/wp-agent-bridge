@@ -183,7 +183,7 @@ ChatGPTへ次のように依頼する。
 
 これはpreferred pathの代替確認であり、通常テストで意図的に選ぶ必要はない。
 
-`/wp-agent-bridge-media/v1/upload-chunk`を使用してよいのは、GitHub connectorがbounded Base64 text/blobを可靠にstageできないことが確認された場合、またはbatched staged-media writeが実際に失敗した場合だけとする。
+`/wp-agent-bridge-media/v1/upload-chunk`を使用してよいのは、GitHub connectorがbounded Base64 text/blobを確実にstageできないことが確認された場合、またはbatched staged-media writeが実際に失敗した場合だけとする。
 
 fallback時もwhole-file / per-chunk bytes・SHA-256を計算し、順序付きcommandを1件ずつ完了確認してから次へ進み、最終chunkでwhole-file integrityを検証する。
 
