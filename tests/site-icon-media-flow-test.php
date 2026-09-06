@@ -85,7 +85,7 @@ foreach ([
 foreach ([
     "private const VERSION = '0.9.6';",
     "add_filter('rest_request_after_callbacks', [self::class, 'finalize'], 600, 3);",
-    "version_compare($current, self::VERSION, '<')",
+    'version_compare($current, self::VERSION, \'<\')',
 ] as $needle) {
     if (strpos($health, $needle) === false) {
         fwrite(STDERR, "health version finalizer missing {$needle}\n");
