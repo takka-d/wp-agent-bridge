@@ -48,6 +48,12 @@ jobs:
           set -euo pipefail
           php tests/wpvibe-server-compat-test.php
 
+      - name: Site Icon and connector media regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/site-icon-media-flow-test.php
+
       - name: Verify release metadata
         shell: bash
         run: |
