@@ -82,8 +82,6 @@ jobs:
           PY
 
           python3 /tmp/build-wpab-zip.py "$archive"
-          # Cross a wall-clock second deliberately. The second build must remain
-          # byte-identical because ZIP metadata is fixed and bytes come from Git blobs.
           sleep 2
           python3 /tmp/build-wpab-zip.py "$verify_archive"
           cmp "$archive" "$verify_archive"
@@ -142,10 +140,49 @@ jobs:
           7. エラーが出たら成功させるために別経路へ迂回せず、その時点で停止してください。
           EOF
 
+      - name: Pack one shareable self-contained tester ZIP
+        shell: bash
+        env:
+          VERSION: ${{ steps.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p packaged
+          python3 - <<'PY'
+          import os
+          import stat
+          import zipfile
+          from pathlib import Path
+
+          version = os.environ['VERSION']
+          source = Path('tester-kit')
+          output = Path('packaged') / f'wp-agent-bridge-{version}-test-kit.zip'
+          names = [
+              '最初に読んでください.txt',
+              '01_テスト手順.md',
+              '02_テスト結果記入.md',
+              '03_画像転送テスト用_約2.4MB.png',
+              f'wp-agent-bridge-{version}.zip',
+              'SHA256SUMS',
+          ]
+          with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_STORED, allowZip64=True) as archive:
+              for name in names:
+                  path = source / name
+                  if not path.is_file():
+                      raise SystemExit(f'missing tester-kit member: {name}')
+                  info = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+                  info.create_system = 3
+                  info.external_attr = ((stat.S_IFREG | 0o644) & 0xFFFF) << 16
+                  info.compress_type = zipfile.ZIP_STORED
+                  archive.writestr(info, path.read_bytes())
+          print(output)
+          PY
+          unzip -l "packaged/wp-agent-bridge-${VERSION}-test-kit.zip"
+          sha256sum "packaged/wp-agent-bridge-${VERSION}-test-kit.zip"
+
       - name: Upload external tester kit
         uses: actions/upload-artifact@v4
         with:
-          name: wp-agent-bridge-external-tester-kit-${{ steps.build.outputs.version }}-self-contained
-          path: tester-kit/
+          name: wp-agent-bridge-${{ steps.build.outputs.version }}-test-kit
+          path: packaged/wp-agent-bridge-${{ steps.build.outputs.version }}-test-kit.zip
           if-no-files-found: error
           retention-days: 30
