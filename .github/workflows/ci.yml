@@ -36,6 +36,12 @@ jobs:
           set -euo pipefail
           php tests/media-binary-chunk-staging-test.php
 
+      - name: Diagnostics compatibility regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/diagnostics-compat-test.php
+
       - name: Verify release metadata
         shell: bash
         run: |
