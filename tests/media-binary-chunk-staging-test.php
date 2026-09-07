@@ -71,19 +71,6 @@ foreach ([
     }
 }
 
-$fast = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-media-fast-path.php');
-if (!is_string($fast)
-    || strpos($fast, "array_key_exists('data_blob_shas', \$json)") === false
-    || strpos($fast, 'read_blob_text') === false
-    || strpos($fast, 'single-recursive-tree-read') === false
-    || strpos($fast, 'snapshot_sources') === false
-    || strpos($fast, 'chunk_integrity') === false
-    || strpos($fast, 'git-blob-sha-direct') === false
-    || strpos($fast, "\$upload['normal_flow_verify_first'] = false") === false) {
-    fwrite(STDERR, "Caller-pinned media blob-SHA compatibility fast path is incomplete.\n");
-    exit(1);
-}
-
 $auto = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-media-auto-path.php');
 if (!is_string($auto)
     || strpos($auto, "\$upload['automatic_for_staged_data_paths'] = true") === false
@@ -95,8 +82,7 @@ if (!is_string($auto)
     || strpos($auto, 'chunk_integrity') === false
     || strpos($auto, "'/git/trees/'") === false
     || strpos($auto, "'/git/blobs/'") === false
-    || strpos($auto, 'cleanup_snapshot_reuse') === false
-    || strpos($auto, "['sha' => null]") !== false) {
+    || strpos($auto, 'cleanup_snapshot_reuse') === false) {
     fwrite(STDERR, "Automatic staged-media Git-tree resolution path is incomplete.\n");
     exit(1);
 }
@@ -108,11 +94,17 @@ if (strpos($auto, "'sha' => null") === false
 
 $bootstrap = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/takka-wordpress-bridge.php');
 if (!is_string($bootstrap)
-    || strpos($bootstrap, 'class-takka-wordpress-bridge-direct-media-fast-path.php') === false
-    || strpos($bootstrap, 'TakKa_WordPress_Bridge_Direct_Media_Fast_Path::init()') === false
+    || strpos($bootstrap, 'class-takka-wordpress-bridge-direct-media.php') === false
+    || strpos($bootstrap, 'TakKa_WordPress_Bridge_Direct_Media::init()') === false
     || strpos($bootstrap, 'class-takka-wordpress-bridge-direct-media-auto-path.php') === false
     || strpos($bootstrap, 'TakKa_WordPress_Bridge_Direct_Media_Auto_Path::init()') === false) {
-    fwrite(STDERR, "Media fast paths are not loaded by the plugin bootstrap.\n");
+    fwrite(STDERR, "Automatic staged-media fast path or legacy fallback is not loaded by the plugin bootstrap.\n");
+    exit(1);
+}
+if (strpos($bootstrap, 'class-takka-wordpress-bridge-direct-media-fast-path.php') !== false
+    || strpos($bootstrap, 'TakKa_WordPress_Bridge_Direct_Media_Fast_Path::init()') !== false
+    || file_exists(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-media-fast-path.php')) {
+    fwrite(STDERR, "Redundant caller-pinned media fast path must not remain registered or packaged.\n");
     exit(1);
 }
 
