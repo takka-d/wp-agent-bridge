@@ -179,10 +179,14 @@ if (count(TakKa_WordPress_Bridge_Direct_GitHub::$calls) !== 3) {
 $treeBody = TakKa_WordPress_Bridge_Direct_GitHub::$calls[0][2] ?? null;
 $commitBody = TakKa_WordPress_Bridge_Direct_GitHub::$calls[1][2] ?? null;
 $patchBody = TakKa_WordPress_Bridge_Direct_GitHub::$calls[2][2] ?? null;
+$firstDelete = is_array($treeBody) && isset($treeBody['tree'][0]) && is_array($treeBody['tree'][0])
+    ? $treeBody['tree'][0]
+    : [];
 if (!is_array($treeBody)
     || ($treeBody['base_tree'] ?? '') !== str_repeat('1', 40)
     || count($treeBody['tree'] ?? []) !== 2
-    || ($treeBody['tree'][0]['sha'] ?? 'not-null') !== null
+    || !array_key_exists('sha', $firstDelete)
+    || $firstDelete['sha'] !== null
     || !is_array($commitBody)
     || ($commitBody['parents'][0] ?? '') !== str_repeat('a', 40)
     || !is_array($patchBody)
