@@ -18,10 +18,14 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
     private const LEGACY_BACKUP = 'takka_bridge_legacy_connection_backup_v1';
     private const IDENTITY_WARNING = 'takka_bridge_direct_identity_warning_v1';
     private const LEGACY_COMPLETE_ROUTE = '/takka-bridge-onboarding/v1/complete';
+    private const IDENTITY_SYNC_VERSION_OPTION = 'takka_bridge_runtime_identity_sync_version_v1';
+    private const IDENTITY_SYNC_RETRY = 'takka_bridge_runtime_identity_sync_retry_v1';
+    private const IDENTITY_SYNC_VERSION = 1;
 
     public static function init(): void
     {
         add_action('admin_init', [self::class, 'preserve_legacy_connection'], 1);
+        add_action('admin_init', [self::class, 'sync_identity_guidance_if_needed'], 2);
         add_action('admin_post_takka_bridge_connect_github', [self::class, 'block_unsafe_reconnect'], 1);
 
         // Register late so a still-active legacy Onboarding Service can keep its
@@ -43,6 +47,39 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
         if (is_array($legacy) && !empty($legacy['repository']) && !is_array($backup)) {
             update_option(self::LEGACY_BACKUP, $legacy, false);
         }
+    }
+
+    /**
+     * Existing connected installs need one idempotent identity resync after this
+     * plugin version is deployed so their generated AGENTS/WEBHOOK guidance gets
+     * the current marker-first fast path. The identity generator remains the
+     * single source of truth; this method never patches generated files itself.
+     */
+    public static function sync_identity_guidance_if_needed(): void
+    {
+        if (!current_user_can('manage_options') || !self::direct_connected()) {
+            return;
+        }
+        if ((int) get_option(self::IDENTITY_SYNC_VERSION_OPTION, 0) >= self::IDENTITY_SYNC_VERSION) {
+            return;
+        }
+        if (get_transient(self::IDENTITY_SYNC_RETRY)) {
+            return;
+        }
+
+        $identity = TakKa_WordPress_Bridge_Direct_Runtime_Identity::sync();
+        if (is_wp_error($identity)) {
+            set_transient(self::IDENTITY_SYNC_RETRY, 1, 10 * MINUTE_IN_SECONDS);
+            set_transient(self::IDENTITY_WARNING, [
+                'message' => $identity->get_error_message(),
+                'created_at' => time(),
+            ], HOUR_IN_SECONDS);
+            return;
+        }
+
+        update_option(self::IDENTITY_SYNC_VERSION_OPTION, self::IDENTITY_SYNC_VERSION, false);
+        delete_transient(self::IDENTITY_SYNC_RETRY);
+        delete_transient(self::IDENTITY_WARNING);
     }
 
     public static function block_unsafe_reconnect(): void
@@ -113,19 +150,21 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
         }
 
         // The connection has already been authenticated and stored by the
-        // onboarding endpoint, so initialize the canonical marker immediately.
-        // A GitHub race must not undo the working connection: record a warning
-        // and let the next authenticated admin_init retry the same idempotent sync.
+        // onboarding endpoint, so initialize the canonical identity immediately.
+        // Identity::sync() is idempotent and writes the complete generated files,
+        // including current fast-resolution guidance, in one canonical pass.
         $identity = TakKa_WordPress_Bridge_Direct_Runtime_Identity::sync();
         if (is_wp_error($identity)) {
             set_transient(self::IDENTITY_WARNING, [
                 'message' => $identity->get_error_message(),
                 'created_at' => time(),
             ], HOUR_IN_SECONDS);
-        } else {
-            delete_transient(self::IDENTITY_WARNING);
+            return $response;
         }
 
+        update_option(self::IDENTITY_SYNC_VERSION_OPTION, self::IDENTITY_SYNC_VERSION, false);
+        delete_transient(self::IDENTITY_SYNC_RETRY);
+        delete_transient(self::IDENTITY_WARNING);
         return $response;
     }
 
