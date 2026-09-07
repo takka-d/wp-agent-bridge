@@ -20,7 +20,7 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
     private const LEGACY_COMPLETE_ROUTE = '/takka-bridge-onboarding/v1/complete';
     private const IDENTITY_SYNC_VERSION_OPTION = 'takka_bridge_runtime_identity_sync_version_v1';
     private const IDENTITY_SYNC_RETRY = 'takka_bridge_runtime_identity_sync_retry_v1';
-    private const IDENTITY_SYNC_VERSION = 1;
+    private const IDENTITY_SYNC_VERSION = 2;
 
     public static function init(): void
     {
@@ -51,9 +51,9 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
 
     /**
      * Existing connected installs need one idempotent identity resync after this
-     * plugin version is deployed so their generated AGENTS/WEBHOOK guidance gets
-     * the current marker-first fast path. The identity generator remains the
-     * single source of truth; this method never patches generated files itself.
+     * guidance version is deployed so generated AGENTS/WEBHOOK instructions use
+     * the current fast path. The identity generator remains the single source of
+     * truth; this method never patches generated files itself.
      */
     public static function sync_identity_guidance_if_needed(): void
     {
@@ -151,8 +151,7 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
 
         // The connection has already been authenticated and stored by the
         // onboarding endpoint, so initialize the canonical identity immediately.
-        // Identity::sync() is idempotent and writes the complete generated files,
-        // including current fast-resolution guidance, in one canonical pass.
+        // Identity::sync() is idempotent and writes the complete generated files.
         $identity = TakKa_WordPress_Bridge_Direct_Runtime_Identity::sync();
         if (is_wp_error($identity)) {
             set_transient(self::IDENTITY_WARNING, [
