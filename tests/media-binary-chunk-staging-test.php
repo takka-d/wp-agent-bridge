@@ -45,11 +45,12 @@ if (!is_string($identity)
     || strpos($identity, '/wp-agent-bridge-runtime/v1/media-upload') === false
     || strpos($identity, 'ordered `data_paths`') === false
     || strpos($identity, 'ONE tree/commit/ref update') === false
-    || strpos($identity, 'there is only one verify/upload result to wait for') === false
+    || strpos($identity, 'Do not call media-verify first in the normal path') === false
+    || strpos($identity, '`data_blob_shas`') === false
     || strpos($identity, '/wp-agent-bridge-media/v1/upload-chunk') === false
     || strpos($identity, 'Sequential chunk-command fallback') === false
     || strpos($identity, 'split the ORIGINAL BINARY') === false) {
-    fwrite(STDERR, "Runtime identity guidance does not prefer batched staged-media transport with verification and a sequential chunk fallback.\n");
+    fwrite(STDERR, "Runtime identity guidance does not prefer the one-commit blob-SHA staged-media fast path with verify-on-error diagnostics.\n");
     exit(1);
 }
 
@@ -69,14 +70,38 @@ foreach ([
     }
 }
 
+$fast = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-media-fast-path.php');
+if (!is_string($fast)
+    || strpos($fast, "array_key_exists('data_blob_shas', $json)") === false
+    || strpos($fast, 'read_blob_text') === false
+    || strpos($fast, 'single-recursive-tree-read') === false
+    || strpos($fast, 'snapshot_sources') === false
+    || strpos($fast, 'chunk_integrity') === false
+    || strpos($fast, 'transport_fast_path') === false
+    || strpos($fast, 'git-blob-sha-direct') === false
+    || strpos($fast, "'normal_flow_verify_first' => false") === false
+    || strpos($fast, "'preferred_publish_mode' => 'single-git-tree-commit'") === false) {
+    fwrite(STDERR, "Direct Runtime media blob-SHA fast path is incomplete.\n");
+    exit(1);
+}
+
+$bootstrap = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/takka-wordpress-bridge.php');
+if (!is_string($bootstrap)
+    || strpos($bootstrap, 'class-takka-wordpress-bridge-direct-media-fast-path.php') === false
+    || strpos($bootstrap, 'TakKa_WordPress_Bridge_Direct_Media_Fast_Path::init()') === false) {
+    fwrite(STDERR, "Media fast path is not loaded by the plugin bootstrap.\n");
+    exit(1);
+}
+
 $guard = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-onboarding-guard.php');
 if (!is_string($guard)
     || strpos($guard, 'sync_identity_guidance_if_needed') === false
     || strpos($guard, 'IDENTITY_SYNC_VERSION_OPTION') === false
     || strpos($guard, 'IDENTITY_SYNC_RETRY') === false
+    || strpos($guard, 'private const IDENTITY_SYNC_VERSION = 2;') === false
     || strpos($guard, 'TakKa_WordPress_Bridge_Direct_Runtime_Identity::sync()') === false
     || strpos($guard, '10 * MINUTE_IN_SECONDS') === false) {
-    fwrite(STDERR, "Existing-runtime one-time identity refresh guard is missing.\n");
+    fwrite(STDERR, "Existing-runtime identity refresh guard is missing media-fast-path guidance resync.\n");
     exit(1);
 }
 if (strpos($guard, 'sync_resolution_guidance') !== false || strpos($guard, 'put_guidance_if_changed') !== false) {
