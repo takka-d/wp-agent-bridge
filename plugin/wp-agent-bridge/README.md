@@ -1,4 +1,4 @@
-# WP Agent Bridge 1.1.5
+# WP Agent Bridge 1.1.6
 
 ChatGPTからWordPressを更新するためのWordPressプラグインです。
 
@@ -29,15 +29,21 @@ PAT、private key、Webhook secret、Bridge Key、GitHub Actions workflowを利�
 - 本文・table・post meta・option・taxonomy・menu等のguarded editing
 - plugin / theme管理
 - theme file編集
+  - exact UTF-8 asset writeでは`expected_content_sha256`と`expected_current_sha256`による完全性・stale-write guardを利用可能
 - `theme.files.list` / `theme.files.search` / `theme.file.read.many`による複数theme fileのbounded inspection
 - Draft Themeのpreview / publish / rollback
 - media upload
   - 最大6 MiB decoded
   - ChatGPT-local / conversation / sandbox / connector-downloaded fileは、GitHubがUTF-8 text/blobを書ける場合、`wordpress-bridge/media/pending/*.b64` + `/wp-agent-bridge-runtime/v1/media-upload`の**batched staged-media pathを優先**
   - GitHub local-file parameterは不要。元binaryを先に分割し、各chunkを独立Base64化してtext payloadとしてstageする
-  - `data_paths`、whole-file bytes / SHA-256を持つupload commandは1件だけ作る
+  - `data_paths`、whole-file bytes / SHA-256、必要に応じて`chunk_integrity`を持つupload commandは1件だけ作る
+  - 通常成功経路では`media-verify`を先に実行しない。upload自身がattachment作成前にwhole-file / chunk integrityを検証する
+  - fast pathは現在のGit tree snapshotから全`data_paths`を一括解決し、対応するGit blobを直接読む
+  - `data_blob_shas`は、staging時にblob SHAが既に分かる場合だけpath-to-blob pinとして追加できる
   - Git Data APIを利用できる場合、payload群とupload commandを1つのtree/commit/ref更新としてruntime branchへ投入
   - `create_file`しか使えない場合もpayload群を先にstageし、最後にsingle upload commandを作る
+  - `/wp-agent-bridge-runtime/v1/media-verify`は明示的なverify-only、staging不確実時、またはintegrity 409後の診断/復旧用
+  - 409時はchunk diagnosticsから不一致payloadだけを交換できる
   - `/wp-agent-bridge-media/v1/upload-chunk`はbatched stagingが使えない、または実際に失敗した場合のsequential fallback
   - 成功後のstaged payloadはbounded cleanupで削除
 - Site Icon / favicon
@@ -74,10 +80,13 @@ PAT、private key、Webhook secret、Bridge Key、GitHub Actions workflowを利�
 
 `RUNTIME_CONNECTION.json`は`status: canonical`、`transport: direct-github-webhook`、`ownership: user-owned`、`operator_relay: false`を示します。
 
-v0.9.6を含む1.1.5の生成`AGENTS.md`は、次も明示します。
+1.1.6の生成`AGENTS.md`は、次も明示します。
 
+- 同一task/sessionでcanonical runtime確認済みなら、具体的なmigration signalがない限りruntime探索を繰り返さないこと
+- runtime解決が必要なら`wordpress-bridge/RUNTIME_CONNECTION.json`を最初に読み、retired runtimeでは調査を即終了して`replaced_by`を追うこと
 - GitHub connectorのwrite actionを確認してからblocker判定すること
 - ChatGPT-local / connector-downloaded mediaはbatched staged-mediaを優先すること
+- 正常時はverify-firstをせず、Git tree一括解決 + Git blob direct readのfast pathを使うこと
 - sequential chunk routeはfallbackであること
 - dedicated Site Icon surfaceを使うこと
 - `theme.files.list` / `theme.files.search` / `theme.file.read.many`でmulti-file inspectionを1commandへまとめられること
