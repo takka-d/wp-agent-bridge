@@ -18,7 +18,6 @@ final class TakKa_WordPress_Bridge_V06
         'v06.capabilities',
         'bridge.self_update.status',
         'bridge.self_update.apply',
-        'bridge.self_update.apply_source',
         'bridge.self_update.rollback',
     ];
 
@@ -119,9 +118,10 @@ final class TakKa_WordPress_Bridge_V06
                 case 'bridge.self_update.status':
                     return rest_ensure_response(TakKa_WordPress_Bridge_V06_Self_Update::status());
                 case 'bridge.self_update.apply':
+                    if (isset($params['source_commit']) && is_string($params['source_commit']) && trim($params['source_commit']) !== '') {
+                        return TakKa_WordPress_Bridge_V06_Self_Update_Source::apply($params);
+                    }
                     return TakKa_WordPress_Bridge_V06_Self_Update_Safe::apply($params);
-                case 'bridge.self_update.apply_source':
-                    return TakKa_WordPress_Bridge_V06_Self_Update_Source::apply($params);
                 case 'bridge.self_update.rollback':
                     return TakKa_WordPress_Bridge_V06_Self_Update::rollback($params);
             }
