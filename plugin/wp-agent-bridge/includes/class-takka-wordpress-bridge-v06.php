@@ -18,6 +18,7 @@ final class TakKa_WordPress_Bridge_V06
         'v06.capabilities',
         'bridge.self_update.status',
         'bridge.self_update.apply',
+        'bridge.self_update.apply_source',
         'bridge.self_update.rollback',
     ];
 
@@ -119,6 +120,8 @@ final class TakKa_WordPress_Bridge_V06
                     return rest_ensure_response(TakKa_WordPress_Bridge_V06_Self_Update::status());
                 case 'bridge.self_update.apply':
                     return TakKa_WordPress_Bridge_V06_Self_Update_Safe::apply($params);
+                case 'bridge.self_update.apply_source':
+                    return TakKa_WordPress_Bridge_V06_Self_Update_Source::apply($params);
                 case 'bridge.self_update.rollback':
                     return TakKa_WordPress_Bridge_V06_Self_Update::rollback($params);
             }
@@ -139,6 +142,7 @@ final class TakKa_WordPress_Bridge_V06
             'route' => self::ROUTE,
             'actions' => self::ACTIONS,
             'self_update' => TakKa_WordPress_Bridge_V06_Self_Update_Safe::capabilities(),
+            'source_self_update' => TakKa_WordPress_Bridge_V06_Self_Update_Source::capabilities(),
             'arbitrary_plugin_package' => false,
             'arbitrary_filesystem_write' => false,
         ];
