@@ -53,6 +53,20 @@ if (!is_string($identity)
     exit(1);
 }
 
+$resolution = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-onboarding-guard.php');
+if (!is_string($resolution)
+    || strpos($resolution, 'sync_resolution_guidance_if_needed') === false
+    || strpos($resolution, '## Canonical runtime fast path') === false
+    || strpos($resolution, 'Migration signals are limited to:') === false
+    || strpos($resolution, 'read `wordpress-bridge/RUNTIME_CONNECTION.json` FIRST') === false
+    || strpos($resolution, '`status=retired` or `do_not_use=true`') === false
+    || strpos($resolution, 'If it contains `replaced_by`, go directly to that replacement repository') === false
+    || strpos($resolution, 'If a usable GitHub write action is already visible, do not run connector discovery') === false
+    || strpos($resolution, 'create `wordpress-bridge/commands/pending/<id>.json` immediately') === false) {
+    fwrite(STDERR, "Canonical runtime fast-resolution guidance is missing.\n");
+    exit(1);
+}
+
 $hardening = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-hardening.php');
 if (!is_string($hardening)
     || strpos($hardening, 'replace_runtime_webhook') === false
