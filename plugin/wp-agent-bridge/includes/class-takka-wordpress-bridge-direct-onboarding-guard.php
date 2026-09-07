@@ -18,14 +18,14 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
     private const LEGACY_BACKUP = 'takka_bridge_legacy_connection_backup_v1';
     private const IDENTITY_WARNING = 'takka_bridge_direct_identity_warning_v1';
     private const LEGACY_COMPLETE_ROUTE = '/takka-bridge-onboarding/v1/complete';
-    private const RESOLUTION_GUIDANCE_OPTION = 'takka_bridge_runtime_resolution_guidance_v1';
-    private const RESOLUTION_GUIDANCE_RETRY = 'takka_bridge_runtime_resolution_guidance_retry_v1';
-    private const RESOLUTION_GUIDANCE_VERSION = 1;
+    private const IDENTITY_SYNC_VERSION_OPTION = 'takka_bridge_runtime_identity_sync_version_v1';
+    private const IDENTITY_SYNC_RETRY = 'takka_bridge_runtime_identity_sync_retry_v1';
+    private const IDENTITY_SYNC_VERSION = 1;
 
     public static function init(): void
     {
         add_action('admin_init', [self::class, 'preserve_legacy_connection'], 1);
-        add_action('admin_init', [self::class, 'sync_resolution_guidance_if_needed'], 2);
+        add_action('admin_init', [self::class, 'sync_identity_guidance_if_needed'], 2);
         add_action('admin_post_takka_bridge_connect_github', [self::class, 'block_unsafe_reconnect'], 1);
 
         // Register late so a still-active legacy Onboarding Service can keep its
@@ -49,30 +49,36 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
         }
     }
 
-    public static function sync_resolution_guidance_if_needed(): void
+    /**
+     * Existing connected installs need one idempotent identity resync after this
+     * plugin version is deployed so their generated AGENTS/WEBHOOK guidance gets
+     * the current marker-first fast path. The identity generator remains the
+     * single source of truth; this method never patches generated files itself.
+     */
+    public static function sync_identity_guidance_if_needed(): void
     {
         if (!current_user_can('manage_options') || !self::direct_connected()) {
             return;
         }
-        if ((int) get_option(self::RESOLUTION_GUIDANCE_OPTION, 0) >= self::RESOLUTION_GUIDANCE_VERSION) {
+        if ((int) get_option(self::IDENTITY_SYNC_VERSION_OPTION, 0) >= self::IDENTITY_SYNC_VERSION) {
             return;
         }
-        if (get_transient(self::RESOLUTION_GUIDANCE_RETRY)) {
+        if (get_transient(self::IDENTITY_SYNC_RETRY)) {
             return;
         }
 
-        $result = self::sync_resolution_guidance();
-        if (is_wp_error($result)) {
-            set_transient(self::RESOLUTION_GUIDANCE_RETRY, 1, 10 * MINUTE_IN_SECONDS);
+        $identity = TakKa_WordPress_Bridge_Direct_Runtime_Identity::sync();
+        if (is_wp_error($identity)) {
+            set_transient(self::IDENTITY_SYNC_RETRY, 1, 10 * MINUTE_IN_SECONDS);
             set_transient(self::IDENTITY_WARNING, [
-                'message' => $result->get_error_message(),
+                'message' => $identity->get_error_message(),
                 'created_at' => time(),
             ], HOUR_IN_SECONDS);
             return;
         }
 
-        update_option(self::RESOLUTION_GUIDANCE_OPTION, self::RESOLUTION_GUIDANCE_VERSION, false);
-        delete_transient(self::RESOLUTION_GUIDANCE_RETRY);
+        update_option(self::IDENTITY_SYNC_VERSION_OPTION, self::IDENTITY_SYNC_VERSION, false);
+        delete_transient(self::IDENTITY_SYNC_RETRY);
         delete_transient(self::IDENTITY_WARNING);
     }
 
@@ -144,9 +150,9 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
         }
 
         // The connection has already been authenticated and stored by the
-        // onboarding endpoint, so initialize the canonical marker immediately.
-        // A GitHub race must not undo the working connection: record a warning
-        // and let the next authenticated admin_init retry the same idempotent sync.
+        // onboarding endpoint, so initialize the canonical identity immediately.
+        // Identity::sync() is idempotent and writes the complete generated files,
+        // including current fast-resolution guidance, in one canonical pass.
         $identity = TakKa_WordPress_Bridge_Direct_Runtime_Identity::sync();
         if (is_wp_error($identity)) {
             set_transient(self::IDENTITY_WARNING, [
@@ -156,149 +162,10 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
             return $response;
         }
 
-        $guidance = self::sync_resolution_guidance();
-        if (is_wp_error($guidance)) {
-            set_transient(self::RESOLUTION_GUIDANCE_RETRY, 1, 10 * MINUTE_IN_SECONDS);
-            set_transient(self::IDENTITY_WARNING, [
-                'message' => $guidance->get_error_message(),
-                'created_at' => time(),
-            ], HOUR_IN_SECONDS);
-        } else {
-            update_option(self::RESOLUTION_GUIDANCE_OPTION, self::RESOLUTION_GUIDANCE_VERSION, false);
-            delete_transient(self::RESOLUTION_GUIDANCE_RETRY);
-            delete_transient(self::IDENTITY_WARNING);
-        }
-
+        update_option(self::IDENTITY_SYNC_VERSION_OPTION, self::IDENTITY_SYNC_VERSION, false);
+        delete_transient(self::IDENTITY_SYNC_RETRY);
+        delete_transient(self::IDENTITY_WARNING);
         return $response;
-    }
-
-    /**
-     * Replace ritual runtime re-discovery with a marker-first fast path.
-     *
-     * The base identity writer intentionally remains the single source for the
-     * canonical repository/branch/site values. This post-sync pass only tightens
-     * agent guidance, and is idempotent for already-updated runtimes.
-     */
-    private static function sync_resolution_guidance()
-    {
-        $connection = TakKa_WordPress_Bridge_Direct_Runtime::connection();
-        $installation_id = (int) ($connection['installation_id'] ?? 0);
-        $repository_id = (int) ($connection['repository_id'] ?? 0);
-        $repository = trim((string) ($connection['repository'] ?? ''));
-        $branch = (string) ($connection['runtime_branch'] ?? '');
-        if ($installation_id < 1
-            || $repository_id < 1
-            || !preg_match('/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/', $repository)
-            || $branch !== TakKa_WordPress_Bridge_Direct_Runtime::RUNTIME_BRANCH) {
-            return new WP_Error('wpab_runtime_resolution_connection', 'Direct Runtime connection is incomplete.', ['status' => 503]);
-        }
-
-        $token = TakKa_WordPress_Bridge_Direct_GitHub::installation_token($installation_id, $repository_id);
-        if (is_wp_error($token)) {
-            return $token;
-        }
-
-        $site_host = strtolower((string) wp_parse_url(home_url('/'), PHP_URL_HOST));
-        if ($site_host === '') {
-            $site_host = 'wordpress';
-        }
-
-        $agents = TakKa_WordPress_Bridge_Direct_GitHub::get_text_file($token, $repository, $branch, 'AGENTS.md');
-        if (is_wp_error($agents)) {
-            return $agents;
-        }
-
-        $fast_heading = '## Canonical runtime fast path';
-        if (strpos($agents, $fast_heading) === false) {
-            $old_intro = "Before any WordPress read/write, verify all of the following:\n"
-                . "- repository: `" . $repository . "`\n"
-                . "- branch: `" . $branch . "`\n"
-                . "- marker: `wordpress-bridge/RUNTIME_CONNECTION.json`\n"
-                . "- marker `status`: `canonical`\n"
-                . "- marker `transport`: `direct-github-webhook`\n"
-                . "- marker `site_host`: `" . $site_host . "`\n"
-                . "- marker `ownership`: `user-owned`\n"
-                . "- marker `operator_relay`: `false`\n\n"
-                . "Do not substitute an operator-owned Organization runtime, an older personal runtime, or any repository selected only because it has a similar branch/folder layout.\n\n";
-
-            if (strpos($agents, $old_intro) === false) {
-                return new WP_Error('wpab_runtime_resolution_agents_shape', 'Canonical AGENTS.md did not match the expected identity preamble.', ['status' => 409]);
-            }
-
-            $new_intro = "## Canonical runtime fast path\n\n"
-                . "If this exact repository, branch, and marker have already been verified as canonical for `" . $site_host . "` in the current task/session, reuse them immediately unless a migration signal has appeared. Do not search GitHub for other runtimes, reopen retired predecessors, enumerate branches, or reread identity files merely as ritual revalidation.\n"
-                . "Migration signals are limited to: an explicit user notice of migration/reconnection; the current marker becoming non-canonical or naming another repository; a GitHub write failing because the repository/branch is missing or inaccessible; WordPress reporting a Direct Runtime mapping/connection mismatch; or the connected GitHub account/tool context actually changing.\n"
-                . "If runtime resolution is required, read `wordpress-bridge/RUNTIME_CONNECTION.json` FIRST. Do not inspect `AGENTS.md`, commits, branches, command history, or neighboring repositories before the marker.\n"
-                . "If a candidate marker says `status=retired` or `do_not_use=true`, stop inspecting that repository immediately. If it contains `replaced_by`, go directly to that replacement repository and read only its marker next; do not search GitHub for alternative runtimes.\n"
-                . "Accept a candidate as canonical only when repository=`" . $repository . "`, branch=`" . $branch . "`, `status=canonical`, `transport=direct-github-webhook`, `site_host=" . $site_host . "`, `ownership=user-owned`, and `operator_relay=false` all agree.\n"
-                . "Once canonical is established, if a usable GitHub write action such as `create_file` is already available, create `wordpress-bridge/commands/pending/<id>.json` immediately. Do not perform connector discovery or another marker verification before the command unless a migration signal occurred.\n"
-                . "Old conversation history, memory, cached instructions, or a similarly named operator-owned runtime are not reasons to reopen a retired repository after the current canonical runtime has been established.\n\n";
-
-            $agents = str_replace($old_intro, $new_intro, $agents);
-        }
-
-        $old_discovery = "Re-verify the canonical repository/branch/marker after discovery. For ordinary runtime commands, `create_file` for `wordpress-bridge/commands/pending/<id>.json` is sufficient; a local-file parameter on the GitHub connector is NOT required.\n";
-        $new_discovery = "If a usable GitHub write action is already visible, do not run connector discovery. If discovery was actually required, keep the already-established canonical runtime and do not re-verify its marker afterward unless the connected GitHub account/tool context changed. For ordinary runtime commands, `create_file` for `wordpress-bridge/commands/pending/<id>.json` is sufficient; a local-file parameter on the GitHub connector is NOT required.\n";
-        if (strpos($agents, $new_discovery) === false) {
-            if (strpos($agents, $old_discovery) === false) {
-                return new WP_Error('wpab_runtime_resolution_discovery_shape', 'Canonical AGENTS.md did not contain the expected connector-discovery guidance.', ['status' => 409]);
-            }
-            $agents = str_replace($old_discovery, $new_discovery, $agents);
-        }
-
-        $agents_write = self::put_guidance_if_changed($token, $repository, $branch, 'AGENTS.md', $agents);
-        if (is_wp_error($agents_write)) {
-            return $agents_write;
-        }
-
-        $runtime = TakKa_WordPress_Bridge_Direct_GitHub::get_text_file($token, $repository, $branch, 'wordpress-bridge/WEBHOOK_RUNTIME.md');
-        if (is_wp_error($runtime)) {
-            return $runtime;
-        }
-        $runtime_fast = "Resolution fast path: reuse this exact canonical repository/branch during the current task/session unless a migration signal appears. If verification is required, read `wordpress-bridge/RUNTIME_CONNECTION.json` first and only; a retired marker must redirect through `replaced_by` without further repository inspection. If `create_file` is already available, write the pending command immediately instead of rediscovering GitHub tools or runtimes.\n";
-        if (strpos($runtime, $runtime_fast) === false) {
-            $anchor = "Marker: `wordpress-bridge/RUNTIME_CONNECTION.json`\n";
-            if (strpos($runtime, $anchor) === false) {
-                return new WP_Error('wpab_runtime_resolution_runtime_shape', 'WEBHOOK_RUNTIME.md did not contain the expected marker line.', ['status' => 409]);
-            }
-            $runtime = str_replace($anchor, $anchor . $runtime_fast, $runtime);
-        }
-
-        $runtime_write = self::put_guidance_if_changed($token, $repository, $branch, 'wordpress-bridge/WEBHOOK_RUNTIME.md', $runtime);
-        if (is_wp_error($runtime_write)) {
-            return $runtime_write;
-        }
-
-        return [
-            'ok' => true,
-            'version' => self::RESOLUTION_GUIDANCE_VERSION,
-            'agents' => $agents_write,
-            'runtime' => $runtime_write,
-        ];
-    }
-
-    private static function put_guidance_if_changed(string $token, string $repository, string $branch, string $path, string $content)
-    {
-        $current = TakKa_WordPress_Bridge_Direct_GitHub::get_text_file($token, $repository, $branch, $path);
-        if (is_wp_error($current)) {
-            return $current;
-        }
-        if (hash_equals(hash('sha256', $current), hash('sha256', $content))) {
-            return ['changed' => false, 'sha256' => hash('sha256', $content)];
-        }
-
-        $written = TakKa_WordPress_Bridge_Direct_GitHub::put_text_file(
-            $token,
-            $repository,
-            $branch,
-            $path,
-            $content,
-            'WP Agent Bridge: sync canonical runtime fast-resolution guidance'
-        );
-        if (is_wp_error($written)) {
-            return $written;
-        }
-        return ['changed' => true, 'sha256' => hash('sha256', $content)];
     }
 
     private static function direct_connected(): bool
