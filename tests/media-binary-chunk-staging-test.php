@@ -80,7 +80,8 @@ if (!is_string($fast)
     || strpos($fast, 'transport_fast_path') === false
     || strpos($fast, 'git-blob-sha-direct') === false
     || strpos($fast, "\$upload['normal_flow_verify_first'] = false") === false
-    || strpos($fast, "\$upload['preferred_publish_mode'] = 'single-git-tree-commit'") === false) {
+    || strpos($fast, "\$upload['automatic_for_staged_data_paths'] = true") === false
+    || strpos($fast, "\$upload['preferred_publish_mode'] = 'single-inline-tree-commit-when-supported'") === false) {
     fwrite(STDERR, "Direct Runtime media blob-SHA fast path is incomplete.\n");
     exit(1);
 }
