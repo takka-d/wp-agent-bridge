@@ -32,7 +32,7 @@ $requiredHelperMarkers = [
     "'rest_request_before_callbacks'",
     "'rest_request_after_callbacks'",
     "'side_effects' => false",
-    "'source_cleanup' => false",
+    "['source_cleanup'] = false",
 ];
 
 foreach ($requiredHelperMarkers as $marker) {
