@@ -72,15 +72,15 @@ foreach ([
 
 $fast = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-media-fast-path.php');
 if (!is_string($fast)
-    || strpos($fast, "array_key_exists('data_blob_shas', $json)") === false
+    || strpos($fast, "array_key_exists('data_blob_shas', \$json)") === false
     || strpos($fast, 'read_blob_text') === false
     || strpos($fast, 'single-recursive-tree-read') === false
     || strpos($fast, 'snapshot_sources') === false
     || strpos($fast, 'chunk_integrity') === false
     || strpos($fast, 'transport_fast_path') === false
     || strpos($fast, 'git-blob-sha-direct') === false
-    || strpos($fast, "'normal_flow_verify_first' => false") === false
-    || strpos($fast, "'preferred_publish_mode' => 'single-git-tree-commit'") === false) {
+    || strpos($fast, "\$upload['normal_flow_verify_first'] = false") === false
+    || strpos($fast, "\$upload['preferred_publish_mode'] = 'single-git-tree-commit'") === false) {
     fwrite(STDERR, "Direct Runtime media blob-SHA fast path is incomplete.\n");
     exit(1);
 }
