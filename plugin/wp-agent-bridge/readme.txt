@@ -3,7 +3,7 @@ Contributors: takka-d
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.1.6
+Stable tag: 1.1.7
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
@@ -75,6 +75,11 @@ This is a custom proprietary/source-available license, not an open-source licens
 High-impact writes remain subject to the Bridge's preview, confirmation, state-hash, plan-hash, impact-hash, active-theme/plugin, and sensitive-key protections.
 
 == Changelog ==
+
+= 1.1.7 =
+* Adds pinned-source self-update: a small runtime command can download the official GitHub source archive at an exact commit, reconstruct the full plugin manifest locally, verify the expected aggregate SHA-256, and then reuse the existing PHP-parse/backup/rollback/full-manifest safety path.
+* Removes the need for ChatGPT or the user to transport a 1+ MiB Base64 self-update command after a site is on 1.1.7 or newer.
+* Keeps source repository and download host fixed, requires a full commit SHA and expected manifest SHA-256, and retains explicit confirmation for source-package deletions.
 
 = 1.1.6 =
 * Adds exact guarded theme writes with expected source SHA-256 and stale current-target SHA checks while preserving existing lint/backup/rename behavior.
