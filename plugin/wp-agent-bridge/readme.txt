@@ -3,7 +3,7 @@ Contributors: takka-d
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.1.5
+Stable tag: 1.1.6
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
@@ -30,7 +30,7 @@ The project is designed around these principles:
 * Completed-response request IDs for retry-safe delivery.
 * Pending-directory reconciliation after missed Webhook/bookkeeping delivery.
 * Protected handling for user data, post meta, options, and other sensitive WordPress state.
-* Media transport selected according to whether the source is ChatGPT-local or already GitHub-manageable.
+* Media transport selected according to source and available GitHub write capabilities.
 
 == Installation ==
 
@@ -48,11 +48,13 @@ PATs, manual Webhook secrets, private keys, Bridge Keys, and GitHub Actions work
 
 == Media transfer ==
 
-Media files up to 6 MiB are supported. The runtime instructions select transport from the source of the file rather than forcing every image through GitHub media payload files.
+Media files up to 6 MiB are supported.
 
-For a ChatGPT conversation attachment or sandbox/container file that cannot be passed to the GitHub connector as a local file reference, the preferred path is `/wp-agent-bridge-media/v1/upload-chunk`. The local binary is split into ordered chunks, each chunk is Base64-encoded and integrity-checked, and sequential normal runtime commands send the chunks to WordPress. The final chunk triggers whole-file reconstruction, byte-count/SHA-256 validation, Media Library creation, and WordPress-side temporary-file cleanup.
+For ChatGPT-local, conversation-uploaded, sandbox, or connector-downloaded files, the preferred route is the batched staged-media path when GitHub can write UTF-8 text/blobs. Split the original binary before Base64 encoding, stage bounded independent chunks under `wordpress-bridge/media/pending/`, and publish the payloads plus one pending upload command together when Git Data operations are available. The upload itself validates whole-file bytes/SHA-256 and optional per-chunk integrity before creating the attachment, so a separate verify-first pass is not used in the normal successful path.
 
-For media already available to the GitHub connector as manageable text/blob input, the self-contained staged-media path remains available under `wordpress-bridge/media/pending/`. The original binary is split first, each chunk is Base64-encoded independently, staged blobs are verified before publication, and the payload files plus upload command can be published atomically in one Git tree/commit/ref update. WordPress verifies the reconstructed file and removes successful temporary payloads in one bounded-retry cleanup commit.
+The fast path resolves all ordered staged paths from one current Git tree snapshot and reads the resulting Git blobs directly. Optional `data_blob_shas` can pin a staged path to the blob SHA already returned by the staging operation. When staged-media transfer is unavailable or actually fails, `/wp-agent-bridge-media/v1/upload-chunk` remains the authenticated sequential fallback.
+
+`/wp-agent-bridge-runtime/v1/media-verify` is reserved for explicit verify-only requests, uncertain staging, or integrity-409 diagnosis/recovery. Integrity failures include chunk diagnostics so only mismatched staged payloads need to be replaced when identifiable.
 
 == Delivery recovery ==
 
@@ -73,6 +75,13 @@ This is a custom proprietary/source-available license, not an open-source licens
 High-impact writes remain subject to the Bridge's preview, confirmation, state-hash, plan-hash, impact-hash, active-theme/plugin, and sensitive-key protections.
 
 == Changelog ==
+
+= 1.1.6 =
+* Adds exact guarded theme writes with expected source SHA-256 and stale current-target SHA checks while preserving existing lint/backup/rename behavior.
+* Adds verify-only staged-media diagnostics and per-chunk integrity reporting for 409 recovery without attachment or Site Icon side effects.
+* Speeds normal staged media upload by removing verify-first duplication, resolving ordered `data_paths` from one Git tree snapshot, and reading payload Git blobs directly.
+* Keeps `data_blob_shas` optional as an additional path-to-blob integrity pin and preserves the original Direct Media implementation as the real compatibility fallback.
+* Updates generated runtime guidance with the canonical-runtime fast path so already verified runtimes are reused instead of repeatedly exploring retired or neighboring repositories.
 
 = 1.1.5 =
 * Routes ChatGPT-local, conversation-uploaded, and sandbox media through the existing authenticated chunk-upload path instead of trying to stage local files into GitHub `media/pending/*.b64` first.
