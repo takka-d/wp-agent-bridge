@@ -102,14 +102,17 @@ jobs:
           set -euo pipefail
           php tests/site-icon-media-flow-test.php
 
-      - name: Verify release metadata
+      - name: Verify development and stable metadata
         shell: bash
         run: |
           set -euo pipefail
           plugin_version="$(sed -n 's/^ \* Version: //p' plugin/wp-agent-bridge/takka-wordpress-bridge.php | head -n1 | tr -d '\r')"
           stable_tag="$(sed -n 's/^Stable tag: //p' plugin/wp-agent-bridge/readme.txt | head -n1 | tr -d '\r')"
           test -n "$plugin_version"
-          test "$plugin_version" = "$stable_tag"
+          test -n "$stable_tag"
+          printf '%s\n' "$plugin_version" "$stable_tag" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9.-]+)?$' >/dev/null
+          newest="$(printf '%s\n%s\n' "$stable_tag" "$plugin_version" | sort -V | tail -n1)"
+          test "$newest" = "$plugin_version"
           test -f LICENSE.md
           test -f plugin/wp-agent-bridge/LICENSE.md
 
