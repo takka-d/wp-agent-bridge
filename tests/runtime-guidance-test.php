@@ -30,6 +30,11 @@ foreach ([
     'RUNTIME_CAPABILITIES.json',
     'media.upload.inline',
     'post.content.read_range',
+    'post.get` is metadata-oriented',
+    'post.update` must not replace `content`',
+    'expected_bytes',
+    'expected_sha256',
+    'Nested items may use the same high-level operation names',
     'readonly.batch',
     'GitHub Actions is for source CI/package/release',
     'Never put `?query=...` in a REST `route` field',
@@ -54,6 +59,7 @@ foreach ([
 
 if (strpos($runtime, '/takka-v099/v1/operate') === false
     || strpos($runtime, 'GitHub Actions is not a command worker') === false
+    || strpos($runtime, 'policy layer bounds post reads') === false
     || strpos($runtime, 'Installed Bridge: `1.1.16`') === false) {
     guidance_fail('WEBHOOK_RUNTIME guidance is incomplete.');
 }
