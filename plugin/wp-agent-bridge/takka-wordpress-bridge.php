@@ -72,6 +72,7 @@ require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v096-theme-files.
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v096-health.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v097-workspace.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v098-read-batch.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v099-operations.php';
 
 // Self-contained runtime. All GitHub App credentials remain on this WordPress
 // installation and normal runtime traffic goes directly between the user's own
@@ -123,6 +124,7 @@ TakKa_WordPress_Bridge_V096_Theme_Files::init();
 TakKa_WordPress_Bridge_V096_Health::init();
 TakKa_WordPress_Bridge_V097_Workspace::init();
 TakKa_WordPress_Bridge_V098_Read_Batch::init();
+TakKa_WordPress_Bridge_V099_Operations::init();
 TakKa_WordPress_Bridge_Direct_Runtime::init();
 TakKa_WordPress_Bridge_Direct_Runtime_V2::init();
 TakKa_WordPress_Bridge_Direct_Webhook_Loop_Guard::init();
