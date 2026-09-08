@@ -124,6 +124,7 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'workspace_guarded_write' => true,
                 'workspace_exact_patch' => true,
                 'workspace_snapshot_rollback' => true,
+                'readonly_batch' => true,
                 'theme_file_inspection' => true,
                 'theme_guarded_write' => true,
                 'diagnostics' => true,
@@ -138,6 +139,31 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'self_update' => [
                     'route' => '/takka-bridge/v1/v06',
                     'actions' => ['bridge.self_update.status', 'bridge.self_update.apply', 'bridge.self_update.rollback'],
+                ],
+                'readonly_batch' => [
+                    'route' => '/takka-v098/v1/manage',
+                    'action' => 'readonly.batch',
+                    'limits' => [
+                        'max_operations' => 12,
+                        'max_operation_params_bytes' => 262144,
+                        'max_response_bytes' => 1048576,
+                        'max_total_ms' => 20000,
+                    ],
+                    'direct_actions' => [
+                        'v04.capabilities', 'plugin.list', 'theme.manage.list', 'cron.schedules',
+                        'admin.capabilities', 'v05.capabilities', 'idempotency.status', 'menu.list',
+                        'menu.get', 'updates.status', 'v06.capabilities', 'bridge.self_update.status',
+                    ],
+                    'rest_actions' => [
+                        'v097.capabilities', 'workspace.list', 'workspace.file.get',
+                        'workspace.file.read.range', 'workspace.file.search', 'workspace.file.diff',
+                        'workspace.snapshot.list', 'theme.files.list', 'theme.files.search',
+                        'theme.file.read.many', 'theme.file.outline', 'theme.file.read.range',
+                        'page.html.inspect', 'media.file.inspect', 'site.icon.get',
+                        'media.upload.capabilities',
+                    ],
+                    'mutation_actions_allowed' => false,
+                    'arbitrary_rest_allowed' => false,
                 ],
                 'workspace' => [
                     'route' => '/takka-v097/v1/manage',
@@ -190,6 +216,7 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
             'fast_path' => [
                 'runtime_resolution' => 'Read RUNTIME_CONNECTION.json only when canonical runtime is not already verified or a migration signal appears.',
                 'capability_resolution' => 'Read this file before issuing capability probe commands or searching source code for known Bridge routes/actions.',
+                'readonly_batch' => 'When two or more independent allowlisted reads are needed, prefer one readonly.batch request instead of multiple pending commands/webhooks/results.',
                 'workspace' => 'Prefer workspace range/search/patch for iterative large text artifacts instead of repeated File Library or historical-response reconstruction.',
             ],
         ];
