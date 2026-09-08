@@ -4,6 +4,21 @@ define('ABSPATH', __DIR__ . '/');
 
 $GLOBALS['wpab_test_options'] = [];
 
+class WP_Error {
+    private string $code;
+    private string $message;
+    private $data;
+    public function __construct($code = '', $message = '', $data = null) {
+        $this->code = (string) $code;
+        $this->message = (string) $message;
+        $this->data = $data;
+    }
+    public function get_error_code() { return $this->code; }
+    public function get_error_message() { return $this->message; }
+    public function get_error_data() { return $this->data; }
+}
+function is_wp_error($value) { return $value instanceof WP_Error; }
+
 function get_option($name, $default = false) {
     return array_key_exists($name, $GLOBALS['wpab_test_options'])
         ? $GLOBALS['wpab_test_options'][$name]
@@ -14,6 +29,11 @@ function add_option($name, $value, $deprecated = '', $autoload = null) {
     if (array_key_exists($name, $GLOBALS['wpab_test_options'])) {
         return false;
     }
+    $GLOBALS['wpab_test_options'][$name] = $value;
+    return true;
+}
+
+function update_option($name, $value, $autoload = null) {
     $GLOBALS['wpab_test_options'][$name] = $value;
     return true;
 }
@@ -67,8 +87,48 @@ assert_true(is_string($replacement) && $replacement !== '', 'a stale owner must 
 assert_true(TakKa_WordPress_Bridge_Direct_Runtime::command_inflight($request_id), 'replacement owner must become active');
 $release->invoke(null, $request_id, $replacement);
 
+$store_journal = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'store_command_journal');
+$store_journal->setAccessible(true);
+$load_journal = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'load_command_journal');
+$load_journal->setAccessible(true);
+$clear_journal = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'clear_command_journal');
+$clear_journal->setAccessible(true);
+$journal_option = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'command_journal_option');
+$journal_option->setAccessible(true);
+
+$journal_request = 'media-bookkeeping-race';
+$journal_id = 'media-bookkeeping-race';
+$command_sha = hash('sha256', '{"same":"command"}');
+$result_json = json_encode([
+    'id' => $journal_id,
+    'request_id' => $journal_request,
+    'result' => ['ok' => true, 'status' => 200, 'data' => ['attachment_id' => 123]],
+], JSON_PRETTY_PRINT) . "\n";
+
+$stored = $store_journal->invoke(null, $journal_request, $journal_id, $command_sha, $result_json);
+assert_true($stored === true, 'successful WordPress execution result must be journaled before GitHub bookkeeping');
+$loaded = $load_journal->invoke(null, $journal_request, $journal_id, $command_sha);
+assert_true(is_array($loaded), 'matching recovery must load the local execution journal');
+assert_true(($loaded['output']['result']['data']['attachment_id'] ?? null) === 123, 'journal replay must preserve the original successful result');
+assert_true(($loaded['result_json'] ?? '') === $result_json, 'journal replay must preserve the exact result JSON for GitHub');
+
+$conflict = $load_journal->invoke(null, $journal_request, $journal_id, hash('sha256', '{"changed":"command"}'));
+assert_true($conflict instanceof WP_Error && $conflict->get_error_code() === 'takka_direct_command_journal_conflict', 'same request_id with changed command content must be rejected');
+
+$clear_journal->invoke(null, $journal_request);
+assert_true($load_journal->invoke(null, $journal_request, $journal_id, $command_sha) === null, 'journal must be cleared once the GitHub result is durable');
+
+$journal_option_name = $journal_option->invoke(null, $journal_request);
+$GLOBALS['wpab_test_options'][$journal_option_name] = [
+    'id' => $journal_id,
+    'command_sha256' => $command_sha,
+    'created_at' => time() - 86401,
+    'result_json' => $result_json,
+];
+assert_true($load_journal->invoke(null, $journal_request, $journal_id, $command_sha) === null, 'stale journals must expire rather than block future recovery forever');
+
 $v2 = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-runtime-v2.php');
 assert_true(is_string($v2) && strpos($v2, 'command_inflight($request_id)') !== false, 'V2 recovery must consult Direct Runtime in-flight ownership');
 assert_true(strpos($v2, "'reason' => 'command-in-flight'") !== false, 'V2 recovery must expose the in-flight skip reason');
 
-echo "direct command in-flight ownership: OK\n";
+echo "direct command in-flight ownership and local journal: OK\n";
