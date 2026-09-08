@@ -20,7 +20,7 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
     private const LEGACY_COMPLETE_ROUTE = '/takka-bridge-onboarding/v1/complete';
     private const IDENTITY_SYNC_VERSION_OPTION = 'takka_bridge_runtime_identity_sync_version_v1';
     private const IDENTITY_SYNC_RETRY = 'takka_bridge_runtime_identity_sync_retry_v1';
-    private const IDENTITY_SYNC_VERSION = 2;
+    private const IDENTITY_SYNC_VERSION = 3;
 
     public static function init(): void
     {
@@ -50,10 +50,11 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
     }
 
     /**
-     * Existing connected installs need one idempotent identity resync after this
-     * guidance version is deployed so generated AGENTS/WEBHOOK instructions use
-     * the current fast path. The identity generator remains the single source of
-     * truth; this method never patches generated files itself.
+     * Existing connected installs need one idempotent resync after the routing
+     * contract changes. Identity establishes the canonical marker/direct runtime;
+     * Runtime_Guidance then overwrites generated human guidance with the current
+     * installed-version routing rules. This prevents old identity text from
+     * reintroducing obsolete media/tool-selection advice.
      */
     public static function sync_identity_guidance_if_needed(): void
     {
@@ -67,11 +68,11 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
             return;
         }
 
-        $identity = TakKa_WordPress_Bridge_Direct_Runtime_Identity::sync();
-        if (is_wp_error($identity)) {
+        $synced = self::sync_identity_and_guidance();
+        if (is_wp_error($synced)) {
             set_transient(self::IDENTITY_SYNC_RETRY, 1, 10 * MINUTE_IN_SECONDS);
             set_transient(self::IDENTITY_WARNING, [
-                'message' => $identity->get_error_message(),
+                'message' => $synced->get_error_message(),
                 'created_at' => time(),
             ], HOUR_IN_SECONDS);
             return;
@@ -149,13 +150,13 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
             update_option(self::LEGACY_CONNECTION, $backup, false);
         }
 
-        // The connection has already been authenticated and stored by the
-        // onboarding endpoint, so initialize the canonical identity immediately.
-        // Identity::sync() is idempotent and writes the complete generated files.
-        $identity = TakKa_WordPress_Bridge_Direct_Runtime_Identity::sync();
-        if (is_wp_error($identity)) {
+        // The connection has already been authenticated and stored. Initialize
+        // the canonical marker and then force the current routing guidance to be
+        // the final generated AGENTS/WEBHOOK content for this setup request.
+        $synced = self::sync_identity_and_guidance();
+        if (is_wp_error($synced)) {
             set_transient(self::IDENTITY_WARNING, [
-                'message' => $identity->get_error_message(),
+                'message' => $synced->get_error_message(),
                 'created_at' => time(),
             ], HOUR_IN_SECONDS);
             return $response;
@@ -165,6 +166,26 @@ final class TakKa_WordPress_Bridge_Direct_Onboarding_Guard
         delete_transient(self::IDENTITY_SYNC_RETRY);
         delete_transient(self::IDENTITY_WARNING);
         return $response;
+    }
+
+    private static function sync_identity_and_guidance()
+    {
+        $identity = TakKa_WordPress_Bridge_Direct_Runtime_Identity::sync();
+        if (is_wp_error($identity)) {
+            return $identity;
+        }
+        if (!class_exists('TakKa_WordPress_Bridge_Runtime_Guidance')) {
+            return new WP_Error(
+                'wpab_runtime_guidance_missing',
+                'Current runtime guidance generator is unavailable.',
+                ['status' => 500]
+            );
+        }
+        $guidance = TakKa_WordPress_Bridge_Runtime_Guidance::sync();
+        if (is_wp_error($guidance)) {
+            return $guidance;
+        }
+        return ['ok' => true, 'identity' => $identity, 'guidance' => $guidance];
     }
 
     private static function direct_connected(): bool
