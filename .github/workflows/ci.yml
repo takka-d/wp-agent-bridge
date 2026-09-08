@@ -30,6 +30,12 @@ jobs:
           set -euo pipefail
           php tests/direct-webhook-loop-guard-test.php
 
+      - name: Direct Runtime in-flight ownership regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/direct-command-inflight-test.php
+
       - name: Media binary-chunk staging regression
         shell: bash
         run: |
