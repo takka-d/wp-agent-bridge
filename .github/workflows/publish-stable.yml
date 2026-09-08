@@ -4,12 +4,12 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - '.github/release/v1.1.14.json'
+      - '.github/release/v1.1.15.json'
       - '.github/workflows/publish-stable.yml'
   push:
     branches: [main]
     paths:
-      - '.github/release/v1.1.14.json'
+      - '.github/release/v1.1.15.json'
       - '.github/workflows/publish-stable.yml'
   workflow_dispatch:
 
@@ -33,12 +33,12 @@ jobs:
           import json
           from pathlib import Path
 
-          request = json.loads(Path('.github/release/v1.1.14.json').read_text())
+          request = json.loads(Path('.github/release/v1.1.15.json').read_text())
           expected = {
-              'tag': 'v1.1.14',
-              'version': '1.1.14',
+              'tag': 'v1.1.15',
+              'version': '1.1.15',
               'channel': 'stable',
-              'plugin_zip_sha256': '67863c713e6e6e3df5ad8ef6420e26d61d8ea7b264e9d75f4875759d2b2c0d26',
+              'plugin_zip_sha256': '5530e46f194dabee41710076f588d91ae183945480a010d53aa23729f9d53ded',
               'stable': True,
               'prerelease': False,
           }
@@ -46,9 +46,9 @@ jobs:
               raise SystemExit(f'Unexpected stable release request: {request!r}')
 
           manifest = json.loads(Path('UPDATE_MANIFEST.json').read_text())
-          if manifest.get('version') != '1.1.14':
+          if manifest.get('version') != '1.1.15':
               raise SystemExit(f"Unexpected UPDATE_MANIFEST version: {manifest.get('version')!r}")
-          if manifest.get('source_commit') != 'c36a53406c7d85233cc9782c1ef7bab4ed1b8dbe':
+          if manifest.get('source_commit') != '6782229322e01604d3873f2d3a27b1ebdb235678':
               raise SystemExit(f"Unexpected source_commit: {manifest.get('source_commit')!r}")
           PY
 
@@ -57,7 +57,7 @@ jobs:
         run: |
           set -euo pipefail
           version="$(sed -n 's/^ \* Version: //p' plugin/wp-agent-bridge/takka-wordpress-bridge.php | head -n1 | tr -d '\r')"
-          test "$version" = '1.1.14'
+          test "$version" = '1.1.15'
           mkdir -p release-assets
           archive="release-assets/wp-agent-bridge-${version}.zip"
           verify_archive="$(mktemp --suffix=.zip)"
@@ -71,7 +71,7 @@ jobs:
 
           output = Path(sys.argv[1])
           source_root = 'plugin/wp-agent-bridge/'
-          raw = subprocess.check_output(['git', 'ls-tree', '-r', '-z', 'c36a53406c7d85233cc9782c1ef7bab4ed1b8dbe', '--', source_root])
+          raw = subprocess.check_output(['git', 'ls-tree', '-r', '-z', '6782229322e01604d3873f2d3a27b1ebdb235678', '--', source_root])
           entries = []
           for record in raw.split(b'\0'):
               if not record:
@@ -106,14 +106,14 @@ jobs:
           rm -f "$verify_archive" /tmp/build-wpab-zip.py
 
           actual_sha="$(sha256sum "$archive" | awk '{print $1}')"
-          test "$actual_sha" = '67863c713e6e6e3df5ad8ef6420e26d61d8ea7b264e9d75f4875759d2b2c0d26'
+          test "$actual_sha" = '5530e46f194dabee41710076f588d91ae183945480a010d53aa23729f9d53ded'
           printf '%s  %s\n' "$actual_sha" "wp-agent-bridge-${version}.zip" > release-assets/SHA256SUMS
           unzip -t "$archive"
 
       - name: Upload verified stable assets
         uses: actions/upload-artifact@v4
         with:
-          name: wp-agent-bridge-1.1.14-stable-release-assets
+          name: wp-agent-bridge-1.1.15-stable-release-assets
           path: release-assets/
           if-no-files-found: error
           retention-days: 1
@@ -128,18 +128,18 @@ jobs:
       - name: Download verified assets
         uses: actions/download-artifact@v4
         with:
-          name: wp-agent-bridge-1.1.14-stable-release-assets
+          name: wp-agent-bridge-1.1.15-stable-release-assets
           path: release-assets
 
       - name: Publish immutable stable release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: v1.1.14
+          TAG: v1.1.15
         run: |
           set -euo pipefail
-          expected='67863c713e6e6e3df5ad8ef6420e26d61d8ea7b264e9d75f4875759d2b2c0d26'
-          test "$(sha256sum release-assets/wp-agent-bridge-1.1.14.zip | awk '{print $1}')" = "$expected"
+          expected='5530e46f194dabee41710076f588d91ae183945480a010d53aa23729f9d53ded'
+          test "$(sha256sum release-assets/wp-agent-bridge-1.1.15.zip | awk '{print $1}')" = "$expected"
 
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $TAG already exists; refusing to mutate an existing stable release." >&2
@@ -147,31 +147,33 @@ jobs:
           fi
 
           cat > /tmp/release-notes.md <<'EOF'
-          ## WP Agent Bridge 1.1.14
+          ## WP Agent Bridge 1.1.15
 
           Stable public package for the self-contained Direct Runtime architecture.
 
-          Normal operation:
+          Normal WordPress operation:
 
           `ChatGPT → user's private runtime repository → site-specific GitHub App signed Webhook → user's WordPress → same runtime repository → ChatGPT`
 
-          This release includes source-mode self-update, staged media Fast Path, persistent development Workspace, read-only batch operations, runtime capability discovery, and atomic result/completed/pending bookkeeping.
+          GitHub Actions are used for source CI, package verification, release publication, and release metadata; they are not the worker in the normal WordPress operation path.
+
+          This release adds explicit size-based media routing: local or conversation-uploaded media up to 1 MiB should use one inline `media.upload_base64` command, while larger files use staged Media Fast Path with integrity checks.
 
           Requirements: WordPress 6.9+, PHP 7.4+, HTTPS, OpenSSL, a GitHub account, and a ChatGPT environment that can connect to GitHub.
 
           Plugin ZIP SHA-256:
 
-          `67863c713e6e6e3df5ad8ef6420e26d61d8ea7b264e9d75f4875759d2b2c0d26`
+          `5530e46f194dabee41710076f588d91ae183945480a010d53aa23729f9d53ded`
 
           The package is free to download, install, and use under WP Agent Bridge License 1.0. It is source-available rather than an open-source license; redistribution restrictions apply.
           EOF
 
           gh release create "$TAG" \
-            release-assets/wp-agent-bridge-1.1.14.zip \
+            release-assets/wp-agent-bridge-1.1.15.zip \
             release-assets/SHA256SUMS \
             --repo "$GITHUB_REPOSITORY" \
-            --target 'c36a53406c7d85233cc9782c1ef7bab4ed1b8dbe' \
-            --title 'WP Agent Bridge 1.1.14' \
+            --target '6782229322e01604d3873f2d3a27b1ebdb235678' \
+            --title 'WP Agent Bridge 1.1.15' \
             --notes-file /tmp/release-notes.md
 
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,name,isPrerelease,isDraft,url
