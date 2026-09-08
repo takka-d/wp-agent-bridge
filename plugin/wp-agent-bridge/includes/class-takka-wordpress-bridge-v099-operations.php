@@ -203,7 +203,9 @@ final class TakKa_WordPress_Bridge_V099_Operations
             if ($fields === null || !$fields) {
                 return new WP_Error('takka_bridge_v099_fields', 'post.update requires a non-empty fields object.', ['status' => 400]);
             }
-            return self::core_rest('POST', '/wp/v2/posts/' . $post_id, [], $fields);
+            // A title/featured-image edit must not echo the entire post body.
+            $response_fields = array_unique(array_merge(['id', 'status', 'modified', 'modified_gmt'], array_keys($fields)));
+            return self::core_rest('POST', '/wp/v2/posts/' . $post_id, ['_fields' => implode(',', $response_fields)], $fields);
         }
         if ($operation === 'media.delete') {
             $attachment_id = self::positive_id($params, 'attachment_id');
