@@ -1,0 +1,8 @@
+{
+  "tag": "v1.1.15",
+  "version": "1.1.15",
+  "channel": "stable",
+  "plugin_zip_sha256": "5530e46f194dabee41710076f588d91ae183945480a010d53aa23729f9d53ded",
+  "stable": true,
+  "prerelease": false
+}
