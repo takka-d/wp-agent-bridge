@@ -1,0 +1,28 @@
+name: Legacy self-update bootstrap test
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tools/legacy-self-update/**'
+      - '.github/workflows/legacy-self-update-bootstrap-test.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'tools/legacy-self-update/**'
+      - '.github/workflows/legacy-self-update-bootstrap-test.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: PHP syntax
+        run: php -l tools/legacy-self-update/bootstrap-1.1.6.907.php
+      - name: Build and integrity-check migration command
+        run: python tools/legacy-self-update/build-command.py --check
