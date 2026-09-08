@@ -83,6 +83,7 @@ jobs:
         run: |
           set -euo pipefail
           php tests/operation-policy-test.php
+          php tests/runtime-result-summary-test.php
 
       - name: Bounded post content range regression
         shell: bash

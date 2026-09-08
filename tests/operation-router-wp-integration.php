@@ -167,6 +167,10 @@ try {
     // Distinct long parent IDs must not collapse to the same child request ID.
     $long_id = str_repeat('r', 72);
     $title_a = $runtime_call($long_id . '-a', 'post.update', ['post_id' => $post_id, 'fields' => ['title' => 'Replay target']]);
+    $update_payload = $title_a['data']['data']['result']['data']['data'] ?? [];
+    if (array_key_exists('content', $update_payload) || !isset($update_payload['id'], $update_payload['title'])) {
+        op_integration_fail('Metadata update echoed full content or omitted updated fields.');
+    }
     wp_update_post(['ID' => $post_id, 'post_title' => 'Intervening edit']);
     $replay = $runtime_call($long_id . '-a', 'post.update', ['post_id' => $post_id, 'fields' => ['title' => 'Replay target']]);
     if (empty($title_a['ok']) || empty($replay['ok']) || get_post($post_id)->post_title !== 'Intervening edit') {
