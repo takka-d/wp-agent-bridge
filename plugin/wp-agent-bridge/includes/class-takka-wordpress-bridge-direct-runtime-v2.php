@@ -13,6 +13,8 @@ if (!defined('ABSPATH')) {
  * - bookkeeping left behind by a GitHub branch race is repaired;
  * - commands whose result was not written are re-dispatched with the same
  *   request_id, relying on the Bridge's completed-response idempotency;
+ * - commands still owned by an active Direct Runtime request are never
+ *   re-dispatched by recovery;
  * - a short WordPress-side lock prevents concurrent recovery workers.
  */
 final class TakKa_WordPress_Bridge_Direct_Runtime_V2
@@ -200,6 +202,16 @@ final class TakKa_WordPress_Bridge_Direct_Runtime_V2
         $request_id = isset($command['request_id']) ? (string) $command['request_id'] : $id;
         if (!self::valid_id($id) || !self::valid_id($request_id)) {
             return self::error_outcome($path, '', 'Unsafe id or request_id.');
+        }
+
+        if (TakKa_WordPress_Bridge_Direct_Runtime::command_inflight($request_id)) {
+            return [
+                'path' => $path,
+                'id' => $id,
+                'ok' => true,
+                'skipped' => true,
+                'reason' => 'command-in-flight',
+            ];
         }
 
         $result_path = 'wordpress-bridge/results/' . $id . '.json';

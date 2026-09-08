@@ -3,7 +3,7 @@ Contributors: takka-d
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.1.7
+Stable tag: 1.1.8
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
@@ -58,7 +58,7 @@ The fast path resolves all ordered staged paths from one current Git tree snapsh
 
 == Delivery recovery ==
 
-A GitHub push is not treated as a durable queue by itself. Every valid runtime push also reconciles the current `wordpress-bridge/commands/pending/` directory. Self-generated media/result/completed bookkeeping pushes are ignored by the recovery scanner so they cannot recursively redispatch the command that created them. Authenticated runtime push handling is serialized before the primary executor so reconciliation cannot race an already-running command and persist a temporary idempotency-in-progress response as a terminal result. If WordPress completed a command but GitHub bookkeeping failed, the same request ID is replayed from WordPress's completed-response idempotency rather than repeating the side effect, and the pending/result/completed files are repaired.
+A GitHub push is not treated as a durable queue by itself. Every valid runtime push also reconciles the current `wordpress-bridge/commands/pending/` directory. Self-generated media/result/completed bookkeeping pushes are ignored when their changed paths are available. In addition, every active command now owns a per-request ID in-flight marker through WordPress execution and GitHub result/completed/pending bookkeeping; recovery never re-dispatches a command while that marker is live. This prevents media cleanup or other internal GitHub writes from racing the still-running command even when a push payload omits detailed changed-path metadata. Stale in-flight ownership is treated as expired after 10 minutes so a crashed request remains recoverable. If WordPress completed a command but GitHub bookkeeping failed, the same request ID is replayed from WordPress's completed-response idempotency rather than repeating the side effect, and the pending/result/completed files are repaired.
 
 == Self-update safety ==
 
@@ -75,6 +75,11 @@ This is a custom proprietary/source-available license, not an open-source licens
 High-impact writes remain subject to the Bridge's preview, confirmation, state-hash, plan-hash, impact-hash, active-theme/plugin, and sensitive-key protections.
 
 == Changelog ==
+
+= 1.1.8 =
+* Adds per-request ID in-flight ownership around Direct Runtime command execution and GitHub bookkeeping.
+* Prevents V2 pending recovery from re-dispatching a command that is still running, including media uploads whose own cleanup commit triggers another webhook before the original result is written.
+* Treats stale in-flight ownership as expired after 10 minutes so crashed requests remain recoverable.
 
 = 1.1.7 =
 * Adds pinned-source self-update: a small runtime command can download the official GitHub source archive at an exact commit, reconstruct the full plugin manifest locally, verify the expected aggregate SHA-256, and then reuse the existing PHP-parse/backup/rollback/full-manifest safety path.
