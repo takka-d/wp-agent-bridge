@@ -3,7 +3,7 @@ Contributors: takka-d
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.1.9
+Stable tag: 1.1.10
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
@@ -52,7 +52,7 @@ Media files up to 6 MiB are supported.
 
 For ChatGPT-local, conversation-uploaded, sandbox, or connector-downloaded files, the preferred route is the batched staged-media path when GitHub can write UTF-8 text/blobs. Split the original binary before Base64 encoding, stage bounded independent chunks under `wordpress-bridge/media/pending/`, and publish the payloads plus one pending upload command together when Git Data operations are available. The upload itself validates whole-file bytes/SHA-256 and optional per-chunk integrity before creating the attachment, so a separate verify-first pass is not used in the normal successful path.
 
-The fast path resolves all ordered staged paths from one current Git tree snapshot and reads the resulting Git blobs directly. Optional `data_blob_shas` can pin a staged path to the blob SHA already returned by the staging operation. When staged-media transfer is unavailable or actually fails, `/wp-agent-bridge-media/v1/upload-chunk` remains the authenticated sequential fallback.
+The fast path resolves all ordered staged paths from one current Git tree snapshot and reads the resulting Git blobs directly. Optional `data_blob_shas` can pin a staged path to the blob SHA already returned by the staging operation. Successful fast-path media handling now runs from `rest_pre_dispatch`, which guarantees that the registered legacy media callback does not run a second time after the staged payload has already been consumed and deleted. When staged-media transfer is unavailable or actually fails, `/wp-agent-bridge-media/v1/upload-chunk` remains the authenticated sequential fallback.
 
 `/wp-agent-bridge-runtime/v1/media-verify` is reserved for explicit verify-only requests, uncertain staging, or integrity-409 diagnosis/recovery. Integrity failures include chunk diagnostics so only mismatched staged payloads need to be replaced when identifiable.
 
@@ -60,7 +60,7 @@ The fast path resolves all ordered staged paths from one current Git tree snapsh
 
 A GitHub push is not treated as a durable queue by itself. Every valid runtime push also reconciles the current `wordpress-bridge/commands/pending/` directory. Self-generated media/result/completed bookkeeping pushes are ignored when their changed paths are available. Every active command owns a per-request ID in-flight marker through WordPress execution and GitHub bookkeeping, so concurrent recovery does not re-dispatch a command while it is still running.
 
-After WordPress execution returns, Direct Runtime now persists the exact sanitized result in a local non-autoloaded recovery journal before attempting the GitHub result write. If GitHub bookkeeping races a media cleanup commit or otherwise fails before the result becomes durable, a later recovery of the same request ID reuses that journal instead of executing the WordPress side effect again. The journal is cleared as soon as the GitHub result is durable; stale journals expire after 24 hours. Changed command content under the same request ID is rejected rather than replayed. This covers the failure window between a successful WordPress side effect and durable GitHub result/completed/pending bookkeeping.
+After WordPress execution returns, Direct Runtime persists the exact sanitized result in a local non-autoloaded recovery journal before attempting the GitHub result write. If GitHub bookkeeping races a media cleanup commit or otherwise fails before the result becomes durable, a later recovery of the same request ID reuses that journal instead of executing the WordPress side effect again. The journal is cleared as soon as the GitHub result is durable; stale journals expire after 24 hours. Changed command content under the same request ID is rejected rather than replayed. This covers the failure window between a successful WordPress side effect and durable GitHub result/completed/pending bookkeeping.
 
 == Self-update safety ==
 
@@ -77,6 +77,11 @@ This is a custom proprietary/source-available license, not an open-source licens
 High-impact writes remain subject to the Bridge's preview, confirmation, state-hash, plan-hash, impact-hash, active-theme/plugin, and sensitive-key protections.
 
 == Changelog ==
+
+= 1.1.10 =
+* Moves staged-media Auto Path execution from `rest_request_before_callbacks` to `rest_pre_dispatch` so a successful fast-path upload truly short-circuits the legacy media route callback.
+* Prevents the legacy callback from re-reading an already-deleted staged payload and replacing a successful attachment result with a false GitHub 404.
+* Keeps the existing bounded legacy fallback when Auto Path deliberately yields on GitHub-compatible 404/405/501 capability failures.
 
 = 1.1.9 =
 * Persists a local per-request completion journal after WordPress execution and before GitHub result bookkeeping.
@@ -129,10 +134,9 @@ High-impact writes remain subject to the Bridge's preview, confirmation, state-h
 * Removed the operator-owned runtime/relay architecture from the distribution path.
 * Added recovery scans of the current pending directory so a missed push or interrupted GitHub bookkeeping write can be recovered by a later valid push.
 * Added conflict-safe result/completed/pending bookkeeping and retry behavior.
-* Added completed-response request ID persistence so an identical retried runtime command replays the original response without re-running its WordPress side effect.
-* Rejects reuse of the same request ID with a different payload instead of executing the changed command.
+* Added completed-response request IDs for retry-safe delivery and changed-payload conflict rejection.
 * Hardened Bridge self-update so a full manifest is required; omitted live plugin files are no longer interpreted as implicit deletions.
-* Plugin-file deletion during self-update now requires explicit delete paths and explicit deletion confirmation, and required PHP bootstrap dependencies are checked before replacement.
+* Plugin-file deletion during self-update requires explicit delete paths and confirmation, and required PHP bootstrap dependencies are checked before replacement.
 * Added large-media transport that keeps Base64 payloads outside one command JSON, verifies original byte count and SHA-256, and removes temporary source payloads after success.
 * Retains bounded chunked media transport as an authenticated fallback.
 
