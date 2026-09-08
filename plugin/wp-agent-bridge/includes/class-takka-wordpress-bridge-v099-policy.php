@@ -134,6 +134,21 @@ final class TakKa_WordPress_Bridge_V099_Policy
                 ['status' => 400]
             );
         }
+        // Empty _fields disables core REST filtering and returns the full post.
+        // Reject malformed selectors and restore the bounded default for empty ones.
+        $fields = $query['_fields'];
+        if (!is_string($fields) && !is_array($fields)) {
+            return new WP_Error('wpab_v099_post_get_fields', '_fields must be a string or array of strings.', ['status' => 400]);
+        }
+        $parts = is_array($fields) ? $fields : preg_split('/[\\s,]+/', trim($fields));
+        foreach ($parts as $part) {
+            if (!is_string($part)) {
+                return new WP_Error('wpab_v099_post_get_fields', '_fields must contain only strings.', ['status' => 400]);
+            }
+        }
+        if (!array_filter($parts, static function ($part) { return trim($part) !== ''; })) {
+            $query['_fields'] = implode(',', self::POST_DEFAULT_FIELDS);
+        }
         $params['query'] = $query;
         return $params;
     }
@@ -141,14 +156,14 @@ final class TakKa_WordPress_Bridge_V099_Policy
     private static function fields_include_content($fields): bool
     {
         if (is_string($fields)) {
-            $parts = preg_split('/\s*,\s*/', trim($fields));
+            $parts = preg_split('/[\s,]+/', trim($fields));
         } elseif (is_array($fields)) {
             $parts = $fields;
         } else {
             return false;
         }
         foreach ($parts as $part) {
-            if (is_string($part) && trim($part) === 'content') return true;
+            if (is_string($part) && preg_match('/^content(?:\.|$)/', trim($part))) return true;
         }
         return false;
     }

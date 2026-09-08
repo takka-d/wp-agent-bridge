@@ -94,17 +94,67 @@ if (is_wp_error($post_id) || (int) $post_id < 1) {
 $post_id = (int) $post_id;
 
 try {
+    // Exercise the real Direct Runtime command adapter, not just a hand-built
+    // signed envelope. One operation command must cause one outer dispatch.
+    $runtime_execute = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'execute_command');
+    $runtime_execute->setAccessible(true);
+    $runtime_call = static function (string $id, string $operation, array $params = []) use ($runtime_execute): array {
+        return $runtime_execute->invoke(null, ['type' => 'operation', 'operation' => $operation, 'params' => $params], $id);
+    };
+    $runtime_get = $runtime_call('runtime-metadata', 'post.get', ['post_id' => $post_id]);
+    if (empty($runtime_get['ok']) || ($runtime_get['data']['data']['operation'] ?? '') !== 'post.get') {
+        op_integration_fail('Native operation command did not reach the guarded router.');
+    }
+    $missing_id = 2147483647;
+    $missing = $runtime_call('runtime-missing', 'post.get', ['post_id' => $missing_id]);
+    if (!empty($missing['ok']) || (int) ($missing['status'] ?? 0) !== 404) {
+        op_integration_fail('Missing post was falsely reported as successful by Direct Runtime.');
+    }
+    $partial = $runtime_call('runtime-partial', 'readonly.batch', ['operations' => [
+        ['operation' => 'post.content.read_range', 'params' => ['post_id' => $post_id, 'start_line' => 1, 'max_lines' => 1]],
+        ['operation' => 'post.content.read_range', 'params' => ['post_id' => $missing_id, 'start_line' => 1]],
+    ]]);
+    if (!empty($partial['ok']) || (int) ($partial['status'] ?? 0) !== 207) {
+        op_integration_fail('Partial read batch was falsely reported as complete success.');
+    }
+    foreach (['', []] as $index => $selector) {
+        $bounded = $runtime_call('runtime-empty-fields-' . $index, 'post.get', [
+            'post_id' => $post_id, 'query' => ['context' => 'edit', '_fields' => $selector],
+        ]);
+        $bounded_post = $bounded['data']['data']['result']['data']['data'] ?? null;
+        if (empty($bounded['ok']) || !is_array($bounded_post) || array_key_exists('content', $bounded_post)) {
+            op_integration_fail('Empty _fields leaked the full post through Direct Runtime.');
+        }
+    }
+    $nested_content = $runtime_call('runtime-nested-content', 'post.get', [
+        'post_id' => $post_id, 'query' => ['context' => 'edit', '_fields' => 'id,content.raw'],
+    ]);
+    if (!empty($nested_content['ok']) || (int) ($nested_content['status'] ?? 0) !== 400) {
+        op_integration_fail('Nested content selector was not rejected by Direct Runtime.');
+    }
+    // Distinct long parent IDs must not collapse to the same child request ID.
+    $long_id = str_repeat('r', 72);
+    $title_a = $runtime_call($long_id . '-a', 'post.update', ['post_id' => $post_id, 'fields' => ['title' => 'Replay target']]);
+    wp_update_post(['ID' => $post_id, 'post_title' => 'Intervening edit']);
+    $replay = $runtime_call($long_id . '-a', 'post.update', ['post_id' => $post_id, 'fields' => ['title' => 'Replay target']]);
+    if (empty($title_a['ok']) || empty($replay['ok']) || get_post($post_id)->post_title !== 'Intervening edit') {
+        op_integration_fail('Replaying the same command repeated a mutation.');
+    }
+    $title_b = $runtime_call($long_id . '-b', 'post.update', ['post_id' => $post_id, 'fields' => ['title' => 'Replay target']]);
+    if (empty($title_b['ok']) || get_post($post_id)->post_title !== 'Replay target') {
+        op_integration_fail('Distinct long command IDs incorrectly shared a child replay.');
+    }
+
     // Catalog is one deterministic entry point rather than a collection of
     // versioned routes the caller must rediscover.
     $catalog_outer = op_integration_call('catalog');
     $catalog = op_integration_v099_payload($catalog_outer);
     if (($catalog['route'] ?? null) !== '/takka-v099/v1/operate'
         || empty($catalog['query_must_be_object'])
-        || empty($catalog['arbitrary_route_allowed']) === false) {
-        // arbitrary_route_allowed must be exactly false.
-        if (($catalog['arbitrary_route_allowed'] ?? null) !== false) {
-            op_integration_fail('Operation catalog allows arbitrary routes.');
-        }
+        || ($catalog['arbitrary_route_allowed'] ?? null) !== false
+        || ($catalog['arbitrary_action_allowed'] ?? null) !== false
+        || !in_array('post.get', $catalog['operations'] ?? [], true)) {
+        op_integration_fail('Operation catalog contract mismatch.');
     }
 
     // post.get keeps query parameters separate and returns metadata only by
@@ -194,6 +244,9 @@ try {
     };
     $png = "\x89PNG\r\n\x1a\n";
     $png .= $png_chunk('IHDR', pack('NNCCCCC', 1, 1, 8, 6, 0, 0, 0));
+    // Reproduce the ~154 KiB small-image case that was previously split into
+    // twenty GitHub writes. It must stay on a single native operation command.
+    $png .= $png_chunk('tEXt', "Comment\0" . str_repeat('A', 157000));
     $png .= $png_chunk('IDAT', gzcompress("\x00\x00\x00\x00\x00", 9));
     $png .= $png_chunk('IEND', '');
     $png_sha = hash('sha256', $png);
@@ -208,13 +261,17 @@ try {
         op_integration_fail('Inline media SHA mismatch was not rejected before upload.');
     }
 
-    $media_outer = op_integration_call('media.upload.inline', [
+    $upload_started = microtime(true);
+    $upload_params = [
         'filename' => 'wpab-policy-good.png',
         'data_b64' => base64_encode($png),
         'expected_bytes' => strlen($png),
         'expected_sha256' => $png_sha,
         'alt_text' => 'WPAB operation integration',
-    ]);
+    ];
+    $native_media = $runtime_call('runtime-small-media', 'media.upload.inline', $upload_params);
+    if (empty($native_media['ok'])) op_integration_fail('Native small-image command failed.');
+    $media_outer = $native_media['data'];
     $media = op_integration_v099_payload($media_outer);
     if (empty($media['ok']) || ($media['operation'] ?? '') !== 'media.upload.inline') {
         op_integration_fail('Small inline media upload failed.');
@@ -224,6 +281,14 @@ try {
         op_integration_fail('Small inline media result was incomplete.');
     }
     $attachment_id = (int) $media_payload['id'];
+    $replayed_media = $runtime_call('runtime-small-media', 'media.upload.inline', $upload_params);
+    if (($replayed_media['data']['data']['result']['data']['id'] ?? null) !== $attachment_id) {
+        op_integration_fail('Small-image replay did not preserve attachment identity.');
+    }
+    echo wp_json_encode(['scenario' => 'small_media', 'decoded_bytes' => strlen($png),
+        'upload_commands' => 1, 'staging_writes' => 0, 'replay_checks' => 1,
+        'local_execution_ms' => (int) round((microtime(true) - $upload_started) * 1000),
+        'github_roundtrip_measured' => false]) . "\n";
 
     $feature_outer = op_integration_call('post.update', [
         'post_id' => $post_id,

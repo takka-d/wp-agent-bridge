@@ -135,6 +135,7 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'readonly_batch' => true,
                 'post_content_range_read' => true,
                 'deterministic_operation_router' => true,
+                'native_operation_command' => true,
                 'theme_file_inspection' => true,
                 'theme_guarded_write' => true,
                 'diagnostics' => true,
@@ -239,6 +240,11 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 ],
             ],
             'command_contract' => [
+                'preferred_command' => [
+                    'type' => 'operation',
+                    'operation' => '<operation>',
+                    'params' => '<object>',
+                ],
                 'preferred_common_task_route' => '/takka-v099/v1/operate',
                 'preferred_common_task_command' => [
                     'type' => 'rest',
@@ -250,6 +256,8 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                     ],
                 ],
                 'rules' => [
+                    'Use type=operation with operation and params for common tasks. The runtime supplies the fixed route and method; the REST shape below remains compatible.',
+                    'For low-level actions absent from the operation catalog, use type=bridge with action and params. Never proxy /takka-bridge/v1/execute through type=rest.',
                     'Use the deterministic operation router for advertised common operations instead of reconstructing versioned Bridge routes.',
                     'Never append a query string to a REST route field. Put query values in the query object.',
                     'Do not issue capability probe commands or source-code searches for an operation already present in this catalog.',

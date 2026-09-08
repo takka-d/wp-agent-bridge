@@ -402,12 +402,16 @@ final class TakKa_WordPress_Bridge_V098_Read_Batch
             return self::error_result($response->get_error_message());
         }
         $status = (int) $response->get_status();
+        $data = $response->get_data();
+        if ($execute_envelope && is_array($data) && isset($data['status']) && is_numeric($data['status'])) {
+            $status = (int) $data['status'];
+        }
         return [
             'ok' => $status >= 200 && $status < 300,
             'status' => $status,
             'statusText' => self::status_text($status),
             'url' => home_url('/wp-json' . $route),
-            'data' => $response->get_data(),
+            'data' => $data,
         ];
     }
 

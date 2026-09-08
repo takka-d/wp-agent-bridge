@@ -217,7 +217,11 @@ final class TakKa_WordPress_Bridge_V099_Operations
         }
         if (isset(self::REST_ACTIONS[$operation])) {
             [$route, $action] = self::REST_ACTIONS[$operation];
-            return self::rest_action_request($route, $action, $params);
+            $result = self::rest_action_request($route, $action, $params);
+            if ($operation === 'readonly.batch' && empty($result['data']['data']['ok'])) {
+                $result['ok'] = false;
+            }
+            return $result;
         }
         return new WP_Error('takka_bridge_v099_unknown_operation', 'Unknown or blocked operation.', [
             'status' => 400,
@@ -239,13 +243,22 @@ final class TakKa_WordPress_Bridge_V099_Operations
             'action' => 'rest.call',
             'params' => $params,
         ];
-        return self::signed_local_request(
+        $result = self::signed_local_request(
             'POST',
             self::OUTER,
             $inner,
             true,
             self::child_request_id('rest:' . strtoupper($method) . ':' . $route, $params)
         );
+        // /execute may return HTTP 200 while its REST result is a 4xx/5xx.
+        // Preserve the payload but report the actual operation outcome.
+        if (isset($result['data']['status']) && is_numeric($result['data']['status'])) {
+            $status = (int) $result['data']['status'];
+            $result['ok'] = !empty($result['ok']) && $status >= 200 && $status < 300;
+            $result['status'] = $status;
+            $result['statusText'] = self::status_text($status);
+        }
+        return $result;
     }
 
     private static function action_request(string $route, string $action, array $params)
@@ -305,7 +318,7 @@ final class TakKa_WordPress_Bridge_V099_Operations
             $encoded = '';
         }
         $prefix = substr(self::$request_id, 0, 72);
-        return $prefix . ':v099:' . substr(hash('sha256', $scope . "\n" . $encoded), 0, 32);
+        return $prefix . ':v099:' . substr(hash('sha256', self::$request_id . "\n" . $scope . "\n" . $encoded), 0, 32);
     }
 
     private static function signed_local_request(

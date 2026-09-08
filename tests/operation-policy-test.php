@@ -75,6 +75,29 @@ if (!is_wp_error($blocked) || $blocked->get_error_code() !== 'wpab_v099_post_get
     fail_test('post.get content request was not blocked.');
 }
 
+foreach (['content.raw', 'id,content.rendered', 'id content', ['id', 'content.raw']] as $selector) {
+    $blocked = TakKa_WordPress_Bridge_V099_Policy::apply(null, [], request_for('post.get', [
+        'post_id' => 719, 'query' => ['_fields' => $selector],
+    ]));
+    if (!is_wp_error($blocked) || $blocked->get_error_code() !== 'wpab_v099_post_get_content_blocked') {
+        fail_test('Nested/whitespace content selector bypassed bounded post.get.');
+    }
+}
+foreach (['', ' , ', []] as $selector) {
+    $request = request_for('post.get', ['post_id' => 719, 'query' => ['_fields' => $selector]]);
+    $result = TakKa_WordPress_Bridge_V099_Policy::apply(null, [], $request);
+    $normalized = json_decode($request->get_body(), true);
+    if ($result !== null || empty($normalized['params']['query']['_fields'])) {
+        fail_test('Empty _fields disabled metadata filtering.');
+    }
+}
+foreach ([false, 42, ['id', 42]] as $selector) {
+    $result = TakKa_WordPress_Bridge_V099_Policy::apply(null, [], request_for('post.get', [
+        'post_id' => 719, 'query' => ['_fields' => $selector],
+    ]));
+    if (!is_wp_error($result)) fail_test('Malformed _fields was not rejected.');
+}
+
 $post_update = request_for('post.update', ['post_id' => 719, 'fields' => ['content' => '<p>unsafe rewrite</p>']]);
 $blocked = TakKa_WordPress_Bridge_V099_Policy::apply(null, [], $post_update);
 if (!is_wp_error($blocked) || $blocked->get_error_code() !== 'wpab_v099_content_requires_guarded_patch') {
