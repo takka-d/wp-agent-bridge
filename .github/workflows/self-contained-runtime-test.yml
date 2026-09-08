@@ -115,7 +115,7 @@ jobs:
           }
 
           $GLOBALS['fake_gh_files'] = [];
-          $GLOBALS['fake_fail_result_put_once'] = false;
+          $GLOBALS['fake_git_blobs'] = [];
           $GLOBALS['fake_branch_sha'] = str_repeat('a', 40);
           $GLOBALS['fake_git_commits'] = [
               str_repeat('a', 40) => ['tree' => str_repeat('1', 40)],
@@ -193,11 +193,6 @@ jobs:
                       if (!is_array($body) || !isset($body['content'])) {
                           return gh_response(400, ['message' => 'bad mock PUT']);
                       }
-                      if ($GLOBALS['fake_fail_result_put_once']
-                          && $file === 'wordpress-bridge/results/recover-side-effect.json') {
-                          $GLOBALS['fake_fail_result_put_once'] = false;
-                          return gh_response(409, ['message' => 'simulated branch conflict']);
-                      }
                       if (isset($GLOBALS['fake_gh_files'][$file]) && empty($body['sha'])) {
                           return gh_response(422, ['message' => 'sha was not supplied']);
                       }
@@ -224,6 +219,19 @@ jobs:
 
               if ($method === 'GET' && $path === '/repos/test-user/runtime-repo/git/ref/heads/wp-agent-bridge-runtime') {
                   return gh_response(200, ['object' => ['sha' => $GLOBALS['fake_branch_sha']]]);
+              }
+
+              if ($method === 'POST' && $path === '/repos/test-user/runtime-repo/git/blobs') {
+                  $body = json_decode((string) ($args['body'] ?? ''), true);
+                  if (!is_array($body) || ($body['encoding'] ?? '') !== 'base64' || !isset($body['content'])) {
+                      return gh_response(400, ['message' => 'bad mock blob request']);
+                  }
+                  $decoded = base64_decode((string) $body['content'], true);
+                  if (!is_string($decoded)) return gh_response(400, ['message' => 'bad mock blob base64']);
+                  $GLOBALS['fake_git_sequence']++;
+                  $sha = sha1('blob-' . $GLOBALS['fake_git_sequence'] . '-' . $decoded);
+                  $GLOBALS['fake_git_blobs'][$sha] = $decoded;
+                  return gh_response(201, ['sha' => $sha]);
               }
 
               $commit_prefix = '/repos/test-user/runtime-repo/git/commits/';
@@ -278,7 +286,7 @@ jobs:
                   }
                   if ($GLOBALS['fake_fail_atomic_cleanup_ref_once']) {
                       $GLOBALS['fake_fail_atomic_cleanup_ref_once'] = false;
-                      // Simulate a concurrent writer moving the branch without touching the staged media.
+                      // Simulate a concurrent writer moving the branch without touching pending/media data.
                       $GLOBALS['fake_git_sequence']++;
                       $moved_tree = sha1('moved-tree-' . $GLOBALS['fake_git_sequence']);
                       $moved_commit = sha1('moved-commit-' . $GLOBALS['fake_git_sequence']);
@@ -294,8 +302,15 @@ jobs:
                   $tree = $GLOBALS['fake_git_trees'][(string) $commit['tree']] ?? null;
                   if (!is_array($tree)) return gh_response(422, ['message' => 'missing mock tree']);
                   foreach ((array) ($tree['entries'] ?? []) as $entry) {
-                      if (is_array($entry) && array_key_exists('sha', $entry) && $entry['sha'] === null) {
-                          unset($GLOBALS['fake_gh_files'][(string) ($entry['path'] ?? '')]);
+                      if (!is_array($entry)) continue;
+                      $entry_path = (string) ($entry['path'] ?? '');
+                      if (array_key_exists('sha', $entry) && $entry['sha'] === null) {
+                          unset($GLOBALS['fake_gh_files'][$entry_path]);
+                          continue;
+                      }
+                      $blob_sha = (string) ($entry['sha'] ?? '');
+                      if ($entry_path !== '' && isset($GLOBALS['fake_git_blobs'][$blob_sha])) {
+                          fake_put($entry_path, $GLOBALS['fake_git_blobs'][$blob_sha]);
                       }
                   }
                   $GLOBALS['fake_atomic_cleanup_apply_count']++;
@@ -306,6 +321,13 @@ jobs:
               $blob_prefix = '/repos/test-user/runtime-repo/git/blobs/';
               if ($method === 'GET' && strpos($path, $blob_prefix) === 0) {
                   $sha = substr($path, strlen($blob_prefix));
+                  if (isset($GLOBALS['fake_git_blobs'][$sha])) {
+                      return gh_response(200, [
+                          'sha' => $sha,
+                          'encoding' => 'base64',
+                          'content' => base64_encode($GLOBALS['fake_git_blobs'][$sha]),
+                      ]);
+                  }
                   foreach ($GLOBALS['fake_gh_files'] as $record) {
                       if (hash_equals($record['sha'], $sha)) {
                           return gh_response(200, [
@@ -387,9 +409,9 @@ jobs:
               return ['status' => $response->get_status(), 'data' => $response->get_data()];
           }
 
-          // 1) Reproduce: WordPress side effect succeeds, first GitHub result PUT
-          // fails. Recovery must replay the same request_id without executing the
-          // side effect twice, then finish result/completed/pending bookkeeping.
+          // 1) WordPress side effect succeeds while the first atomic bookkeeping
+          // ref update races another writer. The retry must publish one coherent
+          // result/completed/pending state without executing the side effect twice.
           $side_path = 'wordpress-bridge/commands/pending/recover-side-effect.json';
           $side_command = [
               'id' => 'recover-side-effect',
@@ -400,7 +422,7 @@ jobs:
               'body' => [],
           ];
           fake_put($side_path, wp_json_encode($side_command, JSON_UNESCAPED_SLASHES));
-          $GLOBALS['fake_fail_result_put_once'] = true;
+          $GLOBALS['fake_fail_atomic_cleanup_ref_once'] = true;
           $side_response = deliver_push([$side_path]);
           if ($side_response['status'] !== 200) t_fail('Side-effect recovery webhook did not return 200.');
           if ((int) get_option('wpab_test_counter', 0) !== 1) {
@@ -413,10 +435,13 @@ jobs:
               if (!isset($GLOBALS['fake_gh_files'][$required])) t_fail('Recovery did not create ' . $required);
           }
           if (isset($GLOBALS['fake_gh_files'][$side_path])) t_fail('Recovered pending command was not removed.');
+          if ($GLOBALS['fake_atomic_cleanup_patch_attempts'] !== 2) {
+              t_fail('Atomic command bookkeeping did not retry exactly once after the simulated branch race.');
+          }
 
-          // 2) Reproduce: result exists but completed/pending bookkeeping was
-          // interrupted. An unrelated later push must repair it without WordPress
-          // execution.
+          // 2) Compatibility recovery for an old partial state: result exists but
+          // completed/pending bookkeeping was interrupted before atomic bookkeeping
+          // was available. An unrelated later push must repair it without execution.
           $book_path = 'wordpress-bridge/commands/pending/bookkeeping-only.json';
           $book_raw = wp_json_encode([
               'id' => 'bookkeeping-only',
@@ -469,6 +494,8 @@ jobs:
                   'alt_text' => 'Self-contained media test',
               ],
           ], JSON_UNESCAPED_SLASHES));
+          $GLOBALS['fake_atomic_cleanup_patch_attempts'] = 0;
+          $GLOBALS['fake_atomic_cleanup_apply_count'] = 0;
           $GLOBALS['fake_fail_atomic_cleanup_ref_once'] = true;
           deliver_push([$media_command_path]);
           foreach ($media_sources as $media_source) {
@@ -476,11 +503,13 @@ jobs:
                   t_fail('Direct Media did not atomically delete temporary GitHub source: ' . $media_source);
               }
           }
-          if ($GLOBALS['fake_atomic_cleanup_patch_attempts'] !== 2) {
-              t_fail('Atomic Direct Media cleanup did not retry exactly once after the simulated branch race.');
+          // One failed + one successful media cleanup PATCH, plus one successful
+          // command bookkeeping PATCH after the upload itself completes.
+          if ($GLOBALS['fake_atomic_cleanup_patch_attempts'] !== 3) {
+              t_fail('Atomic Direct Media cleanup/bookkeeping did not use the expected bounded ref updates.');
           }
-          if ($GLOBALS['fake_atomic_cleanup_apply_count'] !== 1) {
-              t_fail('Atomic Direct Media cleanup applied a partial or duplicate deletion tree.');
+          if ($GLOBALS['fake_atomic_cleanup_apply_count'] !== 2) {
+              t_fail('Atomic Direct Media cleanup/bookkeeping did not apply exactly two coherent trees.');
           }
           if (isset($GLOBALS['fake_gh_files'][$media_command_path])) t_fail('Direct Media command remained pending.');
 
@@ -497,7 +526,7 @@ jobs:
           if ($found_attachment < 1) t_fail('Direct Media did not create the expected attachment.');
           wp_delete_attachment($found_attachment, true);
 
-          echo "Self-contained Direct Runtime recovery, idempotency, and atomic >2 MiB media tests passed.\n";
+          echo "Self-contained Direct Runtime recovery, atomic bookkeeping, idempotency, and atomic >2 MiB media tests passed.\n";
           PHP
 
           /tmp/wp eval-file /tmp/wpab-direct-runtime-test.php --path=/tmp/wpab-direct-test

@@ -13,13 +13,13 @@ function fail_test(string $message): void
 }
 
 $catalog = TakKa_WordPress_Bridge_Runtime_Capabilities::catalog(
-    '1.1.13',
+    '1.1.14',
     'owner/runtime-repo',
     'wp-agent-bridge-runtime',
     'example.test'
 );
 
-if (($catalog['schema'] ?? null) !== 1 || ($catalog['bridge_version'] ?? null) !== '1.1.13') {
+if (($catalog['schema'] ?? null) !== 1 || ($catalog['bridge_version'] ?? null) !== '1.1.14') {
     fail_test('Runtime capability catalog version/schema mismatch.');
 }
 if (($catalog['runtime']['repository'] ?? null) !== 'owner/runtime-repo'
@@ -27,12 +27,20 @@ if (($catalog['runtime']['repository'] ?? null) !== 'owner/runtime-repo'
     || ($catalog['runtime']['transport'] ?? null) !== 'direct-github-webhook') {
     fail_test('Runtime identity metadata mismatch.');
 }
+$bookkeeping = $catalog['runtime']['bookkeeping'] ?? [];
+if (($bookkeeping['mode'] ?? null) !== 'atomic_git_tree'
+    || empty($bookkeeping['result_completed_pending_same_commit'])
+    || ($bookkeeping['max_ref_update_attempts'] ?? null) !== 3
+    || empty($bookkeeping['result_visibility_is_completion_barrier'])) {
+    fail_test('Atomic command bookkeeping metadata mismatch.');
+}
 if (($catalog['release_pointer']['path'] ?? null) !== 'UPDATE_MANIFEST.json') {
     fail_test('Official release pointer is missing.');
 }
 if (empty($catalog['features']['workspace'])
     || empty($catalog['features']['media_fast_path'])
-    || empty($catalog['features']['readonly_batch'])) {
+    || empty($catalog['features']['readonly_batch'])
+    || empty($catalog['features']['atomic_command_bookkeeping'])) {
     fail_test('Expected feature flags are missing.');
 }
 $workspace = $catalog['routes']['workspace'] ?? [];
@@ -58,6 +66,9 @@ if (($catalog['connector_policy']['ordinary_command_write'][0] ?? null) !== 'cre
 }
 if (strpos((string) ($catalog['fast_path']['readonly_batch'] ?? ''), 'two or more') === false) {
     fail_test('Read-only batch fast-path guidance is missing.');
+}
+if (strpos((string) ($catalog['fast_path']['command_chaining'] ?? ''), 'next pending command may be submitted immediately') === false) {
+    fail_test('Atomic command chaining guidance is missing.');
 }
 $json = json_encode($catalog, JSON_UNESCAPED_SLASHES);
 if (!is_string($json)

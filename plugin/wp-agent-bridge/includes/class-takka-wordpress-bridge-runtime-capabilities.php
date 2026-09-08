@@ -111,6 +111,12 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'site_host' => $site_host,
                 'pending_path' => 'wordpress-bridge/commands/pending/<id>.json',
                 'result_path' => 'wordpress-bridge/results/<id>.json',
+                'bookkeeping' => [
+                    'mode' => 'atomic_git_tree',
+                    'result_completed_pending_same_commit' => true,
+                    'max_ref_update_attempts' => 3,
+                    'result_visibility_is_completion_barrier' => true,
+                ],
             ],
             'release_pointer' => [
                 'repository' => 'takka-d/wp-agent-bridge',
@@ -134,6 +140,7 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'pending_recovery' => true,
                 'request_inflight_guard' => true,
                 'local_result_journal' => true,
+                'atomic_command_bookkeeping' => true,
             ],
             'routes' => [
                 'self_update' => [
@@ -216,6 +223,7 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
             'fast_path' => [
                 'runtime_resolution' => 'Read RUNTIME_CONNECTION.json only when canonical runtime is not already verified or a migration signal appears.',
                 'capability_resolution' => 'Read this file before issuing capability probe commands or searching source code for known Bridge routes/actions.',
+                'command_chaining' => 'When atomic_command_bookkeeping=true, a visible matching result means result creation, completed-command storage, and pending deletion are already durable in the same commit. The next pending command may be submitted immediately without waiting for later bookkeeping commits.',
                 'readonly_batch' => 'When two or more independent allowlisted reads are needed, prefer one readonly.batch request instead of multiple pending commands/webhooks/results.',
                 'workspace' => 'Prefer workspace range/search/patch for iterative large text artifacts instead of repeated File Library or historical-response reconstruction.',
             ],
