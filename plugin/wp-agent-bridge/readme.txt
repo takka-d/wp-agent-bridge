@@ -106,6 +106,9 @@ High-impact writes remain subject to the Bridge's preview, confirmation, state-h
 
 == Changelog ==
 
+= 1.1.17 =
+* Summarize uploaded binary input in runtime results instead of echoing Base64; preserve byte counts and SHA-256 for verification.
+
 = 1.1.16 =
 * Adds `/takka-v099/v1/operate`, a deterministic high-level operation router for common post, media, diagnostics, Workspace, read-only batch, and self-update workflows.
 * Adds bounded post-content source range reads and exposes them through the deterministic router and read-only batch path.

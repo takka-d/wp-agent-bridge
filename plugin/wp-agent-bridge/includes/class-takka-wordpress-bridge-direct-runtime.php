@@ -275,7 +275,7 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
                     'executed_at' => gmdate('c'),
                     'duration_ms' => (int) round((microtime(true) - $started) * 1000),
                     'transport' => 'direct-github-webhook',
-                    'command' => self::sanitize_result($command),
+                    'command' => self::summarize_command($command),
                     'result' => self::sanitize_result($result),
                 ];
                 $result_json = wp_json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -760,6 +760,28 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
             'url' => $url,
             'data' => ['body' => $body],
         ];
+    }
+
+    private static function summarize_command($value, string $key = '')
+    {
+        // Input payloads are already durable in commands/completed. Echoing
+        // them into results makes every status read transfer the media again.
+        if (is_string($value) && in_array(strtolower($key), ['data_b64', 'payload_b64', 'content_b64'], true)) {
+            $decoded = base64_decode($value, true);
+            return [
+                'omitted' => true,
+                'encoding' => 'base64',
+                'encoded_bytes' => strlen($value),
+                'decoded_bytes' => is_string($decoded) ? strlen($decoded) : null,
+                'sha256' => is_string($decoded) ? hash('sha256', $decoded) : null,
+            ];
+        }
+        if (is_array($value)) {
+            foreach ($value as $child_key => $child_value) {
+                $value[$child_key] = self::summarize_command($child_value, (string) $child_key);
+            }
+        }
+        return self::sanitize_result($value, $key);
     }
 
     private static function sanitize_result($value, string $key = '')
