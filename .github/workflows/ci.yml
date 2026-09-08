@@ -72,6 +72,12 @@ jobs:
           set -euo pipefail
           php tests/runtime-capabilities-test.php
 
+      - name: Canonical runtime guidance regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/runtime-guidance-test.php
+
       - name: Read-only batch regression
         shell: bash
         run: |
