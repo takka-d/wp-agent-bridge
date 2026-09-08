@@ -1,0 +1,8 @@
+{
+  "tag": "v1.1.14",
+  "version": "1.1.14",
+  "channel": "stable",
+  "plugin_zip_sha256": "67863c713e6e6e3df5ad8ef6420e26d61d8ea7b264e9d75f4875759d2b2c0d26",
+  "stable": true,
+  "prerelease": false
+}
