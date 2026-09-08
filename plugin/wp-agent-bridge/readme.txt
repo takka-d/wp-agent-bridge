@@ -3,7 +3,7 @@ Contributors: takka-d
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.1.11
+Stable tag: 1.1.12
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
@@ -86,6 +86,11 @@ This is a custom proprietary/source-available license, not an open-source licens
 High-impact writes remain subject to the Bridge's preview, confirmation, state-hash, plan-hash, impact-hash, active-theme/plugin, and sensitive-key protections.
 
 == Changelog ==
+
+= 1.1.12 =
+* Adds automatic generation and version-aware synchronization of `wordpress-bridge/RUNTIME_CAPABILITIES.json` in the canonical private runtime repository.
+* Publishes a deterministic machine-readable catalog of installed routes, actions, feature flags, limits, connector fast paths, and the official self-update release pointer.
+* Uses a per-version sync marker plus a short in-flight lock so the catalog's own GitHub push does not recursively trigger duplicate synchronization.
 
 = 1.1.11 =
 * Adds a persistent private development workspace rooted at `wordpress-bridge/workspace/` in the user's canonical runtime repository.

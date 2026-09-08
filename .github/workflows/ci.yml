@@ -60,6 +60,12 @@ jobs:
           set -euo pipefail
           php tests/workspace-test.php
 
+      - name: Runtime capability catalog regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/runtime-capabilities-test.php
+
       - name: Integrity diagnostics regression
         shell: bash
         run: |
