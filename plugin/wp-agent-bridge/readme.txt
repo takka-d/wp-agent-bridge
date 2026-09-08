@@ -3,7 +3,7 @@ Contributors: takka-d
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.1.15
+Stable tag: 1.1.14
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
