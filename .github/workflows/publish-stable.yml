@@ -1,0 +1,175 @@
+name: Publish stable release
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/release/v1.1.14.json'
+      - '.github/workflows/publish-stable.yml'
+  push:
+    branches: [main]
+    paths:
+      - '.github/release/v1.1.14.json'
+      - '.github/workflows/publish-stable.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate stable release request
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          request = json.loads(Path('.github/release/v1.1.14.json').read_text())
+          expected = {
+              'tag': 'v1.1.14',
+              'version': '1.1.14',
+              'channel': 'stable',
+              'plugin_zip_sha256': '67863c713e6e6e3df5ad8ef6420e26d61d8ea7b264e9d75f4875759d2b2c0d26',
+              'stable': True,
+              'prerelease': False,
+          }
+          if request != expected:
+              raise SystemExit(f'Unexpected stable release request: {request!r}')
+
+          manifest = json.loads(Path('UPDATE_MANIFEST.json').read_text())
+          if manifest.get('version') != '1.1.14':
+              raise SystemExit(f"Unexpected UPDATE_MANIFEST version: {manifest.get('version')!r}")
+          if manifest.get('source_commit') != 'c36a53406c7d85233cc9782c1ef7bab4ed1b8dbe':
+              raise SystemExit(f"Unexpected source_commit: {manifest.get('source_commit')!r}")
+          PY
+
+      - name: Build reproducible plugin ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^ \* Version: //p' plugin/wp-agent-bridge/takka-wordpress-bridge.php | head -n1 | tr -d '\r')"
+          test "$version" = '1.1.14'
+          mkdir -p release-assets
+          archive="release-assets/wp-agent-bridge-${version}.zip"
+          verify_archive="$(mktemp --suffix=.zip)"
+
+          cat > /tmp/build-wpab-zip.py <<'PY'
+          import stat
+          import subprocess
+          import sys
+          import zipfile
+          from pathlib import Path
+
+          output = Path(sys.argv[1])
+          source_root = 'plugin/wp-agent-bridge/'
+          raw = subprocess.check_output(['git', 'ls-tree', '-r', '-z', 'c36a53406c7d85233cc9782c1ef7bab4ed1b8dbe', '--', source_root])
+          entries = []
+          for record in raw.split(b'\0'):
+              if not record:
+                  continue
+              metadata, raw_path = record.split(b'\t', 1)
+              mode, kind, blob_sha = metadata.decode('ascii').split()
+              if kind != 'blob':
+                  continue
+              path = raw_path.decode('utf-8')
+              if not path.startswith(source_root):
+                  raise SystemExit(f'unexpected source path: {path}')
+              relative = path[len(source_root):]
+              archive_name = 'wp-agent-bridge/' + relative
+              data = subprocess.check_output(['git', 'cat-file', 'blob', blob_sha])
+              info = zipfile.ZipInfo(archive_name, date_time=(1980, 1, 1, 0, 0, 0))
+              info.create_system = 3
+              permissions = 0o755 if mode == '100755' else 0o644
+              info.external_attr = ((stat.S_IFREG | permissions) & 0xFFFF) << 16
+              info.compress_type = zipfile.ZIP_STORED
+              entries.append((archive_name, info, data))
+          if not entries:
+              raise SystemExit('no plugin files found')
+          entries.sort(key=lambda item: item[0])
+          with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_STORED, allowZip64=True) as archive:
+              for _, info, data in entries:
+                  archive.writestr(info, data)
+          PY
+
+          python3 /tmp/build-wpab-zip.py "$archive"
+          python3 /tmp/build-wpab-zip.py "$verify_archive"
+          cmp "$archive" "$verify_archive"
+          rm -f "$verify_archive" /tmp/build-wpab-zip.py
+
+          actual_sha="$(sha256sum "$archive" | awk '{print $1}')"
+          test "$actual_sha" = '67863c713e6e6e3df5ad8ef6420e26d61d8ea7b264e9d75f4875759d2b2c0d26'
+          printf '%s  %s\n' "$actual_sha" "wp-agent-bridge-${version}.zip" > release-assets/SHA256SUMS
+          unzip -t "$archive"
+
+      - name: Upload verified stable assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: wp-agent-bridge-1.1.14-stable-release-assets
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified assets
+        uses: actions/download-artifact@v4
+        with:
+          name: wp-agent-bridge-1.1.14-stable-release-assets
+          path: release-assets
+
+      - name: Publish immutable stable release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v1.1.14
+        run: |
+          set -euo pipefail
+          expected='67863c713e6e6e3df5ad8ef6420e26d61d8ea7b264e9d75f4875759d2b2c0d26'
+          test "$(sha256sum release-assets/wp-agent-bridge-1.1.14.zip | awk '{print $1}')" = "$expected"
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; refusing to mutate an existing stable release." >&2
+            exit 1
+          fi
+
+          cat > /tmp/release-notes.md <<'EOF'
+          ## WP Agent Bridge 1.1.14
+
+          Stable public package for the self-contained Direct Runtime architecture.
+
+          Normal operation:
+
+          `ChatGPT → user's private runtime repository → site-specific GitHub App signed Webhook → user's WordPress → same runtime repository → ChatGPT`
+
+          This release includes source-mode self-update, staged media Fast Path, persistent development Workspace, read-only batch operations, runtime capability discovery, and atomic result/completed/pending bookkeeping.
+
+          Requirements: WordPress 6.9+, PHP 7.4+, HTTPS, OpenSSL, a GitHub account, and a ChatGPT environment that can connect to GitHub.
+
+          Plugin ZIP SHA-256:
+
+          `67863c713e6e6e3df5ad8ef6420e26d61d8ea7b264e9d75f4875759d2b2c0d26`
+
+          The package is free to download, install, and use under WP Agent Bridge License 1.0. It is source-available rather than an open-source license; redistribution restrictions apply.
+          EOF
+
+          gh release create "$TAG" \
+            release-assets/wp-agent-bridge-1.1.14.zip \
+            release-assets/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" \
+            --target 'c36a53406c7d85233cc9782c1ef7bab4ed1b8dbe' \
+            --title 'WP Agent Bridge 1.1.14' \
+            --notes-file /tmp/release-notes.md
+
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,name,isPrerelease,isDraft,url
