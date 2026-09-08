@@ -39,6 +39,7 @@ foreach ([
     'GitHub Actions is for source CI/package/release',
     'Never put `?query=...` in a REST `route` field',
     'Do not ask the user',
+    'Do not switch normal WordPress work to WPVibe, `takka-d/chatgpt-data`',
     'A visible matching result is the completion barrier',
 ] as $required) {
     if (strpos($agents, $required) === false) {
@@ -50,7 +51,6 @@ foreach ([
     'Choose the batched staged-media route by default',
     'Media default: batched staged upload',
     'Save this value in the GitHub Actions repository secret',
-    'takka-d/chatgpt-data',
 ] as $forbidden) {
     if (strpos($agents, $forbidden) !== false) {
         guidance_fail('Canonical AGENTS guidance contains stale routing text: ' . $forbidden);
