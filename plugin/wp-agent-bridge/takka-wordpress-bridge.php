@@ -88,6 +88,7 @@ require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-media-pre-
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-integrity.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-runtime-identity.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-runtime-capabilities.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-runtime-guidance.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-hardening.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-onboarding-guard.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-runtime-media-chunks.php';
@@ -133,6 +134,7 @@ TakKa_WordPress_Bridge_Direct_Media_Auto_Path::init();
 TakKa_WordPress_Bridge_Direct_Media_Pre_Dispatch::init();
 TakKa_WordPress_Bridge_Integrity::init();
 TakKa_WordPress_Bridge_Runtime_Capabilities::init();
+TakKa_WordPress_Bridge_Runtime_Guidance::init();
 TakKa_WordPress_Bridge_V096_Media_Hook::init();
 TakKa_WordPress_Bridge_Direct_Hardening::init();
 TakKa_WordPress_Bridge_Direct_Onboarding_Guard::init();
