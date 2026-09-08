@@ -27,6 +27,10 @@ $runtime = TakKa_WordPress_Bridge_Runtime_Guidance::runtime(
 
 foreach ([
     'type=bridge',
+    'use `type=operation`',
+    'once per verified connection/version',
+    '`post.get` is not currently a batch item',
+    'leave visual correctness unverified',
     'Preferred pending JSON',
     'Keep one command ID and identical payload',
     '207 read batch is incomplete',
@@ -53,6 +57,8 @@ foreach ([
 
 foreach ([
     'Choose the batched staged-media route by default',
+    'Pending command shape: `type=rest`',
+    'unless inline upload actually fails',
     'Media default: batched staged upload',
     'Save this value in the GitHub Actions repository secret',
 ] as $forbidden) {
