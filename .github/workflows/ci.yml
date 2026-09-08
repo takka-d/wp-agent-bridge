@@ -78,6 +78,12 @@ jobs:
           set -euo pipefail
           php tests/runtime-guidance-test.php
 
+      - name: Deterministic operation policy regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/operation-policy-test.php
+
       - name: Read-only batch regression
         shell: bash
         run: |
