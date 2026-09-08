@@ -45,7 +45,7 @@ jobs:
           ! grep -R -F 'takka-note.com' "$plugin"
           ! grep -R -F 'wp-agent-bridge-runtime/wordpress-bridge-' "$plugin"
           ! grep -R -E 'invite_collaborator|repository_invitations|/collaborators/' "$plugin"
-          ! grep -R -F 'takka-d/chatgpt-data' "$plugin" --exclude='class-takka-wordpress-bridge-direct-runtime-identity.php'
+          ! grep -R -F 'takka-d/chatgpt-data' "$plugin" --exclude='class-takka-wordpress-bridge-direct-runtime-identity.php' --exclude='class-takka-wordpress-bridge-runtime-guidance.php'
           grep -q "operator_relay.*false" "$plugin/includes/class-takka-wordpress-bridge-direct-runtime-identity.php"
           grep -q "ownership.*user-owned" "$plugin/includes/class-takka-wordpress-bridge-direct-runtime-identity.php"
 
@@ -75,7 +75,7 @@ jobs:
           cp -R plugin/wp-agent-bridge /tmp/wpab-migration-test/wp-content/plugins/wp-agent-bridge
           /tmp/wp plugin activate wp-agent-bridge --path=/tmp/wpab-migration-test
 
-      - name: Verify migration rollback preservation and immediate identity sync
+      - name: Verify migration rollback preservation and immediate identity/guidance sync
         shell: bash
         run: |
           set -euo pipefail
@@ -194,7 +194,7 @@ jobs:
               'wordpress-bridge/WEBHOOK_RUNTIME.md',
               'wordpress-bridge/media/pending/.gitkeep',
           ] as $path) {
-              if (!isset($GLOBALS['migration_files'][$path])) m_fail('Identity sync did not create ' . $path);
+              if (!isset($GLOBALS['migration_files'][$path])) m_fail('Runtime sync did not create ' . $path);
           }
 
           $marker = json_decode($GLOBALS['migration_files']['wordpress-bridge/RUNTIME_CONNECTION.json']['content'], true);
@@ -215,15 +215,23 @@ jobs:
           }
 
           $agents = $GLOBALS['migration_files']['AGENTS.md']['content'];
-          foreach (['user-owned', 'operator_relay', 'direct-github-webhook', 'operator-owned relay', 'media/pending'] as $needle) {
-              if (strpos($agents, $needle) === false) m_fail('AGENTS.md missing self-contained marker: ' . $needle);
+          foreach ([
+              '/takka-v099/v1/operate',
+              'RUNTIME_CAPABILITIES.json',
+              'media.upload.inline',
+              'Do not switch normal WordPress work to WPVibe, `takka-d/chatgpt-data`',
+          ] as $needle) {
+              if (strpos($agents, $needle) === false) m_fail('AGENTS.md missing canonical guidance marker: ' . $needle);
           }
 
-          // Identity sync is idempotent: a second pass should not write any file.
+          // Identity and guidance sync are independently idempotent: a second
+          // pass of both owners must not perform any GitHub write.
           $puts_before = $GLOBALS['migration_puts'];
-          $second = TakKa_WordPress_Bridge_Direct_Runtime_Identity::sync();
-          if (is_wp_error($second)) m_fail('Second identity sync failed: ' . $second->get_error_message());
-          if ($GLOBALS['migration_puts'] !== $puts_before) m_fail('Second identity sync performed unnecessary GitHub writes.');
+          $second_identity = TakKa_WordPress_Bridge_Direct_Runtime_Identity::sync();
+          if (is_wp_error($second_identity)) m_fail('Second identity sync failed: ' . $second_identity->get_error_message());
+          $second_guidance = TakKa_WordPress_Bridge_Runtime_Guidance::sync();
+          if (is_wp_error($second_guidance)) m_fail('Second guidance sync failed: ' . $second_guidance->get_error_message());
+          if ($GLOBALS['migration_puts'] !== $puts_before) m_fail('Second identity/guidance sync performed unnecessary GitHub writes.');
 
           // Guard must run before the destructive legacy onboarding callback.
           $guard_priority = has_action('admin_post_takka_bridge_connect_github', [TakKa_WordPress_Bridge_Direct_Onboarding_Guard::class, 'block_unsafe_reconnect']);
@@ -243,7 +251,7 @@ jobs:
               m_fail('Retired operator onboarding callback returned the wrong error code.');
           }
 
-          echo "Migration rollback preservation, immediate user-owned identity sync, idempotent resync, reconnect ordering, and central callback tombstone all passed.\n";
+          echo "Migration rollback preservation, immediate user-owned identity/guidance sync, idempotent resync, reconnect ordering, and central callback tombstone all passed.\n";
           PHP
 
           /tmp/wp eval-file /tmp/wpab-migration-test.php --path=/tmp/wpab-migration-test
