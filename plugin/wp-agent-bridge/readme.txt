@@ -3,7 +3,7 @@ Contributors: takka-d
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.1.14
+Stable tag: 1.1.15
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
@@ -53,9 +53,11 @@ PATs, manual Webhook secrets, private keys, Bridge Keys, and GitHub Actions work
 
 Media files up to 6 MiB are supported.
 
-For ChatGPT-local, conversation-uploaded, sandbox, or connector-downloaded files, the preferred route is the batched staged-media path when GitHub can write UTF-8 text/blobs. Split the original binary before Base64 encoding, stage bounded independent chunks under `wordpress-bridge/media/pending/`, and publish the payloads plus one pending upload command together when Git Data operations are available. The upload itself validates whole-file bytes/SHA-256 and optional per-chunk integrity before creating the attachment, so a separate verify-first pass is not used in the normal successful path.
+For local or conversation-uploaded media up to 1 MiB decoded, the preferred route is one inline `media.upload_base64` command. Small files should not be split, staged, turned into Git blobs, or verified separately unless inline upload actually fails or staged transport is explicitly requested.
 
-The fast path resolves all ordered staged paths from one current Git tree snapshot and reads the resulting Git blobs directly. Optional `data_blob_shas` can pin a staged path to the blob SHA already returned by the staging operation. Successful fast-path media handling now runs from `rest_pre_dispatch`, which guarantees that the registered legacy media callback does not run a second time after the staged payload has already been consumed and deleted. When staged-media transfer is unavailable or actually fails, `/wp-agent-bridge-media/v1/upload-chunk` remains the authenticated sequential fallback.
+For larger files, the preferred route is the batched staged-media path when GitHub can write UTF-8 text/blobs. Split the original binary before Base64 encoding, stage bounded independent chunks under `wordpress-bridge/media/pending/`, and publish the payloads plus one pending upload command together when Git Data operations are available. The upload itself validates whole-file bytes/SHA-256 and optional per-chunk integrity before creating the attachment, so a separate verify-first pass is not used in the normal successful path.
+
+The fast path resolves all ordered staged paths from one current Git tree snapshot and reads the resulting Git blobs directly. Optional `data_blob_shas` can pin a staged path to the blob SHA already returned by the staging operation. Successful fast-path media handling runs from `rest_pre_dispatch`, which guarantees that the registered legacy media callback does not run a second time after the staged payload has already been consumed and deleted. When staged-media transfer is unavailable or actually fails, `/wp-agent-bridge-media/v1/upload-chunk` remains the authenticated sequential fallback.
 
 `/wp-agent-bridge-runtime/v1/media-verify` is reserved for explicit verify-only requests, uncertain staging, or integrity-409 diagnosis/recovery. Integrity failures include chunk diagnostics so only mismatched staged payloads need to be replaced when identifiable.
 
@@ -95,6 +97,11 @@ High-impact writes remain subject to the Bridge's preview, confirmation, state-h
 
 == Changelog ==
 
+= 1.1.15 =
+* Prefer one inline `media.upload_base64` command for local or conversation-uploaded media up to 1 MiB decoded.
+* Keep staged Media Fast Path for larger media and reserve verify-only for explicit verification or failure diagnosis.
+* Publish the size-based routing rule through `RUNTIME_CAPABILITIES.json` so ChatGPT can choose the correct path without rediscovering media transport behavior.
+
 = 1.1.14 =
 * Commits Direct Runtime result creation, completed-command storage, and pending-command deletion in one Git tree/commit/ref update.
 * Retries bounded non-fast-forward ref races against the latest runtime head while preserving unrelated concurrent changes and verifying the original pending-command blob SHA.
@@ -118,81 +125,3 @@ High-impact writes remain subject to the Bridge's preview, confirmation, state-h
 
 = 1.1.10 =
 * Moves staged-media Auto Path execution from `rest_request_before_callbacks` to `rest_pre_dispatch` so a successful fast-path upload truly short-circuits the legacy media route callback.
-* Prevents the legacy callback from re-reading an already-deleted staged payload and replacing a successful attachment result with a false GitHub 404.
-* Keeps the existing bounded legacy fallback when Auto Path deliberately yields on GitHub-compatible 404/405/501 capability failures.
-
-= 1.1.9 =
-* Persists a local per-request completion journal after WordPress execution and before GitHub result bookkeeping.
-* Replays the exact successful local result when GitHub bookkeeping fails after a side effect, instead of re-running the command against already-consumed media payloads.
-* Rejects changed command content under an existing journaled request ID and expires abandoned journals after 24 hours.
-
-= 1.1.8 =
-* Adds per-request ID in-flight ownership around Direct Runtime command execution and GitHub bookkeeping.
-* Prevents V2 pending recovery from re-dispatching a command that is still running, including media uploads whose own cleanup commit triggers another webhook before the original result is written.
-* Treats stale in-flight ownership as expired after 10 minutes so crashed requests remain recoverable.
-
-= 1.1.7 =
-* Adds pinned-source self-update: a small runtime command can download the official GitHub source archive at an exact commit, reconstruct the full plugin manifest locally, verify the expected aggregate SHA-256, and then reuse the existing PHP-parse/backup/rollback/full-manifest safety path.
-* Removes the need for ChatGPT or the user to transport a 1+ MiB Base64 self-update command after a site is on 1.1.7 or newer.
-* Keeps source repository and download host fixed, requires a full commit SHA and expected manifest SHA-256, and retains explicit confirmation for source-package deletions.
-
-= 1.1.6 =
-* Adds exact guarded theme writes with expected source SHA-256 and stale current-target SHA checks while preserving existing lint/backup/rename behavior.
-* Adds verify-only staged-media diagnostics and per-chunk integrity reporting for 409 recovery without attachment or Site Icon side effects.
-* Speeds normal staged media upload by removing verify-first duplication, resolving ordered `data_paths` from one Git tree snapshot, and reading payload Git blobs directly.
-* Keeps `data_blob_shas` optional as an additional path-to-blob integrity pin and preserves the original Direct Media implementation as the real compatibility fallback.
-* Updates generated runtime guidance with the canonical-runtime fast path so already verified runtimes are reused instead of repeatedly exploring retired or neighboring repositories.
-
-= 1.1.5 =
-* Routes ChatGPT-local, conversation-uploaded, and sandbox media through the existing authenticated chunk-upload path instead of trying to stage local files into GitHub `media/pending/*.b64` first.
-* Keeps the staged GitHub media path for sources that are already manageable by the GitHub connector.
-* Updates generated canonical runtime guidance so fresh installations and later runtime-identity syncs preserve this source-aware media routing.
-
-= 1.1.4 =
-* Serializes authenticated Direct Runtime push handling before the primary executor, preventing concurrent recovery from persisting a temporary `idempotency_in_progress` response as terminal bookkeeping.
-* Hardens media staging guidance: split the original binary first, Base64-encode chunks independently, keep payloads at or below 8,000 Base64 characters, and verify staged blobs by read-back before publishing the atomic command commit.
-* Adds a 41,946-byte media staging regression fixture matching the size of the previously observed truncated payload case.
-
-= 1.1.3 =
-* Publishes multi-file media payloads and upload commands as one Git Data branch update when the connected ChatGPT GitHub surface supports Git Data operations.
-* Removes successful runtime media payloads in one Git tree cleanup commit instead of one commit per `.b64` file.
-* Retries media cleanup after concurrent runtime-branch movement and verifies source blob SHAs before deletion.
-* Adds regression coverage for multi-part media reconstruction and a simulated cleanup ref conflict.
-
-= 1.1.2 =
-* Aligns packaged version metadata and bundled documentation with the self-contained Direct Runtime architecture validated in 1.1.1.
-* Replaces stale 1.0.1/relay onboarding text in the packaged README without changing the validated runtime behavior.
-
-= 1.1.1 =
-* Prevents self-generated Direct Runtime media/result/completed bookkeeping pushes from recursively redispatching an in-flight pending command.
-* Keeps new/modified pending-command pushes and non-internal runtime pushes available to the normal recovery path.
-
-= 1.1.0 =
-* Reworked the runtime architecture so normal operation uses the user's own private GitHub repository and a site-specific private GitHub App signed Webhook directly to that user's WordPress.
-* Removed the operator-owned runtime/relay architecture from the distribution path.
-* Added recovery scans of the current pending directory so a missed push or interrupted GitHub bookkeeping write can be recovered by a later valid push.
-* Added conflict-safe result/completed/pending bookkeeping and retry behavior.
-* Added completed-response request IDs for retry-safe delivery and changed-payload conflict rejection.
-* Hardened Bridge self-update so a full manifest is required; omitted live plugin files are no longer interpreted as implicit deletions.
-* Plugin-file deletion during self-update requires explicit delete paths and confirmation, and required PHP bootstrap dependencies are checked before replacement.
-* Added large-media transport that keeps Base64 payloads outside one command JSON, verifies original byte count and SHA-256, and removes temporary source payloads after success.
-* Retains bounded chunked media transport as an authenticated fallback.
-
-= 1.0.1 =
-* Added completed-response request ID persistence and guarded full-manifest self-update.
-* Added canonical signed-runtime chunked media transfer so files within the 6 MiB media limit do not have to fit into one 2 MiB command JSON.
-
-= 1.0.0 =
-* Added guided GitHub onboarding to the main plugin.
-* Added public distribution metadata and custom source-available license.
-
-= 0.9.3 =
-* Fixed an early plugin-bootstrap fatal in the 0.9.2 at-rest key derivation.
-* Derives the at-rest encryption key only from wp-config key/salt constants available during plugin bootstrap.
-* Keeps the 0.9.2 public-release security goals without depending on pluggable.php functions.
-
-= 0.9.2 =
-* Added public-release hardening.
-* Added encryption at rest for the Bridge HMAC secret and secure RSA private key.
-* Added optional `TAKKA_BRIDGE_SECRET` wp-config override.
-* Added explicit secure server key status and rotation controls.
