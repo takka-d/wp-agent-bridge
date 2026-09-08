@@ -99,8 +99,12 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
 
     public static function catalog(string $version, string $repository, string $branch, string $site_host): array
     {
+        $operation_catalog = class_exists('TakKa_WordPress_Bridge_V099_Operations')
+            ? TakKa_WordPress_Bridge_V099_Operations::catalog()
+            : [];
+
         return [
-            'schema' => 1,
+            'schema' => 2,
             'bridge_version' => $version,
             'runtime' => [
                 'repository' => $repository,
@@ -130,6 +134,7 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'workspace_snapshot_rollback' => true,
                 'readonly_batch' => true,
                 'post_content_range_read' => true,
+                'deterministic_operation_router' => true,
                 'theme_file_inspection' => true,
                 'theme_guarded_write' => true,
                 'diagnostics' => true,
@@ -143,6 +148,7 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'atomic_command_bookkeeping' => true,
             ],
             'routes' => [
+                'operations' => $operation_catalog,
                 'self_update' => [
                     'route' => '/takka-bridge/v1/v06',
                     'actions' => ['bridge.self_update.status', 'bridge.self_update.apply', 'bridge.self_update.rollback'],
@@ -232,6 +238,88 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                     'max_chunks' => 32,
                 ],
             ],
+            'command_contract' => [
+                'preferred_common_task_route' => '/takka-v099/v1/operate',
+                'preferred_common_task_command' => [
+                    'type' => 'rest',
+                    'method' => 'POST',
+                    'route' => '/takka-v099/v1/operate',
+                    'body' => [
+                        'operation' => '<operation>',
+                        'params' => '<object>',
+                    ],
+                ],
+                'rules' => [
+                    'Use the deterministic operation router for advertised common operations instead of reconstructing versioned Bridge routes.',
+                    'Never append a query string to a REST route field. Put query values in the query object.',
+                    'Do not issue capability probe commands or source-code searches for an operation already present in this catalog.',
+                    'Do not switch to WPVibe, an operator relay, old Bridge Key, takka-d/chatgpt-data, or a per-command GitHub Actions worker.',
+                    'Do not retry a mutating command merely because a later GitHub read failed. First check whether the matching result already exists.',
+                ],
+                'templates' => [
+                    'post_get_edit_context' => [
+                        'operation' => 'post.get',
+                        'params' => ['post_id' => '<id>', 'query' => ['context' => 'edit']],
+                    ],
+                    'post_update' => [
+                        'operation' => 'post.update',
+                        'params' => ['post_id' => '<id>', 'fields' => '<WordPress REST fields object>'],
+                    ],
+                    'post_content_search' => [
+                        'operation' => 'post.content.search',
+                        'params' => ['post_id' => '<id>', 'query' => '<literal>'],
+                    ],
+                    'post_content_read_range' => [
+                        'operation' => 'post.content.read_range',
+                        'params' => ['post_id' => '<id>', 'start_line' => 1, 'max_lines' => 200],
+                    ],
+                    'small_media_upload' => [
+                        'operation' => 'media.upload.inline',
+                        'params' => ['filename' => '<name>', 'mime_type' => '<mime>', 'data_b64' => '<base64>'],
+                    ],
+                    'workspace_search' => [
+                        'operation' => 'workspace.file.search',
+                        'params' => ['path' => '<workspace path>', 'query' => '<literal>'],
+                    ],
+                    'readonly_batch' => [
+                        'operation' => 'readonly.batch',
+                        'params' => ['operations' => '<read-only operations array>'],
+                    ],
+                    'self_update_status' => [
+                        'operation' => 'self_update.status',
+                        'params' => new stdClass(),
+                    ],
+                ],
+            ],
+            'task_recipes' => [
+                'targeted_post_edit' => [
+                    'steps' => ['post.content.search or post.content.read_range', 'post.content.patch_preview', 'post.content.patch_apply'],
+                    'rule' => 'Do not fetch and rewrite the full post when an exact guarded patch is sufficient.',
+                ],
+                'featured_image_small_file' => [
+                    'steps' => ['media.upload.inline', 'post.update with fields.featured_media'],
+                    'rule' => 'For decoded files up to 1 MiB, do not stage Git media chunks unless inline upload actually fails.',
+                ],
+                'featured_image_large_file' => [
+                    'steps' => ['stage binary-first chunks', 'POST staged media Fast Path once', 'post.update with fields.featured_media'],
+                    'rule' => 'Do not run verify-only before a normal staged upload; use verify-only for explicit verification or integrity diagnosis.',
+                ],
+                'large_iterative_artifact' => [
+                    'steps' => ['workspace.file.search/read_range', 'workspace.file.patch or guarded write', 'workspace snapshot when rollback point is needed'],
+                    'rule' => 'Do not rediscover the same artifact from File Library or historical chat on each continuation.',
+                ],
+                'multiple_independent_reads' => [
+                    'steps' => ['readonly.batch'],
+                    'rule' => 'Use one batch for two or more independent allowlisted reads instead of serial pending commands.',
+                ],
+            ],
+            'failure_policy' => [
+                'rest_no_route' => 'Do not repeat the same route. Check the deterministic operation catalog and query/route separation first.',
+                'stale_write_or_plan_409' => 'Re-read only the affected state, regenerate the preview/plan, then retry the guarded write once with fresh hashes.',
+                'media_integrity_409' => 'Inspect reported chunk/file integrity and replace only mismatched staging data. Do not switch transport blindly.',
+                'runtime_branch_race_409_422' => 'Check for the matching result first. If absent, retry only the Git publication step against the latest runtime head; do not replay the WordPress side effect.',
+                'unknown_operation' => 'Read this catalog. Do not enumerate unrelated connectors or fall back to WPVibe.',
+            ],
             'media_routing' => [
                 'inline_action' => 'media.upload_base64',
                 'inline_preferred_max_decoded_bytes' => 1048576,
@@ -244,15 +332,17 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'ordinary_command_write' => ['create_file'],
                 'preferred_atomic_git_data' => ['create_blob', 'create_tree', 'create_commit', 'update_ref'],
                 'discovery_rule' => 'Do not rediscover connector capabilities when the required write action is already visible in the current task/session.',
+                'question_rule' => 'Do not ask the user to identify or confirm repository/files/routes that the connected tools can inspect directly.',
             ],
             'fast_path' => [
                 'runtime_resolution' => 'Read RUNTIME_CONNECTION.json only when canonical runtime is not already verified or a migration signal appears.',
                 'capability_resolution' => 'Read this file before issuing capability probe commands or searching source code for known Bridge routes/actions.',
+                'operation_router' => 'For common tasks, use the single /takka-v099/v1/operate route and an allowlisted operation from routes.operations. This is preferred over reconstructing versioned internal routes.',
                 'command_chaining' => 'When atomic_command_bookkeeping=true, a visible matching result means result creation, completed-command storage, and pending deletion are already durable in the same commit. The next pending command may be submitted immediately without waiting for later bookkeeping commits.',
                 'readonly_batch' => 'When two or more independent allowlisted reads are needed, prefer one readonly.batch request instead of multiple pending commands/webhooks/results.',
-                'post_content_read' => 'For WordPress post content, use post.content.inspect for metadata, post.content.search for targeted lookup, and post.content.read.range for bounded source reads. Do not append query strings such as ?context=edit to the REST route string; do not fall back to generic core REST reads when these actions satisfy the task.',
-                'media_upload' => 'For local or conversation-uploaded media up to 1 MiB decoded, prefer a single media.upload_base64 command. Use staged Media Fast Path for larger files. Do not split or stage a small file unless inline upload actually fails or the caller explicitly requests staged transport.',
-                'workspace' => 'Prefer workspace range/search/patch for iterative large text artifacts instead of repeated File Library or historical-response reconstruction.',
+                'post_content_read' => 'For WordPress post content, use post.content.inspect for metadata, post.content.search for targeted lookup, and post.content.read_range for bounded source reads through the deterministic operation router.',
+                'media_upload' => 'For local or conversation-uploaded media up to 1 MiB decoded, prefer media.upload.inline through the deterministic operation router. Use staged Media Fast Path for larger files. Do not split or stage a small file unless inline upload actually fails or the caller explicitly requests staged transport.',
+                'workspace' => 'Prefer workspace operations for iterative large text artifacts instead of repeated File Library or historical-response reconstruction.',
             ],
         ];
     }
