@@ -1,0 +1,101 @@
+name: Deterministic operation router integration
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'plugin/wp-agent-bridge/**'
+      - 'tests/operation-policy-test.php'
+      - 'tests/operation-router-wp-integration.php'
+      - '.github/workflows/operation-router-integration.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'plugin/wp-agent-bridge/**'
+      - 'tests/operation-policy-test.php'
+      - 'tests/operation-router-wp-integration.php'
+      - '.github/workflows/operation-router-integration.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: wordpress
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Unit policy regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/operation-policy-test.php
+
+      - name: Install WP-CLI and clean WordPress 7.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar -o /tmp/wp
+          chmod +x /tmp/wp
+          mkdir -p /tmp/wpab-operation-test
+          /tmp/wp core download --version=7.1 --path=/tmp/wpab-operation-test
+          /tmp/wp config create \
+            --path=/tmp/wpab-operation-test \
+            --dbname=wordpress \
+            --dbuser=root \
+            --dbpass=root \
+            --dbhost=127.0.0.1:3306 \
+            --skip-check
+          /tmp/wp core install \
+            --path=/tmp/wpab-operation-test \
+            --url=http://wpab-operation.test \
+            --title='WPAB deterministic operation test' \
+            --admin_user=admin \
+            --admin_password='Temporary-Test-Password-2026!' \
+            --admin_email=admin@example.test \
+            --skip-email
+          cp -R plugin/wp-agent-bridge /tmp/wpab-operation-test/wp-content/plugins/wp-agent-bridge
+          /tmp/wp plugin activate wp-agent-bridge --path=/tmp/wpab-operation-test
+
+      - name: Verify deterministic operation route is registered
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/wp eval '
+            wp_set_current_user(1);
+            do_action("rest_api_init");
+            $routes = rest_get_server()->get_routes();
+            foreach (["/takka-v099/v1/operate", "/takka-v098/v1/manage", "/takka-v084/v1/manage"] as $route) {
+                if (!isset($routes[$route])) {
+                    fwrite(STDERR, "Missing deterministic dependency route: {$route}\n");
+                    exit(1);
+                }
+            }
+            if (!class_exists("TakKa_WordPress_Bridge_V099_Policy")) {
+                fwrite(STDERR, "Deterministic operation policy class is missing.\n");
+                exit(1);
+            }
+            echo "Deterministic operation routes registered.\n";
+          ' --path=/tmp/wpab-operation-test
+
+      - name: End-to-end operation routing regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/wp eval-file "$GITHUB_WORKSPACE/tests/operation-router-wp-integration.php" --path=/tmp/wpab-operation-test

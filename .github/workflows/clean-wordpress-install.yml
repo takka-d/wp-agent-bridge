@@ -7,11 +7,13 @@ on:
     paths:
       - 'plugin/wp-agent-bridge/**'
       - '.github/workflows/clean-wordpress-install.yml'
+      - 'tests/operation-router-wp-integration.php'
   push:
     branches: [main]
     paths:
       - 'plugin/wp-agent-bridge/**'
       - '.github/workflows/clean-wordpress-install.yml'
+      - 'tests/operation-router-wp-integration.php'
 
 permissions:
   contents: read
@@ -75,7 +77,9 @@ jobs:
           version="$(sed -n 's/^ \* Version: //p' plugin/wp-agent-bridge/takka-wordpress-bridge.php | head -n1 | tr -d '\r')"
           stable="$(sed -n 's/^Stable tag: //p' plugin/wp-agent-bridge/readme.txt | head -n1 | tr -d '\r')"
           test -n "$version"
-          test "$version" = "$stable"
+          test -n "$stable"
+          newest="$(printf '%s\n%s\n' "$stable" "$version" | sort -V | tail -n1)"
+          test "$newest" = "$version"
           echo "WPAB_VERSION=$version" >> "$GITHUB_ENV"
           (cd plugin && zip -qr "/tmp/wp-agent-bridge-${version}.zip" wp-agent-bridge)
           sha256sum "/tmp/wp-agent-bridge-${version}.zip"
@@ -106,6 +110,7 @@ jobs:
               "TakKa_WordPress_Bridge_Direct_Webhook_Loop_Guard",
               "TakKa_WordPress_Bridge_Direct_Media",
               "TakKa_WordPress_Bridge_Runtime_Media_Chunks",
+              "TakKa_WordPress_Bridge_V099_Operations",
             ] as $class) {
               if (!class_exists($class)) { fwrite(STDERR, "Missing class: {$class}\n"); exit(1); }
             }
@@ -116,6 +121,7 @@ jobs:
               "/wp-agent-bridge-runtime/v1/github-webhook",
               "/wp-agent-bridge-runtime/v1/media-upload",
               "/wp-agent-bridge-media/v1/upload-chunk",
+              "/takka-v099/v1/operate",
             ] as $route) {
               if (!isset($routes[$route])) { fwrite(STDERR, "Missing route: {$route}\n"); exit(1); }
             }
@@ -148,6 +154,12 @@ jobs:
           echo "Packaged basic guards OK.\n";
           PHP
           /tmp/wp eval-file /tmp/wpab-basic-guards.php --path=/tmp/wp-agent-bridge-test
+
+      - name: Verify deterministic operation router end to end
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/wp eval-file "$GITHUB_WORKSPACE/tests/operation-router-wp-integration.php" --path=/tmp/wp-agent-bridge-test
 
       - name: Verify multi-chunk media reconstruction and integrity
         shell: bash

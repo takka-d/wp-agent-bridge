@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
 
 final class TakKa_WordPress_Bridge_V084
 {
-    private const VERSION = '0.8.4.1';
+    private const VERSION = '0.8.4.2';
     private const INTERNAL_NAMESPACE = 'takka-v084/v1';
     private const INTERNAL_ROUTE = '/takka-v084/v1/manage';
     private const OUTER_ROUTE = '/takka-bridge/v1/execute';
@@ -22,6 +22,7 @@ final class TakKa_WordPress_Bridge_V084
         'v084.capabilities',
         'post.content.inspect',
         'post.content.search',
+        'post.content.read.range',
         'post.content.patch.preview',
         'post.content.patch.apply',
     ];
@@ -87,6 +88,9 @@ final class TakKa_WordPress_Bridge_V084
                 case 'post.content.search':
                     $response = TakKa_WordPress_Bridge_V084_Post_Content::search($params);
                     break;
+                case 'post.content.read.range':
+                    $response = TakKa_WordPress_Bridge_V084_Post_Content::read_range($params);
+                    break;
                 case 'post.content.patch.preview':
                     $response = TakKa_WordPress_Bridge_V084_Post_Content::preview($params);
                     break;
@@ -111,7 +115,7 @@ final class TakKa_WordPress_Bridge_V084
         if (!is_array($data)) return $response;
         $data['bridge_version'] = self::VERSION;
         $features = isset($data['features']) && is_array($data['features']) ? $data['features'] : [];
-        foreach (['conflict_safe_post_content_patch', 'targeted_post_content_search', 'post_content_preview_plan_hash', 'post_content_patch_counter_fix'] as $feature) {
+        foreach (['conflict_safe_post_content_patch', 'targeted_post_content_search', 'bounded_post_content_range_read', 'post_content_preview_plan_hash', 'post_content_patch_counter_fix'] as $feature) {
             if (!in_array($feature, $features, true)) $features[] = $feature;
         }
         $data['features'] = $features;
@@ -127,6 +131,8 @@ final class TakKa_WordPress_Bridge_V084
             'actions' => self::ACTIONS,
             'full_content_not_returned_by_inspect' => true,
             'search_returns_bounded_context_only' => true,
+            'range_read_max_lines' => 1000,
+            'range_read_max_bytes' => 262144,
             'patch_preview_requires_exact_match_count' => true,
             'patch_apply_requires_expected_before_sha256' => true,
             'patch_apply_requires_expected_plan_hash' => true,

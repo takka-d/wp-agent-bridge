@@ -8,10 +8,11 @@ $site = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-
 $hook = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v096-media-hook.php');
 $themeFiles = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v096-theme-files.php');
 $health = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v096-health.php');
-$identity = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-runtime-identity.php');
+$capabilities = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-runtime-capabilities.php');
+$guidance = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-runtime-guidance.php');
 $options = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v08-options.php');
 
-foreach (compact('bootstrap', 'site', 'hook', 'themeFiles', 'health', 'identity', 'options') as $name => $value) {
+foreach (compact('bootstrap', 'site', 'hook', 'themeFiles', 'health', 'capabilities', 'guidance', 'options') as $name => $value) {
     if (!is_string($value) || $value === '') {
         fwrite(STDERR, "missing source: {$name}\n");
         exit(1);
@@ -98,15 +99,28 @@ if (strpos($options, 'Surgical option patching currently supports array-valued o
     exit(1);
 }
 
+// Runtime discovery is catalog-owned after the identity/guidance split. Keep
+// site-icon/media capability assertions there instead of requiring verbose
+// model instructions inside Runtime_Identity.
 foreach ([
-    '## Site Icon / favicon and local or Drive media',
+    'site.icon.get',
     'site.icon.set',
-    'set_site_icon=true',
-    'confirm_site_icon=true',
-    'Google Drive',
-    'retrieve/download the file through the agent/connector first',
+    'site.icon.clear',
+    'media.upload.capabilities',
+    'media.upload.inline',
+    '/wp-agent-bridge-runtime/v1/media-upload',
 ] as $needle) {
-    if (strpos($identity, $needle) === false) {
+    if (strpos($capabilities, $needle) === false) {
+        fwrite(STDERR, "runtime capability catalog missing {$needle}\n");
+        exit(1);
+    }
+}
+foreach ([
+    'RUNTIME_CAPABILITIES.json',
+    'Small local/conversation media up to 1 MiB decoded',
+    'Larger media: staged Media Fast Path',
+] as $needle) {
+    if (strpos($guidance, $needle) === false) {
         fwrite(STDERR, "runtime guidance missing {$needle}\n");
         exit(1);
     }

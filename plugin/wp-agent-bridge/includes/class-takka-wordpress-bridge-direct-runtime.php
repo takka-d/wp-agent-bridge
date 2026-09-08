@@ -586,12 +586,33 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
     private static function execute_command(array $command, string $request_id): array
     {
         $type = isset($command['type']) ? (string) $command['type'] : 'rest';
+        if ($type === 'operation') {
+            if (!is_string($command['operation'] ?? null) || trim($command['operation']) === ''
+                || (isset($command['params']) && !is_array($command['params']))) {
+                return self::error_result('Operation command requires operation and an object of params.');
+            }
+            // Reuse the signed, policy-guarded route without asking the caller
+            // to reconstruct a REST route, method, or nested envelope.
+            $command = [
+                'type' => 'rest',
+                'method' => 'POST',
+                'route' => '/takka-v099/v1/operate',
+                'body' => ['operation' => trim($command['operation']), 'params' => $command['params'] ?? []],
+            ];
+            $type = 'rest';
+        }
         if ($type === 'health') {
             return self::local_bridge_request('GET', '/takka-bridge/v1/health', null, $request_id, false);
         }
         if ($type === 'rest') {
             $method = strtoupper((string) ($command['method'] ?? 'GET'));
             $route = isset($command['route']) ? (string) $command['route'] : '';
+            if ($route === '/takka-bridge/v1/execute' || strpos($route, '?') !== false || strpos($route, '#') !== false) {
+                $message = $route === '/takka-bridge/v1/execute'
+                    ? 'Recursive REST proxy blocked. Use type=operation with operation/params, or type=bridge with action/params.'
+                    : 'REST route must not contain query strings or fragments. Use the query object or type=operation.';
+                return ['ok' => false, 'status' => 400, 'statusText' => 'Bad Request', 'data' => ['error' => $message]];
+            }
             if (!in_array($method, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true) || !self::valid_local_route($route)) {
                 return self::error_result('Invalid REST command.');
             }
@@ -603,10 +624,23 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
             if (array_key_exists('body', $command)) {
                 $params['body'] = $command['body'];
             }
-            return self::local_bridge_request('POST', '/takka-bridge/v1/execute', [
+            $result = self::local_bridge_request('POST', '/takka-bridge/v1/execute', [
                 'action' => 'rest.call',
                 'params' => $params,
             ], $request_id, true);
+            if ($route === '/takka-v099/v1/operate') {
+                $wrapper = $result['data'] ?? [];
+                $payload = $wrapper['data'] ?? [];
+                if (isset($wrapper['status']) && (int) $wrapper['status'] >= 400) {
+                    $result['ok'] = false;
+                    $result['status'] = (int) $wrapper['status'];
+                } elseif (is_array($payload) && array_key_exists('ok', $payload) && empty($payload['ok'])) {
+                    $result['ok'] = false;
+                    $result['status'] = (int) ($payload['status'] ?? 500);
+                }
+                $result['statusText'] = self::status_text((int) $result['status']);
+            }
+            return $result;
         }
         if ($type === 'bridge') {
             $action = isset($command['action']) ? (string) $command['action'] : '';

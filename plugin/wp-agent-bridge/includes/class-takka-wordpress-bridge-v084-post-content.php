@@ -11,6 +11,8 @@ final class TakKa_WordPress_Bridge_V084_Post_Content
     private const MAX_REPLACEMENT_BYTES = 262144;
     private const MAX_SEARCH_RESULTS = 20;
     private const MAX_CONTEXT_CHARS = 1200;
+    private const MAX_READ_RANGE_LINES = 1000;
+    private const MAX_READ_RANGE_BYTES = 262144;
 
     public static function inspect(array $params)
     {
@@ -64,6 +66,76 @@ final class TakKa_WordPress_Bridge_V084_Post_Content
             'returned' => count($matches),
             'truncated' => $total > count($matches),
             'matches' => $matches,
+        ]);
+    }
+
+    public static function read_range(array $params)
+    {
+        $context = self::context($params);
+        if (is_wp_error($context)) return $context;
+        $post = $context['post'];
+        $content = (string) $post->post_content;
+        if (strlen($content) > self::MAX_CONTENT_BYTES) {
+            return new WP_Error('takka_bridge_post_content_size', 'Post content is too large for Bridge content tooling.', ['status' => 413]);
+        }
+
+        $normalized = str_replace(["\r\n", "\r"], "\n", $content);
+        $lines = explode("\n", $normalized);
+        $total_lines = count($lines);
+        $start_line = isset($params['start_line']) ? max(1, (int) $params['start_line']) : 1;
+        $max_lines = isset($params['max_lines'])
+            ? max(1, min(self::MAX_READ_RANGE_LINES, (int) $params['max_lines']))
+            : 200;
+
+        if ($start_line > $total_lines) {
+            return new WP_Error('takka_bridge_post_content_range', 'start_line is beyond the end of the post content.', [
+                'status' => 416,
+                'start_line' => $start_line,
+                'total_lines' => $total_lines,
+            ]);
+        }
+
+        $selected = [];
+        $returned_bytes = 0;
+        $end_line = $start_line - 1;
+        for ($index = $start_line - 1; $index < $total_lines && count($selected) < $max_lines; $index++) {
+            $line = (string) $lines[$index];
+            $addition = ($selected ? 1 : 0) + strlen($line);
+            if ($returned_bytes + $addition > self::MAX_READ_RANGE_BYTES) {
+                if (!$selected) {
+                    return new WP_Error('takka_bridge_post_content_range_line_too_large', 'The requested first line exceeds the read-range byte limit. Use post.content.search with a targeted query.', [
+                        'status' => 413,
+                        'start_line' => $start_line,
+                        'line_bytes' => strlen($line),
+                        'max_range_bytes' => self::MAX_READ_RANGE_BYTES,
+                    ]);
+                }
+                break;
+            }
+            $selected[] = $line;
+            $returned_bytes += $addition;
+            $end_line = $index + 1;
+        }
+
+        $text = implode("\n", $selected);
+        $eof = $end_line >= $total_lines;
+        return rest_ensure_response([
+            'post_id' => (int) $post->ID,
+            'post_type' => (string) $post->post_type,
+            'status' => (string) $post->post_status,
+            'modified_gmt' => (string) $post->post_modified_gmt,
+            'content_sha256' => hash('sha256', $content),
+            'content_bytes' => strlen($content),
+            'total_lines' => $total_lines,
+            'start_line' => $start_line,
+            'end_line' => $end_line,
+            'returned_lines' => count($selected),
+            'returned_bytes' => strlen($text),
+            'max_range_lines' => self::MAX_READ_RANGE_LINES,
+            'max_range_bytes' => self::MAX_READ_RANGE_BYTES,
+            'next_start_line' => $eof ? null : ($end_line + 1),
+            'eof' => $eof,
+            'content' => $text,
         ]);
     }
 

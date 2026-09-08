@@ -38,11 +38,14 @@ function batch_private_method(string $name): ReflectionMethod
 }
 
 $capabilities = batch_private_method('capabilities')->invoke(null);
-if (($capabilities['version'] ?? null) !== '0.9.8'
+if (($capabilities['version'] ?? null) !== '0.9.8.1'
     || ($capabilities['limits']['max_operations'] ?? null) !== 12
+    || !in_array('post.content.inspect', $capabilities['rest_actions'] ?? [], true)
+    || !in_array('post.content.search', $capabilities['rest_actions'] ?? [], true)
+    || !in_array('post.content.read.range', $capabilities['rest_actions'] ?? [], true)
     || !empty($capabilities['mutation_actions_allowed'])
     || !empty($capabilities['arbitrary_rest_allowed'])) {
-    fail_test('Read-only batch capabilities are not strict or bounded.');
+    fail_test('Read-only batch capabilities are not strict, bounded, or missing post-content reads.');
 }
 
 $validate = batch_private_method('validate_operation');
@@ -57,12 +60,23 @@ if (is_wp_error($allowed)
     fail_test('Allowlisted workspace read was rejected.');
 }
 
+$post_range = $validate->invoke(null, [
+    'label' => 'post source range',
+    'action' => 'post.content.read.range',
+    'params' => ['post_id' => 719, 'start_line' => 1, 'max_lines' => 100],
+], 0);
+if (is_wp_error($post_range) || ($post_range['action'] ?? null) !== 'post.content.read.range') {
+    fail_test('Allowlisted post content range read was rejected.');
+}
+
 foreach ([
     'workspace.file.write',
     'workspace.file.patch',
     'workspace.file.delete',
     'workspace.snapshot.create',
     'workspace.snapshot.rollback',
+    'post.content.patch.preview',
+    'post.content.patch.apply',
     'site.icon.set',
     'site.icon.clear',
     'bridge.self_update.apply',
