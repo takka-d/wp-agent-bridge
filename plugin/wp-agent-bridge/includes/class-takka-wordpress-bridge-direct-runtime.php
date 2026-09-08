@@ -344,15 +344,6 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
             return new WP_Error('takka_direct_bookkeeping_pending_sha', 'Pending command SHA is invalid.', ['status' => 409]);
         }
 
-        $result_blob = self::create_git_blob($token, $repository, $result_json);
-        if (is_wp_error($result_blob)) {
-            return $result_blob;
-        }
-        $completed_blob = self::create_git_blob($token, $repository, $command_raw);
-        if (is_wp_error($completed_blob)) {
-            return $completed_blob;
-        }
-
         for ($attempt = 1; $attempt <= self::BOOKKEEPING_MAX_ATTEMPTS; $attempt++) {
             $ref = TakKa_WordPress_Bridge_Direct_GitHub::github_api(
                 'GET',
@@ -425,8 +416,10 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
                 [
                     'base_tree' => $base_tree_sha,
                     'tree' => [
-                        ['path' => $result_path, 'mode' => '100644', 'type' => 'blob', 'sha' => $result_blob],
-                        ['path' => $completed_path, 'mode' => '100644', 'type' => 'blob', 'sha' => $completed_blob],
+                        // Create the result in the tree request and reuse the exact pending
+                        // blob for completed; neither needs a separate blob API call.
+                        ['path' => $result_path, 'mode' => '100644', 'type' => 'blob', 'content' => $result_json],
+                        ['path' => $completed_path, 'mode' => '100644', 'type' => 'blob', 'sha' => $expected_pending_sha],
                         ['path' => $pending_path, 'mode' => '100644', 'type' => 'blob', 'sha' => null],
                     ],
                 ]

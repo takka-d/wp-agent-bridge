@@ -130,6 +130,7 @@ jobs:
 
           function fake_put(string $path, string $content): void {
               $GLOBALS['fake_gh_files'][$path] = ['content' => $content, 'sha' => sha1($content)];
+              $GLOBALS['fake_git_blobs'][sha1($content)] = $content;
           }
 
           add_filter('pre_http_request', function ($pre, $args, $url) {
@@ -251,6 +252,15 @@ jobs:
                   if (!is_array($body) || !isset($body['base_tree']) || !isset($body['tree']) || !is_array($body['tree'])) {
                       return gh_response(400, ['message' => 'bad mock tree request']);
                   }
+                  foreach ($body['tree'] as &$entry) {
+                      if (array_key_exists('content', $entry)) {
+                          $content = (string) $entry['content'];
+                          $entry['sha'] = sha1($content);
+                          $GLOBALS['fake_git_blobs'][$entry['sha']] = $content;
+                          unset($entry['content']);
+                      }
+                  }
+                  unset($entry);
                   $GLOBALS['fake_git_sequence']++;
                   $tree_sha = sha1('tree-' . $GLOBALS['fake_git_sequence'] . '-' . wp_json_encode($body, JSON_UNESCAPED_SLASHES));
                   $GLOBALS['fake_git_trees'][$tree_sha] = [

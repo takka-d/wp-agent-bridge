@@ -106,6 +106,10 @@ High-impact writes remain subject to the Bridge's preview, confirmation, state-h
 
 == Changelog ==
 
+= 1.1.18 =
+* Remove two GitHub requests from atomic result publication by creating the result in the tree request and reusing the verified pending blob for the completed command.
+* Make native operation commands the single preferred route, reuse the known catalog, specify batch limitations, and distinguish stored changes from visual verification.
+
 = 1.1.17 =
 * Summarize uploaded binary input in runtime results instead of echoing Base64; preserve byte counts and SHA-256 for verification.
 
