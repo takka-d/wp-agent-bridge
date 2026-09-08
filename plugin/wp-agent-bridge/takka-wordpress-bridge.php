@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Agent Bridge
  * Description: Secure WordPress management bridge for ChatGPT using GitHub App connectivity, guarded writes, previews, and rollback.
- * Version: 1.1.9
+ * Version: 1.1.10
  * Author: TakKa
  * Requires at least: 6.9
  * Requires PHP: 7.4
@@ -81,6 +81,7 @@ require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-runtime-v2
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-webhook-loop-guard.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-media.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-media-auto-path.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-media-pre-dispatch.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-integrity.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-runtime-identity.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-hardening.php';
@@ -122,6 +123,7 @@ TakKa_WordPress_Bridge_Direct_Runtime_V2::init();
 TakKa_WordPress_Bridge_Direct_Webhook_Loop_Guard::init();
 TakKa_WordPress_Bridge_Direct_Media::init();
 TakKa_WordPress_Bridge_Direct_Media_Auto_Path::init();
+TakKa_WordPress_Bridge_Direct_Media_Pre_Dispatch::init();
 TakKa_WordPress_Bridge_Integrity::init();
 TakKa_WordPress_Bridge_V096_Media_Hook::init();
 TakKa_WordPress_Bridge_Direct_Hardening::init();
