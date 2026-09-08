@@ -3,7 +3,7 @@ Contributors: takka-d
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.1.8
+Stable tag: 1.1.9
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
@@ -58,7 +58,9 @@ The fast path resolves all ordered staged paths from one current Git tree snapsh
 
 == Delivery recovery ==
 
-A GitHub push is not treated as a durable queue by itself. Every valid runtime push also reconciles the current `wordpress-bridge/commands/pending/` directory. Self-generated media/result/completed bookkeeping pushes are ignored when their changed paths are available. In addition, every active command now owns a per-request ID in-flight marker through WordPress execution and GitHub result/completed/pending bookkeeping; recovery never re-dispatches a command while that marker is live. This prevents media cleanup or other internal GitHub writes from racing the still-running command even when a push payload omits detailed changed-path metadata. Stale in-flight ownership is treated as expired after 10 minutes so a crashed request remains recoverable. If WordPress completed a command but GitHub bookkeeping failed, the same request ID is replayed from WordPress's completed-response idempotency rather than repeating the side effect, and the pending/result/completed files are repaired.
+A GitHub push is not treated as a durable queue by itself. Every valid runtime push also reconciles the current `wordpress-bridge/commands/pending/` directory. Self-generated media/result/completed bookkeeping pushes are ignored when their changed paths are available. Every active command owns a per-request ID in-flight marker through WordPress execution and GitHub bookkeeping, so concurrent recovery does not re-dispatch a command while it is still running.
+
+After WordPress execution returns, Direct Runtime now persists the exact sanitized result in a local non-autoloaded recovery journal before attempting the GitHub result write. If GitHub bookkeeping races a media cleanup commit or otherwise fails before the result becomes durable, a later recovery of the same request ID reuses that journal instead of executing the WordPress side effect again. The journal is cleared as soon as the GitHub result is durable; stale journals expire after 24 hours. Changed command content under the same request ID is rejected rather than replayed. This covers the failure window between a successful WordPress side effect and durable GitHub result/completed/pending bookkeeping.
 
 == Self-update safety ==
 
@@ -75,6 +77,11 @@ This is a custom proprietary/source-available license, not an open-source licens
 High-impact writes remain subject to the Bridge's preview, confirmation, state-hash, plan-hash, impact-hash, active-theme/plugin, and sensitive-key protections.
 
 == Changelog ==
+
+= 1.1.9 =
+* Persists a local per-request completion journal after WordPress execution and before GitHub result bookkeeping.
+* Replays the exact successful local result when GitHub bookkeeping fails after a side effect, instead of re-running the command against already-consumed media payloads.
+* Rejects changed command content under an existing journaled request ID and expires abandoned journals after 24 hours.
 
 = 1.1.8 =
 * Adds per-request ID in-flight ownership around Direct Runtime command execution and GitHub bookkeeping.
