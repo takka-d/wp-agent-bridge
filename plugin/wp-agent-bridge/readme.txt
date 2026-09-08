@@ -3,7 +3,7 @@ Contributors: takka-d
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.1.10
+Stable tag: 1.1.11
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
@@ -31,6 +31,7 @@ The project is designed around these principles:
 * Pending-directory reconciliation after missed Webhook/bookkeeping delivery.
 * Protected handling for user data, post meta, options, and other sensitive WordPress state.
 * Media transport selected according to source and available GitHub write capabilities.
+* Private runtime workspace for persistent HTML, JavaScript, CSS, JSON, POV-Ray, Markdown, and related text artifacts.
 
 == Installation ==
 
@@ -56,6 +57,14 @@ The fast path resolves all ordered staged paths from one current Git tree snapsh
 
 `/wp-agent-bridge-runtime/v1/media-verify` is reserved for explicit verify-only requests, uncertain staging, or integrity-409 diagnosis/recovery. Integrity failures include chunk diagnostics so only mismatched staged payloads need to be replaced when identifiable.
 
+== Development workspace ==
+
+WP Agent Bridge can keep persistent development artifacts under `wordpress-bridge/workspace/` in the user's private canonical runtime repository. This is intended for iterative work such as a large HTML/JavaScript tool that would otherwise need to be rediscovered from ChatGPT File Library and re-read in full on every continuation.
+
+The internal `/takka-v097/v1/manage` surface provides `workspace.list`, full or ranged reads, bounded literal search, guarded full writes, exact-fragment patching, deletion, compact line diffing, snapshot creation/listing, and snapshot rollback. Existing files require `expected_current_sha256`; new files require `expected_current_absent=true`; mutating operations require explicit confirmation. Workspace paths are restricted to an allowlist of text-oriented development extensions, and no arbitrary filesystem, shell, PHP, or executable upload surface is added.
+
+Snapshots store the source Git blob identity rather than duplicating the whole file. Git history remains the underlying version store while the snapshot manifest gives ChatGPT a stable rollback handle.
+
 == Delivery recovery ==
 
 A GitHub push is not treated as a durable queue by itself. Every valid runtime push also reconciles the current `wordpress-bridge/commands/pending/` directory. Self-generated media/result/completed bookkeeping pushes are ignored when their changed paths are available. Every active command owns a per-request ID in-flight marker through WordPress execution and GitHub bookkeeping, so concurrent recovery does not re-dispatch a command while it is still running.
@@ -77,6 +86,11 @@ This is a custom proprietary/source-available license, not an open-source licens
 High-impact writes remain subject to the Bridge's preview, confirmation, state-hash, plan-hash, impact-hash, active-theme/plugin, and sensitive-key protections.
 
 == Changelog ==
+
+= 1.1.11 =
+* Adds a persistent private development workspace rooted at `wordpress-bridge/workspace/` in the user's canonical runtime repository.
+* Adds structured list, full/ranged read, literal search, guarded write, exact patch, delete, compact diff, snapshot, and rollback operations for bounded UTF-8 development artifacts.
+* Uses SHA-256 stale-write guards, explicit confirmations, extension allowlisting, bounded file/search limits, and Git blob-backed snapshots instead of arbitrary filesystem or shell access.
 
 = 1.1.10 =
 * Moves staged-media Auto Path execution from `rest_request_before_callbacks` to `rest_pre_dispatch` so a successful fast-path upload truly short-circuits the legacy media route callback.
