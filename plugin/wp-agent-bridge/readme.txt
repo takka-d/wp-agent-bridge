@@ -33,6 +33,7 @@ The project is designed around these principles:
 * Media transport selected according to source and available GitHub write capabilities.
 * Private runtime workspace for persistent HTML, JavaScript, CSS, JSON, POV-Ray, Markdown, and related text artifacts.
 * Strict read-only batching for independent search/read/inspect/status operations without adding a generic mutation surface.
+* A deterministic high-level operation router for common ChatGPT workflows so callers do not have to reconstruct versioned routes or action spellings.
 * Atomic Direct Runtime result/completed/pending bookkeeping so a visible result is a reliable completion barrier for the next command.
 
 == Installation ==
@@ -49,11 +50,19 @@ The project is designed around these principles:
 
 PATs, manual Webhook secrets, private keys, Bridge Keys, and GitHub Actions workflow configuration are not part of the ordinary setup.
 
+== Deterministic operation routing ==
+
+Common workflows use the internal `/takka-v099/v1/operate` route with one allowlisted high-level operation name and params object. This keeps query parameters separate from route paths and removes the need for model clients to guess which versioned Bridge route implements a common task.
+
+`post.get` is metadata-oriented and bounded by default; post source content is read through `post.content.search` or `post.content.read_range`. Generic `post.update` cannot replace post content, so content changes use the guarded preview/apply path. `readonly.batch` accepts the same documented high-level read operation names and normalizes them to the strict read-only action map.
+
+The canonical runtime repository receives generated `AGENTS.md`, `WEBHOOK_RUNTIME.md`, and `wordpress-bridge/RUNTIME_CAPABILITIES.json` guidance for the installed Bridge version. Existing connected installations resynchronize this guidance when the routing contract changes.
+
 == Media transfer ==
 
 Media files up to 6 MiB are supported.
 
-For local or conversation-uploaded media up to 1 MiB decoded, the preferred route is one inline `media.upload_base64` command. Small files should not be split, staged, turned into Git blobs, or verified separately unless inline upload actually fails or staged transport is explicitly requested.
+For local or conversation-uploaded media up to 1 MiB decoded, the preferred route is one inline `media.upload.inline` operation. The deterministic inline policy can validate caller-supplied `expected_bytes` and `expected_sha256` before the lower-level media handler runs. Files above the 1 MiB deterministic inline threshold are directed to staged Media Fast Path instead of silently taking an oversized inline route.
 
 For larger files, the preferred route is the batched staged-media path when GitHub can write UTF-8 text/blobs. Split the original binary before Base64 encoding, stage bounded independent chunks under `wordpress-bridge/media/pending/`, and publish the payloads plus one pending upload command together when Git Data operations are available. The upload itself validates whole-file bytes/SHA-256 and optional per-chunk integrity before creating the attachment, so a separate verify-first pass is not used in the normal successful path.
 
@@ -96,6 +105,16 @@ This is a custom proprietary/source-available license, not an open-source licens
 High-impact writes remain subject to the Bridge's preview, confirmation, state-hash, plan-hash, impact-hash, active-theme/plugin, and sensitive-key protections.
 
 == Changelog ==
+
+= 1.1.16 =
+* Adds `/takka-v099/v1/operate`, a deterministic high-level operation router for common post, media, diagnostics, Workspace, read-only batch, and self-update workflows.
+* Adds bounded post-content source range reads and exposes them through the deterministic router and read-only batch path.
+* Generates concise canonical `AGENTS.md` and `WEBHOOK_RUNTIME.md` routing guidance so existing runtime repositories stop reintroducing stale route/media instructions.
+* Keeps `post.get` metadata-oriented by default and blocks full post-content retrieval through that operation; source content uses dedicated search/range operations.
+* Blocks post content replacement through generic `post.update`, requiring guarded content preview/apply instead.
+* Enforces the 1 MiB deterministic inline-media threshold and validates optional expected byte count/SHA-256 before inline media upload.
+* Normalizes documented high-level read operation names inside `readonly.batch`, removing a second action-name vocabulary.
+* Adds clean-WordPress regression coverage for deterministic post read/update, bounded content access, small-media upload, featured-image assignment, batch aliases, and route registration.
 
 = 1.1.15 =
 * Prefer one inline `media.upload_base64` command for local or conversation-uploaded media up to 1 MiB decoded.
