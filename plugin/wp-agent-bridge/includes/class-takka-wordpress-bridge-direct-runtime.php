@@ -25,6 +25,7 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
     private const COMMAND_JOURNAL_PREFIX = 'takka_bridge_direct_command_journal_';
     private const COMMAND_JOURNAL_STALE_SECONDS = 86400;
     private const MAX_COMMAND_JOURNAL_BYTES = 2097152;
+    private const BOOKKEEPING_MAX_ATTEMPTS = 3;
 
     private const V04_ACTIONS = [
         'v04.capabilities', 'plugin.list', 'plugin.install', 'plugin.activate', 'plugin.deactivate',
@@ -206,7 +207,7 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
             }
             $changed = array_merge((array) ($commit['added'] ?? []), (array) ($commit['modified'] ?? []));
             foreach ($changed as $path) {
-                if (is_string($path) && preg_match('#^wordpress-bridge/commands/pending/[A-Za-z0-9._-]{1,120}\.json$#', $path)) {
+                if (is_string($path) && preg_match('#^wordpress-bridge/commands/pending/[A-Za-z0-9._-]{1,120}\\.json$#', $path)) {
                     $paths[$path] = true;
                 }
             }
@@ -220,7 +221,7 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
         if (is_wp_error($meta)) {
             return self::command_error($path, '', $meta->get_error_message());
         }
-        $encoded = isset($meta['content']) && is_string($meta['content']) ? preg_replace('/\s+/', '', $meta['content']) : '';
+        $encoded = isset($meta['content']) && is_string($meta['content']) ? preg_replace('/\\s+/', '', $meta['content']) : '';
         $raw = $encoded !== '' ? base64_decode($encoded, true) : false;
         if (!is_string($raw)) {
             return self::command_error($path, '', 'Could not decode command content.');
@@ -291,52 +292,295 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
 
             $result_path = 'wordpress-bridge/results/' . $id . '.json';
             $completed_path = 'wordpress-bridge/commands/completed/' . basename($path);
-            $write_result = self::put_new_file($token, $repository, $result_path, $result_json, 'WP Bridge: store result ' . $id);
-            if (is_wp_error($write_result)) {
-                return self::command_error($path, $id, $write_result->get_error_message());
-            }
-
-            // Once the result is durable in GitHub, recovery can repair later
-            // completed/pending bookkeeping from that result without executing
-            // the WordPress side effect again.
-            self::clear_command_journal($request_id);
-
-            $write_completed = self::put_new_file($token, $repository, $completed_path, $raw, 'WP Bridge: complete command ' . $id);
-            if (is_wp_error($write_completed)) {
-                return self::command_error($path, $id, $write_completed->get_error_message());
-            }
-            $sha = isset($meta['sha']) ? strtolower((string) $meta['sha']) : '';
-            $delete = TakKa_WordPress_Bridge_Direct_GitHub::delete_file(
+            $pending_sha = isset($meta['sha']) ? strtolower((string) $meta['sha']) : '';
+            $finalized = self::finalize_command_atomic(
                 $token,
                 $repository,
-                self::RUNTIME_BRANCH,
                 $path,
-                $sha,
-                'WP Bridge: remove pending command ' . $id
+                $pending_sha,
+                $result_path,
+                $result_json,
+                $completed_path,
+                $raw,
+                $id
             );
-            if (is_wp_error($delete)) {
-                return self::command_error($path, $id, $delete->get_error_message());
+            if (is_wp_error($finalized)) {
+                return self::command_error($path, $id, $finalized->get_error_message());
             }
+
+            // The result, completed command, and pending deletion are durable in
+            // one ref update. Once the result is visible, this command cannot
+            // move the runtime branch again during bookkeeping.
+            self::clear_command_journal($request_id);
+
             return [
                 'path' => $path,
                 'id' => $id,
                 'ok' => !empty($result['ok']),
                 'status' => $result['status'] ?? null,
                 'journal_replayed' => $journal_replayed,
+                'atomic_bookkeeping' => true,
+                'bookkeeping_commit' => $finalized['commit_sha'] ?? null,
+                'bookkeeping_attempts' => $finalized['attempts'] ?? null,
+                'bookkeeping_verified_after_error' => !empty($finalized['verified_after_error']),
             ];
         } finally {
             self::release_command_inflight($request_id, $inflight_token);
         }
     }
 
-    private static function put_new_file(string $token, string $repository, string $path, string $content, string $message)
+    private static function finalize_command_atomic(
+        string $token,
+        string $repository,
+        string $pending_path,
+        string $expected_pending_sha,
+        string $result_path,
+        string $result_json,
+        string $completed_path,
+        string $command_raw,
+        string $id
+    ) {
+        if (!preg_match('/^[a-f0-9]{40,64}$/', $expected_pending_sha)) {
+            return new WP_Error('takka_direct_bookkeeping_pending_sha', 'Pending command SHA is invalid.', ['status' => 409]);
+        }
+
+        $result_blob = self::create_git_blob($token, $repository, $result_json);
+        if (is_wp_error($result_blob)) {
+            return $result_blob;
+        }
+        $completed_blob = self::create_git_blob($token, $repository, $command_raw);
+        if (is_wp_error($completed_blob)) {
+            return $completed_blob;
+        }
+
+        for ($attempt = 1; $attempt <= self::BOOKKEEPING_MAX_ATTEMPTS; $attempt++) {
+            $ref = TakKa_WordPress_Bridge_Direct_GitHub::github_api(
+                'GET',
+                '/repos/' . $repository . '/git/ref/heads/' . rawurlencode(self::RUNTIME_BRANCH),
+                $token
+            );
+            if (is_wp_error($ref)) {
+                return $ref;
+            }
+            $head_sha = strtolower((string) ($ref['data']['object']['sha'] ?? ''));
+            if (!preg_match('/^[a-f0-9]{40,64}$/', $head_sha)) {
+                return new WP_Error('takka_direct_bookkeeping_head', 'GitHub did not return a valid runtime branch head.', ['status' => 502]);
+            }
+
+            $base_commit = TakKa_WordPress_Bridge_Direct_GitHub::github_api(
+                'GET',
+                '/repos/' . $repository . '/git/commits/' . $head_sha,
+                $token
+            );
+            if (is_wp_error($base_commit)) {
+                return $base_commit;
+            }
+            $base_tree_sha = strtolower((string) ($base_commit['data']['tree']['sha'] ?? ''));
+            if (!preg_match('/^[a-f0-9]{40,64}$/', $base_tree_sha)) {
+                return new WP_Error('takka_direct_bookkeeping_tree', 'GitHub did not return a valid runtime base tree.', ['status' => 502]);
+            }
+
+            // Compare the pending blob against the exact command that was
+            // executed. A caller must never delete a command path that changed
+            // underneath the in-flight request.
+            $pending_meta = TakKa_WordPress_Bridge_Direct_GitHub::get_content_metadata(
+                $token,
+                $repository,
+                $head_sha,
+                $pending_path
+            );
+            if (is_wp_error($pending_meta)) {
+                if (self::github_error_status($pending_meta) === 404
+                    && self::verify_atomic_finalization(
+                        $token,
+                        $repository,
+                        $result_path,
+                        $result_json,
+                        $completed_path,
+                        $command_raw,
+                        $pending_path
+                    )) {
+                    return [
+                        'commit_sha' => $head_sha,
+                        'attempts' => $attempt,
+                        'verified_after_error' => true,
+                    ];
+                }
+                return $pending_meta;
+            }
+            $current_pending_sha = strtolower((string) ($pending_meta['sha'] ?? ''));
+            if (!preg_match('/^[a-f0-9]{40,64}$/', $current_pending_sha)
+                || !hash_equals($expected_pending_sha, $current_pending_sha)) {
+                return new WP_Error(
+                    'takka_direct_bookkeeping_pending_conflict',
+                    'Pending command changed before atomic bookkeeping could complete.',
+                    ['status' => 409, 'path' => $pending_path]
+                );
+            }
+
+            $tree = TakKa_WordPress_Bridge_Direct_GitHub::github_api(
+                'POST',
+                '/repos/' . $repository . '/git/trees',
+                $token,
+                [
+                    'base_tree' => $base_tree_sha,
+                    'tree' => [
+                        ['path' => $result_path, 'mode' => '100644', 'type' => 'blob', 'sha' => $result_blob],
+                        ['path' => $completed_path, 'mode' => '100644', 'type' => 'blob', 'sha' => $completed_blob],
+                        ['path' => $pending_path, 'mode' => '100644', 'type' => 'blob', 'sha' => null],
+                    ],
+                ]
+            );
+            if (is_wp_error($tree)) {
+                $status = self::github_error_status($tree);
+                if (($status === 409 || $status === 422) && $attempt < self::BOOKKEEPING_MAX_ATTEMPTS) {
+                    continue;
+                }
+                return $tree;
+            }
+            $tree_sha = strtolower((string) ($tree['data']['sha'] ?? ''));
+            if (!preg_match('/^[a-f0-9]{40,64}$/', $tree_sha)) {
+                return new WP_Error('takka_direct_bookkeeping_tree', 'GitHub did not return a valid bookkeeping tree SHA.', ['status' => 502]);
+            }
+
+            $commit = TakKa_WordPress_Bridge_Direct_GitHub::github_api(
+                'POST',
+                '/repos/' . $repository . '/git/commits',
+                $token,
+                [
+                    'message' => 'WP Bridge: finalize command ' . $id,
+                    'tree' => $tree_sha,
+                    'parents' => [$head_sha],
+                ]
+            );
+            if (is_wp_error($commit)) {
+                return $commit;
+            }
+            $commit_sha = strtolower((string) ($commit['data']['sha'] ?? ''));
+            if (!preg_match('/^[a-f0-9]{40,64}$/', $commit_sha)) {
+                return new WP_Error('takka_direct_bookkeeping_commit', 'GitHub did not return a valid bookkeeping commit SHA.', ['status' => 502]);
+            }
+
+            $updated = TakKa_WordPress_Bridge_Direct_GitHub::github_api(
+                'PATCH',
+                '/repos/' . $repository . '/git/refs/heads/' . rawurlencode(self::RUNTIME_BRANCH),
+                $token,
+                ['sha' => $commit_sha, 'force' => false]
+            );
+            if (!is_wp_error($updated)) {
+                return ['commit_sha' => $commit_sha, 'attempts' => $attempt, 'verified_after_error' => false];
+            }
+
+            $status = self::github_error_status($updated);
+            if (($status === 409 || $status === 422) && $attempt < self::BOOKKEEPING_MAX_ATTEMPTS) {
+                continue;
+            }
+
+            // A network failure can happen after GitHub accepted the ref update.
+            // Verify the durable tree before reporting failure or replaying the
+            // WordPress side effect on a later recovery request.
+            if (self::verify_atomic_finalization(
+                $token,
+                $repository,
+                $result_path,
+                $result_json,
+                $completed_path,
+                $command_raw,
+                $pending_path
+            )) {
+                return [
+                    'commit_sha' => $commit_sha,
+                    'attempts' => $attempt,
+                    'verified_after_error' => true,
+                ];
+            }
+            return $updated;
+        }
+
+        if (self::verify_atomic_finalization(
+            $token,
+            $repository,
+            $result_path,
+            $result_json,
+            $completed_path,
+            $command_raw,
+            $pending_path
+        )) {
+            return [
+                'commit_sha' => null,
+                'attempts' => self::BOOKKEEPING_MAX_ATTEMPTS,
+                'verified_after_error' => true,
+            ];
+        }
+
+        return new WP_Error(
+            'takka_direct_bookkeeping_conflict',
+            'Runtime branch kept moving during atomic command bookkeeping; the journal remains available for recovery.',
+            ['status' => 409, 'attempts' => self::BOOKKEEPING_MAX_ATTEMPTS]
+        );
+    }
+
+    private static function create_git_blob(string $token, string $repository, string $content)
     {
-        $endpoint = '/repos/' . $repository . '/contents/' . self::encode_path($path);
-        return TakKa_WordPress_Bridge_Direct_GitHub::github_api('PUT', $endpoint, $token, [
-            'message' => $message,
-            'content' => base64_encode($content),
-            'branch' => self::RUNTIME_BRANCH,
-        ]);
+        $response = TakKa_WordPress_Bridge_Direct_GitHub::github_api(
+            'POST',
+            '/repos/' . $repository . '/git/blobs',
+            $token,
+            ['content' => base64_encode($content), 'encoding' => 'base64']
+        );
+        if (is_wp_error($response)) {
+            return $response;
+        }
+        $sha = strtolower((string) ($response['data']['sha'] ?? ''));
+        if (!preg_match('/^[a-f0-9]{40,64}$/', $sha)) {
+            return new WP_Error('takka_direct_bookkeeping_blob', 'GitHub did not return a valid bookkeeping blob SHA.', ['status' => 502]);
+        }
+        return $sha;
+    }
+
+    private static function verify_atomic_finalization(
+        string $token,
+        string $repository,
+        string $result_path,
+        string $result_json,
+        string $completed_path,
+        string $command_raw,
+        string $pending_path
+    ): bool {
+        $stored_result = TakKa_WordPress_Bridge_Direct_GitHub::get_text_file(
+            $token,
+            $repository,
+            self::RUNTIME_BRANCH,
+            $result_path
+        );
+        if (is_wp_error($stored_result) || !hash_equals($result_json, $stored_result)) {
+            return false;
+        }
+        $stored_completed = TakKa_WordPress_Bridge_Direct_GitHub::get_text_file(
+            $token,
+            $repository,
+            self::RUNTIME_BRANCH,
+            $completed_path
+        );
+        if (is_wp_error($stored_completed) || !hash_equals($command_raw, $stored_completed)) {
+            return false;
+        }
+        $pending = TakKa_WordPress_Bridge_Direct_GitHub::get_content_metadata(
+            $token,
+            $repository,
+            self::RUNTIME_BRANCH,
+            $pending_path
+        );
+        return is_wp_error($pending) && self::github_error_status($pending) === 404;
+    }
+
+    private static function github_error_status($error): int
+    {
+        if (!is_wp_error($error)) {
+            return 0;
+        }
+        $data = $error->get_error_data();
+        return is_array($data) && isset($data['status']) ? (int) $data['status'] : 0;
     }
 
     private static function execute_command(array $command, string $request_id): array
@@ -634,7 +878,7 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
 
     private static function valid_repository(string $repository): bool
     {
-        return (bool) preg_match('/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/', $repository);
+        return (bool) preg_match('/^[A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+$/', $repository);
     }
 
     private static function valid_local_route(string $route): bool
