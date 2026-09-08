@@ -96,7 +96,7 @@ final class TakKa_WordPress_Bridge_Runtime_Guidance
             . "Site: `{$host}`  \nRepository: `{$repository}`  \nBranch: `{$branch}`  \nBridge: `{$version}`\n\n"
             . "## Mandatory fast path\n\n"
             . "1. Reuse this repository/branch when already verified in the current task/session. Re-resolve only after an explicit reconnect/migration signal, a mapping mismatch, an inaccessible repository/branch, a non-canonical marker, or a connected GitHub account/tool-context change.\n"
-            . "2. Read `wordpress-bridge/RUNTIME_CAPABILITIES.json` once per verified connection/version and reuse its operation catalog. Refresh after a version/connection change or a contradictory response, not before every command. Consult it before capability probes or source searches.\n"
+            . "2. Read `wordpress-bridge/RUNTIME_CAPABILITIES.json` before probing Bridge capabilities or searching source code for known routes/actions. Read it once per verified connection/version and reuse its operation catalog. Refresh after a version/connection change or a contradictory response, not before every command.\n"
             . "3. For advertised common operations use `type=operation` with `operation` and `params`. The runtime selects `/takka-v099/v1/operate` internally. Do not reconstruct versioned routes when an operation is listed in the catalog.\n"
             . "4. Never put `?query=...` in a REST `route` field. Put query parameters in the `query` object or in the deterministic operation params.\n"
             . "5. Do not ask the user to identify repositories, files, routes, branches, or installed state that connected tools can inspect directly.\n"
