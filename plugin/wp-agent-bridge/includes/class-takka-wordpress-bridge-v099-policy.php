@@ -251,6 +251,20 @@ final class TakKa_WordPress_Bridge_V099_Policy
         }
         $request->set_body($encoded);
         $request->set_header('Content-Type', 'application/json');
+
+        // WordPress may already have parsed the JSON body while validating route
+        // arguments before this filter runs. set_body() does not invalidate that
+        // cached JSON parameter bag, so keep the parsed request parameters in sync
+        // with the normalized body as well. Without this, dispatch() can see the
+        // pre-policy params even though get_body() shows the rewritten request.
+        if (method_exists($request, 'set_param')) {
+            if (array_key_exists('operation', $json)) {
+                $request->set_param('operation', $json['operation']);
+            }
+            if (array_key_exists('params', $json)) {
+                $request->set_param('params', $json['params']);
+            }
+        }
         return $response;
     }
 }
