@@ -3,7 +3,7 @@ Contributors: takka-d
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.1.12
+Stable tag: 1.1.13
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
@@ -32,6 +32,7 @@ The project is designed around these principles:
 * Protected handling for user data, post meta, options, and other sensitive WordPress state.
 * Media transport selected according to source and available GitHub write capabilities.
 * Private runtime workspace for persistent HTML, JavaScript, CSS, JSON, POV-Ray, Markdown, and related text artifacts.
+* Strict read-only batching for independent search/read/inspect/status operations without adding a generic mutation surface.
 
 == Installation ==
 
@@ -65,6 +66,12 @@ The internal `/takka-v097/v1/manage` surface provides `workspace.list`, full or 
 
 Snapshots store the source Git blob identity rather than duplicating the whole file. Git history remains the underlying version store while the snapshot manifest gives ChatGPT a stable rollback handle.
 
+== Read-only batching ==
+
+The internal `/takka-v098/v1/manage` surface can execute multiple independent allowlisted read/search/inspect/status operations behind one pending command and one signed webhook. A batch is preflighted in full before any operation runs; unknown or mutating actions reject the entire batch. The batch does not expose generic arbitrary REST calls, writes, uploads, preview creation, publishing, deletion, snapshot creation, or rollback.
+
+Batches are bounded to 12 operations, 256 KiB of params per operation, a 1 MiB aggregate result, and a 20 second total execution budget. Individual operation failures are returned in a structured result array and can either stop the batch or allow remaining read-only operations to continue.
+
 == Delivery recovery ==
 
 A GitHub push is not treated as a durable queue by itself. Every valid runtime push also reconciles the current `wordpress-bridge/commands/pending/` directory. Self-generated media/result/completed bookkeeping pushes are ignored when their changed paths are available. Every active command owns a per-request ID in-flight marker through WordPress execution and GitHub bookkeeping, so concurrent recovery does not re-dispatch a command while it is still running.
@@ -86,6 +93,12 @@ This is a custom proprietary/source-available license, not an open-source licens
 High-impact writes remain subject to the Bridge's preview, confirmation, state-hash, plan-hash, impact-hash, active-theme/plugin, and sensitive-key protections.
 
 == Changelog ==
+
+= 1.1.13 =
+* Adds strict read-only batching under `/takka-v098/v1/manage` so multiple independent search/read/inspect/status operations can share one pending command, webhook, and result.
+* Preflights the full batch against explicit read-only action maps; generic REST calls and all known mutation actions are blocked.
+* Bounds batches to 12 operations, 256 KiB params per operation, 1 MiB aggregate result, and a 20 second total budget with structured per-operation status and timing.
+* Advertises the batch route, allowlist, limits, and preferred two-or-more-read fast path in `RUNTIME_CAPABILITIES.json`.
 
 = 1.1.12 =
 * Adds automatic generation and version-aware synchronization of `wordpress-bridge/RUNTIME_CAPABILITIES.json` in the canonical private runtime repository.
