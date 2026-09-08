@@ -13,7 +13,7 @@ if (!defined('ABSPATH')) {
  */
 final class TakKa_WordPress_Bridge_V098_Read_Batch
 {
-    private const VERSION = '0.9.8';
+    private const VERSION = '0.9.8.1';
     private const NS = 'takka-v098/v1';
     private const ROUTE = '/takka-v098/v1/manage';
     private const OUTER = '/takka-bridge/v1/execute';
@@ -53,6 +53,9 @@ final class TakKa_WordPress_Bridge_V098_Read_Batch
 
     /** Internal REST surfaces callable only through the signed Bridge proxy. */
     private const REST_ACTION_ROUTES = [
+        'post.content.inspect' => '/takka-v084/v1/manage',
+        'post.content.search' => '/takka-v084/v1/manage',
+        'post.content.read.range' => '/takka-v084/v1/manage',
         'v097.capabilities' => '/takka-v097/v1/manage',
         'workspace.list' => '/takka-v097/v1/manage',
         'workspace.file.get' => '/takka-v097/v1/manage',
@@ -199,8 +202,6 @@ final class TakKa_WordPress_Bridge_V098_Read_Batch
             ]);
         }
 
-        // Preflight the entire batch before running any operation. An unknown or
-        // mutating action rejects the whole batch rather than partially running it.
         $prepared = [];
         foreach ($operations as $index => $operation) {
             $valid = self::validate_operation($operation, (int) $index);
