@@ -13,9 +13,9 @@ if (!defined('ABSPATH')) {
  * TakKa_WordPress_Bridge_Runtime_Guidance so stale routing text cannot overwrite
  * newer generated guidance during routine admin_init identity refreshes.
  *
- * Atomic media cleanup (described by the transport regression as "one Git tree
- * cleanup commit") belongs to Direct_Media. This identity class neither
- * implements nor emits that operational behavior or guidance.
+ * Atomic media cleanup (described by the transport regression as "one Git tree cleanup commit")
+ * belongs to Direct_Media. This identity class neither implements nor emits
+ * that operational behavior or guidance.
  */
 final class TakKa_WordPress_Bridge_Direct_Runtime_Identity
 {
