@@ -235,16 +235,23 @@ final class TakKa_WordPress_Bridge_V099_Operations
         if ($body !== null) {
             $params['body'] = $body;
         }
-        return self::signed_local_request('POST', self::OUTER, [
+        $inner = [
             'action' => 'rest.call',
             'params' => $params,
-        ], true);
+        ];
+        return self::signed_local_request(
+            'POST',
+            self::OUTER,
+            $inner,
+            true,
+            self::child_request_id('rest:' . strtoupper($method) . ':' . $route, $params)
+        );
     }
 
     private static function action_request(string $route, string $action, array $params)
     {
         $json = wp_json_encode([
-            'request_id' => self::$request_id,
+            'request_id' => self::child_request_id('action:' . $route . ':' . $action, $params),
             'action' => $action,
             'params' => $params,
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -282,8 +289,32 @@ final class TakKa_WordPress_Bridge_V099_Operations
         return $value;
     }
 
-    private static function signed_local_request(string $method, string $route, ?array $body, bool $execute_envelope): array
+    /**
+     * Nested Bridge calls must not reuse the parent request_id while that parent
+     * is still locked by the idempotency layer. Derive a stable child id so a
+     * retry of the same high-level operation remains deterministic without
+     * colliding with the in-flight parent payload.
+     */
+    private static function child_request_id(string $scope, array $payload): string
     {
+        if (self::$request_id === '') {
+            return '';
+        }
+        $encoded = wp_json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if (!is_string($encoded)) {
+            $encoded = '';
+        }
+        $prefix = substr(self::$request_id, 0, 72);
+        return $prefix . ':v099:' . substr(hash('sha256', $scope . "\n" . $encoded), 0, 32);
+    }
+
+    private static function signed_local_request(
+        string $method,
+        string $route,
+        ?array $body,
+        bool $execute_envelope,
+        ?string $request_id = null
+    ): array {
         $secret = (string) get_option(self::SECRET, '');
         if (strlen($secret) < 32 || !self::valid_local_route($route)) {
             return self::error_result(500, 'Local Bridge credentials or route are invalid.');
@@ -291,7 +322,7 @@ final class TakKa_WordPress_Bridge_V099_Operations
 
         $transport = $body;
         if ($execute_envelope && $body !== null) {
-            $payload = ['request_id' => self::$request_id];
+            $payload = ['request_id' => $request_id === null ? self::$request_id : $request_id];
             foreach ($body as $key => $value) {
                 $payload[$key] = $value;
             }
