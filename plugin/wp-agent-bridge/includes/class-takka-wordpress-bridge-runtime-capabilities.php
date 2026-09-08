@@ -134,6 +134,7 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'theme_file_inspection' => true,
                 'theme_guarded_write' => true,
                 'diagnostics' => true,
+                'media_inline_upload' => true,
                 'media_fast_path' => true,
                 'media_verify_only' => true,
                 'site_icon' => true,
@@ -208,12 +209,26 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                     'route' => '/takka-v096/v1/manage',
                     'actions' => ['site.icon.get', 'site.icon.set', 'site.icon.clear', 'media.upload.capabilities'],
                 ],
+                'media_inline' => [
+                    'route' => '/takka-bridge/v1/manage',
+                    'action' => 'media.upload_base64',
+                    'max_decoded_bytes' => 6291456,
+                    'preferred_max_decoded_bytes' => 1048576,
+                ],
                 'media_fast_path' => [
                     'upload_route' => '/wp-agent-bridge-runtime/v1/media-upload',
                     'verify_route' => '/wp-agent-bridge-runtime/v1/media-verify',
                     'max_decoded_bytes' => 6291456,
                     'max_chunks' => 32,
                 ],
+            ],
+            'media_routing' => [
+                'inline_action' => 'media.upload_base64',
+                'inline_preferred_max_decoded_bytes' => 1048576,
+                'staged_upload_route' => '/wp-agent-bridge-runtime/v1/media-upload',
+                'staged_preferred_above_decoded_bytes' => 1048576,
+                'verify_only_on_failure_or_explicit_request' => true,
+                'rule' => 'For a local or conversation-uploaded media file up to 1 MiB decoded, prefer one inline media.upload_base64 pending command. For larger files, prefer staged media Fast Path with binary-first chunking and integrity metadata.',
             ],
             'connector_policy' => [
                 'ordinary_command_write' => ['create_file'],
@@ -225,6 +240,7 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'capability_resolution' => 'Read this file before issuing capability probe commands or searching source code for known Bridge routes/actions.',
                 'command_chaining' => 'When atomic_command_bookkeeping=true, a visible matching result means result creation, completed-command storage, and pending deletion are already durable in the same commit. The next pending command may be submitted immediately without waiting for later bookkeeping commits.',
                 'readonly_batch' => 'When two or more independent allowlisted reads are needed, prefer one readonly.batch request instead of multiple pending commands/webhooks/results.',
+                'media_upload' => 'For local or conversation-uploaded media up to 1 MiB decoded, prefer a single media.upload_base64 command. Use staged Media Fast Path for larger files. Do not split or stage a small file unless inline upload actually fails or the caller explicitly requests staged transport.',
                 'workspace' => 'Prefer workspace range/search/patch for iterative large text artifacts instead of repeated File Library or historical-response reconstruction.',
             ],
         ];
