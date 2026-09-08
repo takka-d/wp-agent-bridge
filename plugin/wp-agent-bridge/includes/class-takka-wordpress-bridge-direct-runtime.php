@@ -20,6 +20,8 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
     private const MAX_COMMANDS_PER_PUSH = 20;
     private const MAX_COMMAND_BYTES = 2097152;
     private const DELIVERY_PREFIX = 'takka_bridge_direct_delivery_';
+    private const COMMAND_INFLIGHT_PREFIX = 'takka_bridge_direct_command_inflight_';
+    private const COMMAND_INFLIGHT_STALE_SECONDS = 600;
 
     private const V04_ACTIONS = [
         'v04.capabilities', 'plugin.list', 'plugin.install', 'plugin.activate', 'plugin.deactivate',
@@ -81,6 +83,19 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
     public static function clear_connection(): void
     {
         delete_option(self::OPTION_CONNECTION);
+    }
+
+    public static function command_inflight(string $request_id): bool
+    {
+        if (!self::valid_id($request_id)) {
+            return false;
+        }
+        $current = get_option(self::command_inflight_option($request_id), []);
+        if (!is_array($current)) {
+            return false;
+        }
+        $created = (int) ($current['created_at'] ?? 0);
+        return $created > 0 && $created >= time() - self::COMMAND_INFLIGHT_STALE_SECONDS;
     }
 
     public static function webhook(WP_REST_Request $request)
@@ -222,52 +237,67 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
             return self::command_error($path, '', 'Unsafe id or request_id.');
         }
 
-        $started = microtime(true);
-        $result = self::execute_command($command, $request_id);
-        $output = [
-            'id' => $id,
-            'request_id' => $request_id,
-            'command_file' => $path,
-            'executed_at' => gmdate('c'),
-            'duration_ms' => (int) round((microtime(true) - $started) * 1000),
-            'transport' => 'direct-github-webhook',
-            'command' => self::sanitize_result($command),
-            'result' => self::sanitize_result($result),
-        ];
-        $result_json = wp_json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-        if (!is_string($result_json)) {
-            return self::command_error($path, $id, 'Could not encode result JSON.');
+        $inflight_token = self::acquire_command_inflight($request_id);
+        if ($inflight_token === null) {
+            return [
+                'path' => $path,
+                'id' => $id,
+                'ok' => true,
+                'status' => 202,
+                'in_flight' => true,
+            ];
         }
-        $result_json .= "\n";
 
-        $result_path = 'wordpress-bridge/results/' . $id . '.json';
-        $completed_path = 'wordpress-bridge/commands/completed/' . basename($path);
-        $write_result = self::put_new_file($token, $repository, $result_path, $result_json, 'WP Bridge: store result ' . $id);
-        if (is_wp_error($write_result)) {
-            return self::command_error($path, $id, $write_result->get_error_message());
+        try {
+            $started = microtime(true);
+            $result = self::execute_command($command, $request_id);
+            $output = [
+                'id' => $id,
+                'request_id' => $request_id,
+                'command_file' => $path,
+                'executed_at' => gmdate('c'),
+                'duration_ms' => (int) round((microtime(true) - $started) * 1000),
+                'transport' => 'direct-github-webhook',
+                'command' => self::sanitize_result($command),
+                'result' => self::sanitize_result($result),
+            ];
+            $result_json = wp_json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            if (!is_string($result_json)) {
+                return self::command_error($path, $id, 'Could not encode result JSON.');
+            }
+            $result_json .= "\n";
+
+            $result_path = 'wordpress-bridge/results/' . $id . '.json';
+            $completed_path = 'wordpress-bridge/commands/completed/' . basename($path);
+            $write_result = self::put_new_file($token, $repository, $result_path, $result_json, 'WP Bridge: store result ' . $id);
+            if (is_wp_error($write_result)) {
+                return self::command_error($path, $id, $write_result->get_error_message());
+            }
+            $write_completed = self::put_new_file($token, $repository, $completed_path, $raw, 'WP Bridge: complete command ' . $id);
+            if (is_wp_error($write_completed)) {
+                return self::command_error($path, $id, $write_completed->get_error_message());
+            }
+            $sha = isset($meta['sha']) ? strtolower((string) $meta['sha']) : '';
+            $delete = TakKa_WordPress_Bridge_Direct_GitHub::delete_file(
+                $token,
+                $repository,
+                self::RUNTIME_BRANCH,
+                $path,
+                $sha,
+                'WP Bridge: remove pending command ' . $id
+            );
+            if (is_wp_error($delete)) {
+                return self::command_error($path, $id, $delete->get_error_message());
+            }
+            return [
+                'path' => $path,
+                'id' => $id,
+                'ok' => !empty($result['ok']),
+                'status' => $result['status'] ?? null,
+            ];
+        } finally {
+            self::release_command_inflight($request_id, $inflight_token);
         }
-        $write_completed = self::put_new_file($token, $repository, $completed_path, $raw, 'WP Bridge: complete command ' . $id);
-        if (is_wp_error($write_completed)) {
-            return self::command_error($path, $id, $write_completed->get_error_message());
-        }
-        $sha = isset($meta['sha']) ? strtolower((string) $meta['sha']) : '';
-        $delete = TakKa_WordPress_Bridge_Direct_GitHub::delete_file(
-            $token,
-            $repository,
-            self::RUNTIME_BRANCH,
-            $path,
-            $sha,
-            'WP Bridge: remove pending command ' . $id
-        );
-        if (is_wp_error($delete)) {
-            return self::command_error($path, $id, $delete->get_error_message());
-        }
-        return [
-            'path' => $path,
-            'id' => $id,
-            'ok' => !empty($result['ok']),
-            'status' => $result['status'] ?? null,
-        ];
     }
 
     private static function put_new_file(string $token, string $repository, string $path, string $content, string $message)
@@ -445,6 +475,40 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
             return substr($value, 0, 1000000) . '\n[truncated]';
         }
         return $value;
+    }
+
+    private static function acquire_command_inflight(string $request_id): ?string
+    {
+        $option = self::command_inflight_option($request_id);
+        $token = wp_generate_uuid4();
+        $value = ['token' => $token, 'created_at' => time()];
+        if (add_option($option, $value, '', false)) {
+            return $token;
+        }
+
+        $current = get_option($option, []);
+        $created = is_array($current) ? (int) ($current['created_at'] ?? 0) : 0;
+        if ($created <= 0 || $created < time() - self::COMMAND_INFLIGHT_STALE_SECONDS) {
+            delete_option($option);
+            if (add_option($option, $value, '', false)) {
+                return $token;
+            }
+        }
+        return null;
+    }
+
+    private static function release_command_inflight(string $request_id, string $token): void
+    {
+        $option = self::command_inflight_option($request_id);
+        $current = get_option($option, []);
+        if (is_array($current) && hash_equals((string) ($current['token'] ?? ''), $token)) {
+            delete_option($option);
+        }
+    }
+
+    private static function command_inflight_option(string $request_id): string
+    {
+        return self::COMMAND_INFLIGHT_PREFIX . hash('sha256', $request_id);
     }
 
     private static function command_error(string $path, string $id, string $message): array
