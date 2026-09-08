@@ -26,6 +26,10 @@ $runtime = TakKa_WordPress_Bridge_Runtime_Guidance::runtime(
 );
 
 foreach ([
+    'type=bridge',
+    'Preferred pending JSON',
+    'Keep one command ID and identical payload',
+    '207 read batch is incomplete',
     '/takka-v099/v1/operate',
     'RUNTIME_CAPABILITIES.json',
     'media.upload.inline',

@@ -84,6 +84,12 @@ jobs:
           set -euo pipefail
           php tests/operation-policy-test.php
 
+      - name: Bounded post content range regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/post-content-range-test.php
+
       - name: Read-only batch regression
         shell: bash
         run: |

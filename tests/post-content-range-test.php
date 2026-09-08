@@ -72,7 +72,8 @@ if (is_wp_error($tail)
     || ($tail['content'] ?? null) !== 'epsilon'
     || ($tail['returned_lines'] ?? null) !== 1
     || empty($tail['eof'])
-    || ($tail['next_start_line'] ?? 'not-null') !== null
+    || !array_key_exists('next_start_line', $tail)
+    || $tail['next_start_line'] !== null
     || ($tail['max_range_lines'] ?? null) !== 1000
     || ($tail['max_range_bytes'] ?? null) !== 262144) {
     fail_test('Post content range limits or EOF metadata are incorrect.');

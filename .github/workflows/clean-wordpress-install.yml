@@ -7,11 +7,13 @@ on:
     paths:
       - 'plugin/wp-agent-bridge/**'
       - '.github/workflows/clean-wordpress-install.yml'
+      - 'tests/operation-router-wp-integration.php'
   push:
     branches: [main]
     paths:
       - 'plugin/wp-agent-bridge/**'
       - '.github/workflows/clean-wordpress-install.yml'
+      - 'tests/operation-router-wp-integration.php'
 
 permissions:
   contents: read
@@ -157,98 +159,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat > /tmp/wpab-operation-router.php <<'PHP'
-          <?php
-          wp_set_current_user(1);
-          do_action('rest_api_init');
-
-          function op_fail(string $message): void {
-              fwrite(STDERR, $message . "\n");
-              exit(1);
-          }
-
-          $secret = str_repeat('a', 64);
-          update_option('takka_bridge_secret', $secret, false);
-          update_option('takka_bridge_user_id', 1, false);
-
-          function op_call(string $operation, array $params = []): array {
-              $secret = (string) get_option('takka_bridge_secret');
-              $inner = [
-                  'request_id' => 'clean-op-' . substr(hash('sha256', $operation . wp_json_encode($params)), 0, 24),
-                  'action' => 'rest.call',
-                  'params' => [
-                      'method' => 'POST',
-                      'route' => '/takka-v099/v1/operate',
-                      'query' => [],
-                      'body' => ['operation' => $operation, 'params' => $params],
-                  ],
-              ];
-              $transport = [
-                  'action' => 'envelope',
-                  'params' => ['payload_b64' => base64_encode(wp_json_encode($inner, JSON_UNESCAPED_SLASHES))],
-              ];
-              $body = wp_json_encode($transport, JSON_UNESCAPED_SLASHES);
-              $timestamp = (string) time();
-              $route = '/takka-bridge/v1/execute';
-              $signature = hash_hmac('sha256', $timestamp . "\nPOST\n" . $route . "\n" . hash('sha256', $body), $secret);
-              $request = new WP_REST_Request('POST', $route);
-              $request->set_header('content-type', 'application/json');
-              $request->set_header('X-TakKa-Timestamp', $timestamp);
-              $request->set_header('X-TakKa-Signature', $signature);
-              $request->set_body($body);
-              $response = rest_do_request($request);
-              if (is_wp_error($response)) op_fail('Outer operation request failed: ' . $response->get_error_message());
-              $response = rest_ensure_response($response);
-              // Expected 4xx policy rejections are asserted by each test below.
-              if ($response->get_status() >= 500) op_fail('Outer operation HTTP ' . $response->get_status());
-              $data = $response->get_data();
-              if (!is_array($data)) op_fail('Operation outer wrapper malformed.');
-              return $data;
-          }
-
-          $catalog = op_call('catalog');
-          $catalog_data = $catalog['data'] ?? null;
-          if (!is_array($catalog_data)
-              || ($catalog_data['route'] ?? null) !== '/takka-v099/v1/operate'
-              || !in_array('post.get', $catalog_data['operations'] ?? [], true)) {
-              op_fail('Operation catalog mismatch.');
-          }
-
-          $get = op_call('post.get', ['post_id' => 1, 'query' => ['context' => 'edit']]);
-          $get_data = $get['data'] ?? null;
-          if (!is_array($get_data) || empty($get_data['ok']) || ($get_data['operation'] ?? '') !== 'post.get') {
-              op_fail('post.get operation failed.');
-          }
-          $inner_get = $get_data['result']['data'] ?? null;
-          if (!is_array($inner_get) || (int)($inner_get['status'] ?? 0) !== 200) {
-              op_fail('post.get did not preserve query separately from the route.');
-          }
-
-          $updated_title = 'WPAB deterministic operation router';
-          $update = op_call('post.update', ['post_id' => 1, 'fields' => ['title' => $updated_title]]);
-          $update_data = $update['data'] ?? null;
-          if (!is_array($update_data) || empty($update_data['ok'])) op_fail('post.update operation failed.');
-          if ((string)get_post(1)->post_title !== $updated_title) op_fail('post.update did not update the post.');
-
-          wp_update_post(['ID' => 1, 'post_content' => "line one\nline two target\nline three"]);
-          $range = op_call('post.content.read_range', ['post_id' => 1, 'start_line' => 2, 'max_lines' => 1]);
-          $range_data = $range['data'] ?? null;
-          $range_result = is_array($range_data) ? ($range_data['result']['data'] ?? null) : null;
-          $range_payload = is_array($range_result) ? ($range_result['data'] ?? null) : null;
-          if (!is_array($range_payload)
-              || ($range_payload['content'] ?? null) !== 'line two target'
-              || (int)($range_payload['start_line'] ?? 0) !== 2) {
-              op_fail('post.content.read_range operation failed.');
-          }
-
-          $unknown = op_call('definitely.unknown');
-          if ((int)($unknown['status'] ?? 0) !== 400) {
-              op_fail('Unknown operation was not blocked.');
-          }
-
-          echo "Deterministic operation router E2E passed.\n";
-          PHP
-          /tmp/wp eval-file /tmp/wpab-operation-router.php --path=/tmp/wp-agent-bridge-test
+          /tmp/wp eval-file "$GITHUB_WORKSPACE/tests/operation-router-wp-integration.php" --path=/tmp/wp-agent-bridge-test
 
       - name: Verify multi-chunk media reconstruction and integrity
         shell: bash

@@ -98,6 +98,20 @@ try {
     // signed envelope. One operation command must cause one outer dispatch.
     $runtime_execute = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'execute_command');
     $runtime_execute->setAccessible(true);
+    $unexpected_dispatches = 0;
+    $observe_dispatch = static function ($response) use (&$unexpected_dispatches) {
+        $unexpected_dispatches++;
+        return $response;
+    };
+    add_filter('rest_pre_dispatch', $observe_dispatch, -999, 1);
+    foreach (['/takka-bridge/v1/execute', '/wp/v2/posts/1?context=edit', '/wp/v2/posts/1#fragment'] as $bad_route) {
+        $bad = $runtime_execute->invoke(null, ['type' => 'rest', 'method' => 'POST', 'route' => $bad_route], 'invalid-route');
+        if (!empty($bad['ok']) || ($bad['status'] ?? null) !== 400) {
+            op_integration_fail('Invalid/recursive route did not fail before dispatch.');
+        }
+    }
+    remove_filter('rest_pre_dispatch', $observe_dispatch, -999);
+    if ($unexpected_dispatches !== 0) op_integration_fail('Malformed route caused a needless REST roundtrip.');
     $runtime_call = static function (string $id, string $operation, array $params = []) use ($runtime_execute): array {
         return $runtime_execute->invoke(null, ['type' => 'operation', 'operation' => $operation, 'params' => $params], $id);
     };
@@ -106,6 +120,10 @@ try {
         op_integration_fail('Native operation command did not reach the guarded router.');
     }
     $missing_id = 2147483647;
+    $unknown = $runtime_call('runtime-unknown', 'definitely.unknown');
+    if (!empty($unknown['ok']) || (int) ($unknown['status'] ?? 0) !== 400) {
+        op_integration_fail('Unknown operation was not rejected by Direct Runtime.');
+    }
     $missing = $runtime_call('runtime-missing', 'post.get', ['post_id' => $missing_id]);
     if (!empty($missing['ok']) || (int) ($missing['status'] ?? 0) !== 404) {
         op_integration_fail('Missing post was falsely reported as successful by Direct Runtime.');
@@ -116,6 +134,12 @@ try {
     ]]);
     if (!empty($partial['ok']) || (int) ($partial['status'] ?? 0) !== 207) {
         op_integration_fail('Partial read batch was falsely reported as complete success.');
+    }
+    $partial_payload = $partial['data']['data']['result']['data']['data'] ?? [];
+    if (($partial_payload['failed_count'] ?? null) !== 1
+        || empty($partial_payload['results'][0]['ok'])
+        || !empty($partial_payload['results'][1]['ok'])) {
+        op_integration_fail('Partial batch did not isolate the failed read.');
     }
     foreach (['', []] as $index => $selector) {
         $bounded = $runtime_call('runtime-empty-fields-' . $index, 'post.get', [

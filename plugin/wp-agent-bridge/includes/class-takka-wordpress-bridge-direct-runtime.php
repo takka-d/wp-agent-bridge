@@ -607,6 +607,12 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
         if ($type === 'rest') {
             $method = strtoupper((string) ($command['method'] ?? 'GET'));
             $route = isset($command['route']) ? (string) $command['route'] : '';
+            if ($route === '/takka-bridge/v1/execute' || strpos($route, '?') !== false || strpos($route, '#') !== false) {
+                $message = $route === '/takka-bridge/v1/execute'
+                    ? 'Recursive REST proxy blocked. Use type=operation with operation/params, or type=bridge with action/params.'
+                    : 'REST route must not contain query strings or fragments. Use the query object or type=operation.';
+                return ['ok' => false, 'status' => 400, 'statusText' => 'Bad Request', 'data' => ['error' => $message]];
+            }
             if (!in_array($method, ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], true) || !self::valid_local_route($route)) {
                 return self::error_result('Invalid REST command.');
             }
