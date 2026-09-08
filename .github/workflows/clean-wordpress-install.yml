@@ -199,9 +199,10 @@ jobs:
               $response = rest_do_request($request);
               if (is_wp_error($response)) op_fail('Outer operation request failed: ' . $response->get_error_message());
               $response = rest_ensure_response($response);
-              if ($response->get_status() >= 400) op_fail('Outer operation HTTP ' . $response->get_status());
+              // Expected 4xx policy rejections are asserted by each test below.
+              if ($response->get_status() >= 500) op_fail('Outer operation HTTP ' . $response->get_status());
               $data = $response->get_data();
-              if (!is_array($data) || (int)($data['status'] ?? 0) < 200) op_fail('Operation outer wrapper malformed.');
+              if (!is_array($data)) op_fail('Operation outer wrapper malformed.');
               return $data;
           }
 
@@ -241,7 +242,7 @@ jobs:
           }
 
           $unknown = op_call('definitely.unknown');
-          if ((int)($unknown['data']['status'] ?? 0) !== 400) {
+          if ((int)($unknown['status'] ?? 0) !== 400) {
               op_fail('Unknown operation was not blocked.');
           }
 
