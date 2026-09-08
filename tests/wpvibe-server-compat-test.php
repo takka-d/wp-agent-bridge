@@ -8,9 +8,10 @@ $compat = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takk
 $outline = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v095-outline.php');
 $html = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v095-html.php');
 $classic = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v095-classic.php');
-$identity = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-runtime-identity.php');
+$capabilities = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-runtime-capabilities.php');
+$guidance = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-runtime-guidance.php');
 
-foreach (compact('bootstrap', 'compat', 'outline', 'html', 'classic', 'identity') as $name => $value) {
+foreach (compact('bootstrap', 'compat', 'outline', 'html', 'classic', 'capabilities', 'guidance') as $name => $value) {
     if (!is_string($value) || $value === '') {
         fwrite(STDERR, "missing source: {$name}\n");
         exit(1);
@@ -81,8 +82,17 @@ foreach (['shell_exec(', 'passthru(', 'proc_open(', 'popen(', 'system('] as $for
     }
 }
 
-foreach (['WPVibe compatibility', 'theme.file.outline', 'page.html.inspect', 'classic_theme.create'] as $needle) {
-    if (strpos($identity, $needle) === false) {
+// Model-facing discovery belongs to the machine-readable capability catalog,
+// while Runtime_Guidance tells ChatGPT to use the Bridge instead of detouring
+// to WPVibe for server-side operations the Bridge already supports.
+foreach (['theme.file.outline', 'theme.file.read.range', 'page.html.inspect', 'classic_theme.create'] as $needle) {
+    if (strpos($capabilities, $needle) === false) {
+        fwrite(STDERR, "runtime capability catalog missing {$needle}\n");
+        exit(1);
+    }
+}
+foreach (['RUNTIME_CAPABILITIES.json', 'Do not switch normal WordPress work to WPVibe'] as $needle) {
+    if (strpos($guidance, $needle) === false) {
         fwrite(STDERR, "runtime guidance missing {$needle}\n");
         exit(1);
     }
