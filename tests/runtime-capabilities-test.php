@@ -13,13 +13,13 @@ function fail_test(string $message): void
 }
 
 $catalog = TakKa_WordPress_Bridge_Runtime_Capabilities::catalog(
-    '1.1.12',
+    '1.1.13',
     'owner/runtime-repo',
     'wp-agent-bridge-runtime',
     'example.test'
 );
 
-if (($catalog['schema'] ?? null) !== 1 || ($catalog['bridge_version'] ?? null) !== '1.1.12') {
+if (($catalog['schema'] ?? null) !== 1 || ($catalog['bridge_version'] ?? null) !== '1.1.13') {
     fail_test('Runtime capability catalog version/schema mismatch.');
 }
 if (($catalog['runtime']['repository'] ?? null) !== 'owner/runtime-repo'
@@ -30,7 +30,9 @@ if (($catalog['runtime']['repository'] ?? null) !== 'owner/runtime-repo'
 if (($catalog['release_pointer']['path'] ?? null) !== 'UPDATE_MANIFEST.json') {
     fail_test('Official release pointer is missing.');
 }
-if (empty($catalog['features']['workspace']) || empty($catalog['features']['media_fast_path'])) {
+if (empty($catalog['features']['workspace'])
+    || empty($catalog['features']['media_fast_path'])
+    || empty($catalog['features']['readonly_batch'])) {
     fail_test('Expected feature flags are missing.');
 }
 $workspace = $catalog['routes']['workspace'] ?? [];
@@ -40,9 +42,22 @@ if (($workspace['route'] ?? null) !== '/takka-v097/v1/manage'
     || ($workspace['limits']['max_file_bytes'] ?? null) !== 2097152) {
     fail_test('Workspace capability metadata mismatch.');
 }
+$batch = $catalog['routes']['readonly_batch'] ?? [];
+if (($batch['route'] ?? null) !== '/takka-v098/v1/manage'
+    || ($batch['action'] ?? null) !== 'readonly.batch'
+    || ($batch['limits']['max_operations'] ?? null) !== 12
+    || !in_array('workspace.file.search', $batch['rest_actions'] ?? [], true)
+    || !in_array('bridge.self_update.status', $batch['direct_actions'] ?? [], true)
+    || !empty($batch['mutation_actions_allowed'])
+    || !empty($batch['arbitrary_rest_allowed'])) {
+    fail_test('Read-only batch capability metadata mismatch.');
+}
 if (($catalog['connector_policy']['ordinary_command_write'][0] ?? null) !== 'create_file'
     || !in_array('update_ref', $catalog['connector_policy']['preferred_atomic_git_data'] ?? [], true)) {
     fail_test('Connector fast-path metadata mismatch.');
+}
+if (strpos((string) ($catalog['fast_path']['readonly_batch'] ?? ''), 'two or more') === false) {
+    fail_test('Read-only batch fast-path guidance is missing.');
 }
 $json = json_encode($catalog, JSON_UNESCAPED_SLASHES);
 if (!is_string($json)
