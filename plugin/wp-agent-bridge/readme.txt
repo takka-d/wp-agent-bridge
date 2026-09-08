@@ -3,7 +3,7 @@ Contributors: takka-d
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.1.13
+Stable tag: 1.1.14
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
@@ -33,6 +33,7 @@ The project is designed around these principles:
 * Media transport selected according to source and available GitHub write capabilities.
 * Private runtime workspace for persistent HTML, JavaScript, CSS, JSON, POV-Ray, Markdown, and related text artifacts.
 * Strict read-only batching for independent search/read/inspect/status operations without adding a generic mutation surface.
+* Atomic Direct Runtime result/completed/pending bookkeeping so a visible result is a reliable completion barrier for the next command.
 
 == Installation ==
 
@@ -76,7 +77,7 @@ Batches are bounded to 12 operations, 256 KiB of params per operation, a 1 MiB a
 
 A GitHub push is not treated as a durable queue by itself. Every valid runtime push also reconciles the current `wordpress-bridge/commands/pending/` directory. Self-generated media/result/completed bookkeeping pushes are ignored when their changed paths are available. Every active command owns a per-request ID in-flight marker through WordPress execution and GitHub bookkeeping, so concurrent recovery does not re-dispatch a command while it is still running.
 
-After WordPress execution returns, Direct Runtime persists the exact sanitized result in a local non-autoloaded recovery journal before attempting the GitHub result write. If GitHub bookkeeping races a media cleanup commit or otherwise fails before the result becomes durable, a later recovery of the same request ID reuses that journal instead of executing the WordPress side effect again. The journal is cleared as soon as the GitHub result is durable; stale journals expire after 24 hours. Changed command content under the same request ID is rejected rather than replayed. This covers the failure window between a successful WordPress side effect and durable GitHub result/completed/pending bookkeeping.
+After WordPress execution returns, Direct Runtime persists the exact sanitized result in a local non-autoloaded recovery journal before GitHub bookkeeping. Result creation, completed-command storage, and pending-command deletion are then assembled into one Git tree and published with one branch ref update. If the runtime branch moves concurrently, bookkeeping is rebuilt on the latest head and retried with a bounded attempt count while verifying that the pending command blob is still the exact command that was executed. If publication cannot be proven durable, the journal remains available so a later recovery reuses the original execution result instead of re-running the WordPress side effect. Once the matching result is visible, completed storage and pending deletion are already durable in the same commit; the journal can be cleared and the next command may be submitted immediately. Stale journals expire after 24 hours, and changed command content under the same request ID is rejected rather than replayed.
 
 == Self-update safety ==
 
@@ -93,6 +94,11 @@ This is a custom proprietary/source-available license, not an open-source licens
 High-impact writes remain subject to the Bridge's preview, confirmation, state-hash, plan-hash, impact-hash, active-theme/plugin, and sensitive-key protections.
 
 == Changelog ==
+
+= 1.1.14 =
+* Commits Direct Runtime result creation, completed-command storage, and pending-command deletion in one Git tree/commit/ref update.
+* Retries bounded non-fast-forward ref races against the latest runtime head while preserving unrelated concurrent changes and verifying the original pending-command blob SHA.
+* Treats a visible matching result as the command-bookkeeping completion barrier, removing the former post-result branch-movement window that could make the next connector `create_file` hit 409.
 
 = 1.1.13 =
 * Adds strict read-only batching under `/takka-v098/v1/manage` so multiple independent search/read/inspect/status operations can share one pending command, webhook, and result.
