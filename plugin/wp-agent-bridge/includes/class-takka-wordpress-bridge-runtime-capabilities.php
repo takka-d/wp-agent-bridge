@@ -34,8 +34,6 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
             return;
         }
 
-        // Prevent the capability-file commit's own webhook from starting a
-        // second sync before this request records completion.
         set_transient(self::TRANSIENT_SYNC_LOCK, '1', 300);
         $result = self::sync();
         if (!is_wp_error($result)) {
@@ -131,6 +129,7 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'workspace_exact_patch' => true,
                 'workspace_snapshot_rollback' => true,
                 'readonly_batch' => true,
+                'post_content_range_read' => true,
                 'theme_file_inspection' => true,
                 'theme_guarded_write' => true,
                 'diagnostics' => true,
@@ -148,6 +147,16 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                     'route' => '/takka-bridge/v1/v06',
                     'actions' => ['bridge.self_update.status', 'bridge.self_update.apply', 'bridge.self_update.rollback'],
                 ],
+                'post_content' => [
+                    'route' => '/takka-v084/v1/manage',
+                    'read_actions' => ['post.content.inspect', 'post.content.search', 'post.content.read.range'],
+                    'write_actions' => ['post.content.patch.preview', 'post.content.patch.apply'],
+                    'limits' => [
+                        'max_content_bytes' => 4194304,
+                        'max_read_range_lines' => 1000,
+                        'max_read_range_bytes' => 262144,
+                    ],
+                ],
                 'readonly_batch' => [
                     'route' => '/takka-v098/v1/manage',
                     'action' => 'readonly.batch',
@@ -163,6 +172,7 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                         'menu.get', 'updates.status', 'v06.capabilities', 'bridge.self_update.status',
                     ],
                     'rest_actions' => [
+                        'post.content.inspect', 'post.content.search', 'post.content.read.range',
                         'v097.capabilities', 'workspace.list', 'workspace.file.get',
                         'workspace.file.read.range', 'workspace.file.search', 'workspace.file.diff',
                         'workspace.snapshot.list', 'theme.files.list', 'theme.files.search',
@@ -240,6 +250,7 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'capability_resolution' => 'Read this file before issuing capability probe commands or searching source code for known Bridge routes/actions.',
                 'command_chaining' => 'When atomic_command_bookkeeping=true, a visible matching result means result creation, completed-command storage, and pending deletion are already durable in the same commit. The next pending command may be submitted immediately without waiting for later bookkeeping commits.',
                 'readonly_batch' => 'When two or more independent allowlisted reads are needed, prefer one readonly.batch request instead of multiple pending commands/webhooks/results.',
+                'post_content_read' => 'For WordPress post content, use post.content.inspect for metadata, post.content.search for targeted lookup, and post.content.read.range for bounded source reads. Do not append query strings such as ?context=edit to the REST route string; do not fall back to generic core REST reads when these actions satisfy the task.',
                 'media_upload' => 'For local or conversation-uploaded media up to 1 MiB decoded, prefer a single media.upload_base64 command. Use staged Media Fast Path for larger files. Do not split or stage a small file unless inline upload actually fails or the caller explicitly requests staged transport.',
                 'workspace' => 'Prefer workspace range/search/patch for iterative large text artifacts instead of repeated File Library or historical-response reconstruction.',
             ],
