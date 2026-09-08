@@ -22,6 +22,9 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
     private const DELIVERY_PREFIX = 'takka_bridge_direct_delivery_';
     private const COMMAND_INFLIGHT_PREFIX = 'takka_bridge_direct_command_inflight_';
     private const COMMAND_INFLIGHT_STALE_SECONDS = 600;
+    private const COMMAND_JOURNAL_PREFIX = 'takka_bridge_direct_command_journal_';
+    private const COMMAND_JOURNAL_STALE_SECONDS = 86400;
+    private const MAX_COMMAND_JOURNAL_BYTES = 2097152;
 
     private const V04_ACTIONS = [
         'v04.capabilities', 'plugin.list', 'plugin.install', 'plugin.activate', 'plugin.deactivate',
@@ -236,6 +239,7 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
         if (!self::valid_id($id) || !self::valid_id($request_id)) {
             return self::command_error($path, '', 'Unsafe id or request_id.');
         }
+        $command_sha256 = hash('sha256', $raw);
 
         $inflight_token = self::acquire_command_inflight($request_id);
         if ($inflight_token === null) {
@@ -249,23 +253,41 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
         }
 
         try {
-            $started = microtime(true);
-            $result = self::execute_command($command, $request_id);
-            $output = [
-                'id' => $id,
-                'request_id' => $request_id,
-                'command_file' => $path,
-                'executed_at' => gmdate('c'),
-                'duration_ms' => (int) round((microtime(true) - $started) * 1000),
-                'transport' => 'direct-github-webhook',
-                'command' => self::sanitize_result($command),
-                'result' => self::sanitize_result($result),
-            ];
-            $result_json = wp_json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-            if (!is_string($result_json)) {
-                return self::command_error($path, $id, 'Could not encode result JSON.');
+            $journal = self::load_command_journal($request_id, $id, $command_sha256);
+            if (is_wp_error($journal)) {
+                return self::command_error($path, $id, $journal->get_error_message());
             }
-            $result_json .= "\n";
+
+            $journal_replayed = false;
+            if (is_array($journal)) {
+                $output = $journal['output'];
+                $result_json = $journal['result_json'];
+                $result = isset($output['result']) && is_array($output['result']) ? $output['result'] : [];
+                $journal_replayed = true;
+            } else {
+                $started = microtime(true);
+                $result = self::execute_command($command, $request_id);
+                $output = [
+                    'id' => $id,
+                    'request_id' => $request_id,
+                    'command_file' => $path,
+                    'executed_at' => gmdate('c'),
+                    'duration_ms' => (int) round((microtime(true) - $started) * 1000),
+                    'transport' => 'direct-github-webhook',
+                    'command' => self::sanitize_result($command),
+                    'result' => self::sanitize_result($result),
+                ];
+                $result_json = wp_json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                if (!is_string($result_json)) {
+                    return self::command_error($path, $id, 'Could not encode result JSON.');
+                }
+                $result_json .= "\n";
+
+                $stored = self::store_command_journal($request_id, $id, $command_sha256, $result_json);
+                if (is_wp_error($stored)) {
+                    return self::command_error($path, $id, $stored->get_error_message());
+                }
+            }
 
             $result_path = 'wordpress-bridge/results/' . $id . '.json';
             $completed_path = 'wordpress-bridge/commands/completed/' . basename($path);
@@ -273,6 +295,12 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
             if (is_wp_error($write_result)) {
                 return self::command_error($path, $id, $write_result->get_error_message());
             }
+
+            // Once the result is durable in GitHub, recovery can repair later
+            // completed/pending bookkeeping from that result without executing
+            // the WordPress side effect again.
+            self::clear_command_journal($request_id);
+
             $write_completed = self::put_new_file($token, $repository, $completed_path, $raw, 'WP Bridge: complete command ' . $id);
             if (is_wp_error($write_completed)) {
                 return self::command_error($path, $id, $write_completed->get_error_message());
@@ -294,6 +322,7 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
                 'id' => $id,
                 'ok' => !empty($result['ok']),
                 'status' => $result['status'] ?? null,
+                'journal_replayed' => $journal_replayed,
             ];
         } finally {
             self::release_command_inflight($request_id, $inflight_token);
@@ -509,6 +538,83 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
     private static function command_inflight_option(string $request_id): string
     {
         return self::COMMAND_INFLIGHT_PREFIX . hash('sha256', $request_id);
+    }
+
+    private static function load_command_journal(string $request_id, string $id, string $command_sha256)
+    {
+        $option = self::command_journal_option($request_id);
+        $current = get_option($option, null);
+        if ($current === null || $current === false) {
+            return null;
+        }
+        if (!is_array($current)) {
+            delete_option($option);
+            return null;
+        }
+        $created = (int) ($current['created_at'] ?? 0);
+        if ($created <= 0 || $created < time() - self::COMMAND_JOURNAL_STALE_SECONDS) {
+            delete_option($option);
+            return null;
+        }
+        $stored_sha = isset($current['command_sha256']) ? strtolower((string) $current['command_sha256']) : '';
+        if (!preg_match('/^[a-f0-9]{64}$/', $stored_sha) || !hash_equals($stored_sha, $command_sha256)) {
+            return new WP_Error(
+                'takka_direct_command_journal_conflict',
+                'A completed local Direct Runtime execution exists for the same request_id with different command content.',
+                ['status' => 409, 'request_id' => $request_id]
+            );
+        }
+        if (!hash_equals((string) ($current['id'] ?? ''), $id)) {
+            return new WP_Error(
+                'takka_direct_command_journal_id_conflict',
+                'A completed local Direct Runtime execution exists for the same request_id with a different command id.',
+                ['status' => 409, 'request_id' => $request_id]
+            );
+        }
+        $result_json = isset($current['result_json']) && is_string($current['result_json']) ? $current['result_json'] : '';
+        if ($result_json === '' || strlen($result_json) > self::MAX_COMMAND_JOURNAL_BYTES) {
+            return new WP_Error('takka_direct_command_journal_invalid', 'Stored Direct Runtime execution journal is invalid.', ['status' => 500]);
+        }
+        $output = json_decode($result_json, true);
+        if (!is_array($output)
+            || !hash_equals((string) ($output['id'] ?? ''), $id)
+            || !hash_equals((string) ($output['request_id'] ?? ''), $request_id)) {
+            return new WP_Error('takka_direct_command_journal_invalid', 'Stored Direct Runtime execution journal does not match this command.', ['status' => 500]);
+        }
+        return ['output' => $output, 'result_json' => $result_json];
+    }
+
+    private static function store_command_journal(string $request_id, string $id, string $command_sha256, string $result_json)
+    {
+        if (strlen($result_json) < 1 || strlen($result_json) > self::MAX_COMMAND_JOURNAL_BYTES) {
+            return new WP_Error('takka_direct_command_journal_size', 'Direct Runtime result is too large for local recovery journaling.', ['status' => 500]);
+        }
+        $option = self::command_journal_option($request_id);
+        $value = [
+            'id' => $id,
+            'command_sha256' => $command_sha256,
+            'created_at' => time(),
+            'result_json' => $result_json,
+        ];
+        update_option($option, $value, false);
+        $verify = get_option($option, null);
+        if (!is_array($verify)
+            || !hash_equals((string) ($verify['id'] ?? ''), $id)
+            || !hash_equals((string) ($verify['command_sha256'] ?? ''), $command_sha256)
+            || !hash_equals((string) ($verify['result_json'] ?? ''), $result_json)) {
+            return new WP_Error('takka_direct_command_journal_store', 'Could not persist Direct Runtime execution journal before GitHub bookkeeping.', ['status' => 500]);
+        }
+        return true;
+    }
+
+    private static function clear_command_journal(string $request_id): void
+    {
+        delete_option(self::command_journal_option($request_id));
+    }
+
+    private static function command_journal_option(string $request_id): string
+    {
+        return self::COMMAND_JOURNAL_PREFIX . hash('sha256', $request_id);
     }
 
     private static function command_error(string $path, string $id, string $message): array
