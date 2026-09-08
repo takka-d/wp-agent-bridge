@@ -120,6 +120,14 @@ try {
         op_integration_fail('Native operation command did not reach the guarded router.');
     }
     $missing_id = 2147483647;
+    foreach ([$post_id . 'junk', [$post_id], (float) $post_id + 0.5, true] as $index => $invalid_id) {
+        $invalid = $runtime_call('runtime-invalid-id-' . $index, 'post.update', [
+            'post_id' => $invalid_id, 'fields' => ['title' => 'Wrong post must not be edited'],
+        ]);
+        if (!empty($invalid['ok']) || (int) ($invalid['status'] ?? 0) !== 400) {
+            op_integration_fail('Malformed post ID was coerced into a valid mutation target.');
+        }
+    }
     $unknown = $runtime_call('runtime-unknown', 'definitely.unknown');
     if (!empty($unknown['ok']) || (int) ($unknown['status'] ?? 0) !== 400) {
         op_integration_fail('Unknown operation was not rejected by Direct Runtime.');

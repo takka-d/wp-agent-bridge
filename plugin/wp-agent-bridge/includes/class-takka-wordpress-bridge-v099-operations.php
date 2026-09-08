@@ -295,8 +295,11 @@ final class TakKa_WordPress_Bridge_V099_Operations
 
     private static function positive_id(array $params, string $key)
     {
-        $value = isset($params[$key]) ? (int) $params[$key] : 0;
-        if ($value < 1) {
+        $raw = $params[$key] ?? null;
+        $value = (is_int($raw) || (is_string($raw) && preg_match('/^[1-9][0-9]*$/D', $raw)))
+            ? filter_var($raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
+            : false;
+        if ($value === false) {
             return new WP_Error('takka_bridge_v099_id', $key . ' must be a positive integer.', ['status' => 400, 'key' => $key]);
         }
         return $value;
