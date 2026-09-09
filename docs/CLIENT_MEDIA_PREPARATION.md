@@ -44,6 +44,10 @@ new credentials, or network access is required by the helper itself.
    only `create_file` is available, create the payload entries first and the
    pending command entry last. Use the repository/branch from the verified
    marker, not a repository inferred from the image or article title.
+   The manifest also contains the expected Git blob IDs. Compare them with
+   GitHub's returned IDs (or the created tree entries) to detect truncated tool
+   payloads. For Git Data, do this before publishing the ref. For individual
+   file writes, verify each staged payload before creating the pending command.
 5. Check the matching result path. On an uncertain write, recover that same ID
    before retrying. A prepared package is not proof of upload. After an actual
    successful media result, use its attachment ID in the requested guarded

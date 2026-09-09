@@ -51,6 +51,11 @@ class MediaPreparationTest(unittest.TestCase):
         self.assertEqual(metadata["expected_bytes"], len(original))
         self.assertEqual(metadata["expected_sha256"], hashlib.sha256(original).hexdigest())
         self.assertFalse(package["manifest"]["uploaded"])
+        for entry, expected in zip(entries, package["manifest"]["git_blobs"]):
+            raw = entry["content"].encode("utf-8")
+            self.assertEqual(expected["path"], entry["path"])
+            self.assertEqual(expected["bytes"], len(raw))
+            self.assertEqual(expected["sha"], hashlib.sha1(b"blob " + str(len(raw)).encode() + b"\0" + raw).hexdigest())
         return package
 
     def test_boundaries_and_original_byte_preservation(self):

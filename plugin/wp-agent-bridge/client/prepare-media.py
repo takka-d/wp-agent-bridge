@@ -103,6 +103,12 @@ def prepare_bytes(data, filename, request_id, connection, metadata=None):
                     payload_count=len(entries) - 1, command_path=command_path,
                     result_path="wordpress-bridge/results/{}.json".format(request_id),
                     uploaded=False)
+    # GitHub's returned blob IDs detect truncation at the client/tool boundary.
+    manifest["git_blobs"] = []
+    for entry in entries:
+        raw = entry["content"].encode("utf-8")
+        git_sha = hashlib.sha1(b"blob " + str(len(raw)).encode("ascii") + b"\0" + raw).hexdigest()
+        manifest["git_blobs"].append({"path": entry["path"], "bytes": len(raw), "sha": git_sha})
     # Do not include source paths or credentials in the transferable package.
     return {"manifest": manifest, "command": command, "tree": entries}
 
