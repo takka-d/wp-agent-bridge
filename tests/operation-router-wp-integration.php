@@ -115,6 +115,41 @@ try {
     $runtime_call = static function (string $id, string $operation, array $params = []) use ($runtime_execute): array {
         return $runtime_execute->invoke(null, ['type' => 'operation', 'operation' => $operation, 'params' => $params], $id);
     };
+    // A supplied user URL must determine the object without an ID lookup by the client.
+    $target_url = home_url('/?p=' . $post_id);
+    $target_get = $runtime_call('runtime-target-url', 'post.get', ['target_url' => $target_url]);
+    $target_data = $target_get['data']['data']['result']['data']['data'] ?? [];
+    if (empty($target_get['ok']) || (int) ($target_data['id'] ?? 0) !== $post_id) {
+        op_integration_fail('URL-only metadata read selected the wrong post.');
+    }
+    $title_before = get_post($post_id)->post_title;
+    foreach ([
+        ['target_url' => $target_url, 'post_id' => $post_id + 1000000],
+        ['target_url' => 'https://wrong-site.invalid/?p=' . $post_id, 'post_id' => $post_id],
+    ] as $index => $wrong_target) {
+        $wrong_target['fields'] = ['title' => 'Must not apply'];
+        $rejected = $runtime_call('runtime-target-conflict-' . $index, 'post.update', $wrong_target);
+        if (!empty($rejected['ok']) || (int) ($rejected['status'] ?? 0) !== 409
+            || get_post($post_id)->post_title !== $title_before) {
+            op_integration_fail('Conflicting target must be rejected without mutation.');
+        }
+    }
+    $target_update = $runtime_call('runtime-target-update', 'post.update', [
+        'target_url' => $target_url, 'fields' => ['title' => $title_before . ' URL verified'],
+    ]);
+    if (empty($target_update['ok']) || get_post($post_id)->post_title !== $title_before . ' URL verified') {
+        op_integration_fail('URL-only update failed.');
+    }
+    $target_range = $runtime_call('runtime-target-range', 'post.content.read_range', [
+        'target_url' => $target_url, 'start_line' => 2, 'max_lines' => 1,
+    ]);
+    if (empty($target_range['ok'])) op_integration_fail('Content operations must resolve the same URL.');
+    $missing_target = $runtime_call('runtime-target-missing', 'post.update', [
+        'target_url' => home_url('/?p=2147483647'), 'fields' => ['title' => 'Must not apply'],
+    ]);
+    if (!empty($missing_target['ok']) || (int) ($missing_target['status'] ?? 0) !== 404) {
+        op_integration_fail('Missing URL target must fail without falling back to another ID.');
+    }
     $runtime_get = $runtime_call('runtime-metadata', 'post.get', ['post_id' => $post_id]);
     if (empty($runtime_get['ok']) || ($runtime_get['data']['data']['operation'] ?? '') !== 'post.get') {
         op_integration_fail('Native operation command did not reach the guarded router.');

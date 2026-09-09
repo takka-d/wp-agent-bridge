@@ -106,6 +106,10 @@ High-impact writes remain subject to the Bridge's preview, confirmation, state-h
 
 == Changelog ==
 
+= 1.1.19 =
+* Resolve user-supplied post target URLs locally and reject conflicting IDs before reads or writes.
+* Add source commit and scoped command/execution timing to runtime results without extra network calls.
+
 = 1.1.18 =
 * Remove two GitHub requests from atomic result publication by creating the result in the tree request and reusing the verified pending blob for the completed command.
 * Make native operation commands the single preferred route, reuse the known catalog, specify batch limitations, and distinguish stored changes from visual verification.

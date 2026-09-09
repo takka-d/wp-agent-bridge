@@ -449,6 +449,17 @@ jobs:
               t_fail('Atomic command bookkeeping did not retry exactly once after the simulated branch race.');
           }
 
+          $timed_result = json_decode($GLOBALS['fake_gh_files']['wordpress-bridge/results/recover-side-effect.json']['content'], true);
+          $timing = $timed_result['timing'] ?? [];
+          if (!preg_match('/^[a-f0-9]{40}$/', (string) ($timed_result['source_commit'] ?? ''))
+              || !isset($timing['command_started_at_ms'], $timing['execution_started_at_ms'], $timing['execution_finished_at_ms'])
+              || $timing['execution_started_at_ms'] < $timing['command_started_at_ms']
+              || $timing['execution_finished_at_ms'] < $timing['execution_started_at_ms']
+              || abs(($timing['execution_finished_at_ms'] - $timing['execution_started_at_ms']) - $timed_result['duration_ms']) > 1
+              || !in_array('result_publication', $timing['excludes'] ?? [], true)) {
+              t_fail('Result timing must identify its source and preserve ordered, explicitly scoped measurements.');
+          }
+
           // 2) Compatibility recovery for an old partial state: result exists but
           // completed/pending bookkeeping was interrupted before atomic bookkeeping
           // was available. An unrelated later push must repair it without execution.
