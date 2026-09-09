@@ -96,7 +96,7 @@ require_once __DIR__ . '/runtime-sync-fixture.php';
 verify_runtime_sync('TakKa_WordPress_Bridge_Runtime_Guidance', 'takka_bridge_runtime_guidance_synced_version', ['AGENTS.md', 'wordpress-bridge/WEBHOOK_RUNTIME.md', 'wordpress-bridge/prepare-media.py']);
 
 $synced_preparer = $GLOBALS['sync_files']['wordpress-bridge/prepare-media.py'];
-$bundled_preparer = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/client/prepare-media.py');
+$bundled_preparer = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/client/prepare-media.py.txt');
 if (substr($synced_preparer, strpos($synced_preparer, "\n") + 1) !== $bundled_preparer) {
     guidance_fail('Runtime media preparer differs from the tested bundled implementation.');
 }

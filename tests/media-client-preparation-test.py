@@ -3,6 +3,7 @@ import base64
 import contextlib
 import hashlib
 import importlib.util
+from importlib.machinery import SourceFileLoader
 import io
 import json
 from pathlib import Path
@@ -12,7 +13,8 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location("media_preparer", ROOT / "plugin/wp-agent-bridge/client/prepare-media.py")
+loader = SourceFileLoader("media_preparer", str(ROOT / "plugin/wp-agent-bridge/client/prepare-media.py.txt"))
+spec = importlib.util.spec_from_loader(loader.name, loader)
 media = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(media)
 CONNECTION = {"status": "canonical", "transport": "direct-github-webhook", "ownership": "user-owned",

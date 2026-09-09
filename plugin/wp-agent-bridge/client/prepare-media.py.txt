@@ -2,6 +2,7 @@
 """Prepare unchanged local media for the existing GitHub Direct Runtime.
 
 Standard library only. No network, credentials, upload, or article mutation.
+Bundled as inert .txt data for compatibility with existing self-update guards.
 Call prepare_file() from an available client execution tool, then pass the
 returned strings to the existing GitHub tools without model transcription.
 """

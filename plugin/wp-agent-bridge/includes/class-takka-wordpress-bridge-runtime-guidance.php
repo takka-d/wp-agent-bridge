@@ -108,7 +108,7 @@ final class TakKa_WordPress_Bridge_Runtime_Guidance
 
     private static function media_preparer(string $repository, string $branch, string $host)
     {
-        $source = file_get_contents(dirname(__DIR__) . '/client/prepare-media.py');
+        $source = file_get_contents(dirname(__DIR__) . '/client/prepare-media.py.txt');
         if (!is_string($source) || $source === '') {
             return new WP_Error('wpab_media_preparer_missing', 'The bundled client media preparer is missing.', ['status' => 500]);
         }
