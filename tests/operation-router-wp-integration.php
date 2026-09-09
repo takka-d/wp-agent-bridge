@@ -144,6 +144,12 @@ try {
         'target_url' => $target_url, 'start_line' => 2, 'max_lines' => 1,
     ]);
     if (empty($target_range['ok'])) op_integration_fail('Content operations must resolve the same URL.');
+    $target_batch = $runtime_call('runtime-target-batch', 'readonly.batch', [
+        'operations' => [['operation' => 'post.content.read_range', 'params' => [
+            'target_url' => $target_url, 'start_line' => 2, 'max_lines' => 1,
+        ]]],
+    ]);
+    if (empty($target_batch['ok'])) op_integration_fail('Batched content reads must resolve target URLs before dispatch.');
     $missing_target = $runtime_call('runtime-target-missing', 'post.update', [
         'target_url' => home_url('/?p=2147483647'), 'fields' => ['title' => 'Must not apply'],
     ]);

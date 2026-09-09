@@ -191,6 +191,22 @@ final class TakKa_WordPress_Bridge_V099_Operations
             $params = self::resolve_post_target($operation, $params);
             if (is_wp_error($params)) return $params;
         }
+        if ($operation === 'readonly.batch' && isset($params['operations']) && is_array($params['operations'])) {
+            foreach ($params['operations'] as &$item) {
+                if (!isset($item['params']) || !is_array($item['params']) || !array_key_exists('target_url', $item['params'])) continue;
+                $name = '';
+                foreach (self::REST_ACTIONS as $candidate => $spec) {
+                    if (($item['action'] ?? '') === $spec[1]) {
+                        $name = $candidate;
+                        break;
+                    }
+                }
+                $resolved_params = self::resolve_post_target($name, $item['params']);
+                if (is_wp_error($resolved_params)) return $resolved_params;
+                $item['params'] = $resolved_params;
+            }
+            unset($item);
+        }
         if ($operation === 'health') {
             return self::signed_local_request('GET', '/takka-bridge/v1/health', null, false);
         }
