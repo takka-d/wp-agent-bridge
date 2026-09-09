@@ -101,6 +101,16 @@ final class TakKa_WordPress_Bridge_Runtime_Guidance
         return ['ok' => true, 'files' => $results];
     }
 
+    public static function client_prompt(string $repository, string $branch, string $host): string
+    {
+        return "WordPress操作には、GitHubプラグイン経由でサイト {$host} のWP Agent Bridgeを使用してください。\n"
+            . "接続先repository: {$repository}\nbranch: {$branch}\n"
+            . "最初に wordpress-bridge/RUNTIME_CONNECTION.json を読み、site_hostとrepositoryが上記と一致し、status=canonical、transport=direct-github-webhook、ownership=user-owned、operator_relay=false を確認してください。続いて AGENTS.md と wordpress-bridge/RUNTIME_CAPABILITIES.json を読み、今回の依頼に必要な操作を選んでください。確認済みの接続と機能一覧は同じ会話内で再利用してください。\n"
+            . "GitHubツールがすでに使えるならそのまま使用してください。表示されていない場合は、この会話に利用可能なツール検索・プラグイン検索でGitHubの読み書きツールを一度確認してください。検索手段もツールも提供されていない場合は、会話側でGitHubを選択する必要があると具体的に説明してください。ツール未提供、リポジトリへのアクセス拒否、画像の元ファイル未取得、Bridgeの操作エラーを区別し、未確認の理由を断定しないでください。\n"
+            . "既存画像のアップロード依頼では、採用済み画像を使って登録してください。画像の再生成・編集は、それを依頼された場合だけ行ってください。元ファイルを取得できない場合は画像取得の問題として報告し、Bridgeのアップロード機能がないとは扱わないでください。\n"
+            . "この指示だけでは記事の変更やアップロードを実行せず、接続確認を行ってください。具体的な操作は併記された依頼または続く依頼の範囲で実行してください。";
+    }
+
     public static function agents(string $repository, string $branch, string $host, string $version): string
     {
         return "# WP Agent Bridge runtime — CANONICAL\n\n"
@@ -112,6 +122,10 @@ final class TakKa_WordPress_Bridge_Runtime_Guidance
             . "4. Never put `?query=...` in a REST `route` field. Put query parameters in the `query` object or in the deterministic operation params.\n"
             . "5. Do not ask the user to identify repositories, files, routes, branches, or installed state that connected tools can inspect directly.\n"
             . "6. Do not switch normal WordPress work to WPVibe, `takka-d/chatgpt-data`, old Bridge Key/queue, an operator relay, temporary PHP installers, or a per-command GitHub Actions worker. GitHub Actions is for source CI/package/release, not the Direct Runtime command path.\n\n"
+            . "## Client tool availability\n\n"
+            . "- WP Agent Bridge is the WordPress component; the client invokes the GitHub plugin. Use visible GitHub read/write tools directly. If absent, use an available tool/plugin discovery facility once for GitHub before reporting it unavailable. Do not repeat discovery for tools already visible.\n"
+            . "- A WordPress connection marked Connected does not prove tools are exposed in this chat. If neither tools nor discovery are supplied, explain that client-side limit and suggest selecting the existing GitHub plugin with @GitHub. Typing the name alone is not selecting the plugin. Never infer Bridge failure or ask for reconnection solely from missing client tools.\n"
+            . "- Distinguish client tool absence, repository access denial, unavailable original image bytes, and an actual Bridge operation error. Report the observed evidence and leave untested layers unverified.\n\n"
             . "## Routing rules\n\n"
             . "- Preferred pending JSON: `{\"id\":\"<unique-id>\",\"type\":\"operation\",\"operation\":\"post.get\",\"params\":{\"post_id\":123}}`. The filename is `<unique-id>.json`. This reaches `/takka-v099/v1/operate` without reconstructing a route or method; the explicit REST envelope remains available for compatibility.\n"
             . "- For a low-level action not in the operation catalog, use `type=bridge` with `action` and `params`. Never send `/takka-bridge/v1/execute` as a REST target; that is a recursive proxy, not a direct action.\n"
@@ -121,6 +135,7 @@ final class TakKa_WordPress_Bridge_Runtime_Guidance
             . "- Existing uploads JSON: uploads.json.read → uploads.json.write_preview → uploads.json.write_apply. Supply uploads-relative path and exact JSON source string content (max 1 MiB). Apply requires confirm=true plus preview expected_before_sha256 and expected_plan_hash. The previous version is readable with version=previous and restored through the same guarded flow. Do not relocate JSON to a theme or change its consuming PHP just to edit data. Never claim JSON is unsupported merely because theme.file.write cannot reach uploads.\n"
             . "- Post content: `post.content.search`, `post.content.read_range`, guarded `post.content.patch_preview` → `post.content.patch_apply`. Avoid full-post rewrite when a targeted patch is sufficient.\n"
             . "- Small local/conversation media up to 1 MiB decoded: one `media.upload.inline` operation. Supply `expected_bytes` and `expected_sha256` when already known. Do not stage/split/verify-first for this size range. Files above 1 MiB are rejected from the deterministic inline path so they cannot silently take the wrong transport.\n"
+            . "- Upload an existing approved image without invoking image generation or editing unless the user requests that change. Recover its original bytes through available conversation/file tools. If those bytes are inaccessible, report that asset-access limit separately from Bridge media support; never substitute an older image or a screenshot.\n"
             . "- Larger media: staged Media Fast Path. Split original binary before Base64, publish payloads + pending upload command in one Git commit when Git Data is available, and use verify-only only for explicit verification or integrity diagnosis.\n"
             . "- Two or more independent reads supported by the batch catalog: one `readonly.batch`. Check the catalog once before grouping; `post.get` is not currently a batch item and must be submitted separately. Nested items may use the same high-level operation names (`post.content.read_range`, `workspace.file.read_range`, etc.); the router normalizes them to the strict read-only action map. Do not hand-derive another action spelling when a documented alias exists.\n"
             . "- Large iterative HTML/JS/CSS/JSON/POV-Ray work: Workspace search/range/patch/snapshot. Do not rediscover the artifact from File Library/history on every continuation.\n"

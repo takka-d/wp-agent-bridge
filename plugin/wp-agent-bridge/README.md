@@ -23,6 +23,18 @@ ChatGPTからWordPressを更新するためのWordPressプラグインです。
 
 PAT、private key、Webhook secret、Bridge Key、GitHub Actions workflowを利用者が手入力することは想定していません。GitHub Appのprivate keyとWebhook secretは接続先WordPress内へ暗号化保存します。
 
+### チャットでGitHubを呼び出せない場合
+
+WP Agent BridgeはWordPress側のプラグインです。ChatGPT側で呼び出すのは、接続済みの**GitHubプラグイン**です。WordPressのConnected表示だけでは、現在のチャットに必要な読み書きツールが提供されているかは分かりません。
+
+1. 操作するチャットの入力欄で `@GitHub` と入力し、候補のGitHubプラグインを選択します。文字として名前を書くだけでは、明示選択にはなりません。
+2. **ツール > WP Agent Bridge** の「このサイト用の開始・復旧用指示」を同じチャットに貼り付けます。サイト名と接続先はそのWordPressの設定から生成されます。
+3. そのチャットで接続先と機能一覧を読み取れたことを確認してから、目的の操作を続けます。別のチャットでの成功は、元のチャットの復旧確認にはなりません。
+
+ツールが見えている場合はそのまま使用し、見えていない場合だけ利用可能なツール検索を一度行います。ツールや検索手段そのものが提供されていない場合は、その会話の制約として報告します。GitHubを選択できない、リポジトリにアクセスできない、画像の元ファイルを取得できない、Bridgeが操作を拒否した、という状態は分けて確認します。ツールが見えないことだけを理由にWordPressの再接続や画像の再生成を行いません。
+
+既存画像のアップロードを依頼された場合は、採用済み画像の元ファイルを使用します。画像生成への切り替えや別画像への差し替えは、ユーザーがそれを依頼した場合に限ります。この案内はチャット側で非提供のツールを強制的に有効化するものではありません。
+
 ## 操作の入口
 
 接続先の `wordpress-bridge/RUNTIME_CAPABILITIES.json` を1回確認し、`type=operation` と `operation` / `params` を使います。`post.find` で候補を検索し、ユーザー指定の `target_url` または完全一致かつ一意の `target_title` で対象を照合します。`post.create` は下書きが標準で、`post_type=page` なら固定ページを作成します。`post.get` / `post.update` は対象種別から経路を決めます。
