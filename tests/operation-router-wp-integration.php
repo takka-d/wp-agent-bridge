@@ -92,6 +92,7 @@ if (is_wp_error($post_id) || (int) $post_id < 1) {
     op_integration_fail('Could not create integration test post.');
 }
 $post_id = (int) $post_id;
+$created_test_posts = [];
 
 try {
     // Exercise the real Direct Runtime command adapter, not just a hand-built
@@ -115,6 +116,64 @@ try {
     $runtime_call = static function (string $id, string $operation, array $params = []) use ($runtime_execute): array {
         return $runtime_execute->invoke(null, ['type' => 'operation', 'operation' => $operation, 'params' => $params], $id);
     };
+    // Complete page workflow: create, discover, resolve a unique title, update.
+    $page = $runtime_call('runtime-create-page', 'post.create', [
+        'post_type' => 'page', 'fields' => ['title' => 'WPAB unique page target', 'content' => 'Page fixture body'],
+    ]);
+    $page_data = $page['data']['data']['result']['data']['data'] ?? [];
+    $page_id = (int) ($page_data['id'] ?? 0);
+    if ($page_id > 0) $created_test_posts[] = $page_id;
+    if (empty($page['ok']) || $page_id < 1 || ($page_data['status'] ?? '') !== 'draft'
+        || ($page_data['type'] ?? '') !== 'page' || isset($page_data['content'])) {
+        op_integration_fail('Page creation must default to draft with a bounded response.');
+    }
+    $page_replay = $runtime_call('runtime-create-page', 'post.create', [
+        'post_type' => 'page', 'fields' => ['title' => 'WPAB unique page target', 'content' => 'Page fixture body'],
+    ]);
+    if ((int) ($page_replay['data']['data']['result']['data']['data']['id'] ?? 0) !== $page_id) {
+        op_integration_fail('Replaying page creation must not create another page.');
+    }
+    $page_update = $runtime_call('runtime-update-page-title', 'post.update', [
+        'target_title' => 'WPAB unique page target', 'post_type' => 'page',
+        'fields' => ['title' => 'WPAB ambiguous page target'],
+    ]);
+    if (empty($page_update['ok']) || get_post($page_id)->post_title !== 'WPAB ambiguous page target') {
+        op_integration_fail('An exact unique page title must resolve and update through the pages route.');
+    }
+    $second = $runtime_call('runtime-create-page-second', 'post.create', [
+        'post_type' => 'page', 'fields' => ['title' => 'WPAB ambiguous page target'],
+    ]);
+    $second_id = (int) ($second['data']['data']['result']['data']['data']['id'] ?? 0);
+    if ($second_id > 0) $created_test_posts[] = $second_id;
+    if (empty($second['ok']) || $second_id < 1) op_integration_fail('Could not create ambiguous title fixture.');
+    $ambiguous = $runtime_call('runtime-title-ambiguous', 'post.update', [
+        'target_title' => 'WPAB ambiguous page target', 'fields' => ['title' => 'Must not apply'],
+    ]);
+    if (!empty($ambiguous['ok']) || (int) ($ambiguous['status'] ?? 0) !== 409
+        || get_post($page_id)->post_title !== 'WPAB ambiguous page target'
+        || get_post($second_id)->post_title !== 'WPAB ambiguous page target') {
+        op_integration_fail('Duplicate titles must not select the first or newest candidate.');
+    }
+    $find = $runtime_call('runtime-find-pages', 'post.find', ['search' => 'WPAB ambiguous page target', 'post_type' => 'page']);
+    $found = $find['data']['data']['result']['data'] ?? [];
+    if (empty($find['ok']) || count($found['candidates'] ?? []) !== 2 || empty($found['selection_required'])) {
+        op_integration_fail('Candidate search must expose both pages without choosing one.');
+    }
+    foreach ($found['candidates'] as $candidate) {
+        if (isset($candidate['content']) || empty($candidate['url'])) op_integration_fail('Search candidates must be bounded and identifiable.');
+    }
+    $page_get = $runtime_call('runtime-page-by-url', 'post.get', ['target_url' => home_url('/?page_id=' . $page_id)]);
+    if (empty($page_get['ok']) || (int) ($page_get['data']['data']['result']['data']['data']['id'] ?? 0) !== $page_id) {
+        op_integration_fail('Page URL metadata read must select the pages route.');
+    }
+    $wrong_type = $runtime_call('runtime-page-wrong-type', 'post.update', [
+        'post_id' => $page_id, 'post_type' => 'post', 'fields' => ['title' => 'Must not apply'],
+    ]);
+    if (!empty($wrong_type['ok']) || (int) ($wrong_type['status'] ?? 0) !== 409) op_integration_fail('Type mismatch must not mutate.');
+    $live_create = $runtime_call('runtime-create-no-publish', 'post.create', [
+        'fields' => ['title' => 'Must not publish', 'status' => 'publish'],
+    ]);
+    if (!empty($live_create['ok']) || (int) ($live_create['status'] ?? 0) !== 400) op_integration_fail('Creation must not publish by accident.');
     // A supplied user URL must determine the object without an ID lookup by the client.
     $target_url = home_url('/?p=' . $post_id);
     $target_get = $runtime_call('runtime-target-url', 'post.get', ['target_url' => $target_url]);
@@ -385,6 +444,7 @@ try {
 
     echo "Deterministic operation router clean-WordPress integration: OK\n";
 } finally {
+    foreach ($created_test_posts as $created_id) wp_delete_post($created_id, true);
     if (isset($attachment_id) && get_post($attachment_id)) {
         wp_delete_attachment((int) $attachment_id, true);
     }
