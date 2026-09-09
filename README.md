@@ -137,6 +137,8 @@ WordPress側のmedia上限は6 MiBです。転送経路はsourceとconnector cap
 
 GitHub connectorに任意のローカルfile parameterがなくても、それ自体はblockerではありません。**1 MiB以下は `media.upload.inline` を1回使います。分割や事前検証コマンドは不要です。** 1 MiBを超え6 MiB以下の場合だけ、以下のbatched staged-media手順を使います。
 
+転送データの作成には、runtimeに同梱する `wordpress-bridge/prepare-media.py` を利用できます。採用済み画像の元ファイルから、サイズ・SHA-256・Base64・必要な分割・コマンドを一括生成し、画像そのものは変更しません。生成した文字列はコードから既存GitHubツールへ渡し、モデルの回答を介したBase64の書き写しを避けます。元画像を読める実行ツールと、生成データをツール引数へ渡せることは別途必要です。[実行手順と検証範囲](docs/CLIENT_MEDIA_PREPARATION.md)
+
 1. 元binary全体のbytes / SHA-256を計算する。
 2. 元binaryを順序付きのbounded chunkへ分割してから、各chunkを独立してBase64化する。
 3. Base64文字列を`wordpress-bridge/media/pending/*.b64`へUTF-8 textとしてstageする。

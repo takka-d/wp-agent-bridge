@@ -90,287 +90,75 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
             if (hash_equals(hash('sha256', $current), hash('sha256', $json))) {
                 return ['ok' => true, 'changed' => false, 'path' => self::PATH, 'sha256' => hash('sha256', $json)];
             }
-        } elseif (TakKa_WordPress_Bridge_Direct_GitHub_Recovery::error_status($current) !== 404) {
-            return $current;
-        }
-
-        $written = TakKa_WordPress_Bridge_Direct_GitHub::put_text_file(
-            $token,
-            $repository,
-            $branch,
-            self::PATH,
-            $json,
-            'WP Agent Bridge: sync runtime capability catalog'
-        );
-        if (is_wp_error($written)) {
-            return $written;
-        }
-        return ['ok' => true, 'changed' => true, 'path' => self::PATH, 'sha256' => hash('sha256', $json)];
+       …6246 tokens truncated…のまま使用してください。表示されていない場合は、この会話に利用可能なツール検索・プラグイン検索でGitHubの読み書きツールを一度確認してください。検索手段もツールも提供されていない場合は、会話側でGitHubを選択する必要があると具体的に説明してください。ツール未提供、リポジトリへのアクセス拒否、画像の元ファイル未取得、Bridgeの操作エラーを区別し、未確認の理由を断定しないでください。\n"
+            . "既存画像のアップロード依頼では、採用済み画像を使って登録してください。画像の再生成・編集は、それを依頼された場合だけ行ってください。元ファイルを取得できない場合は画像取得の問題として報告し、Bridgeのアップロード機能がないとは扱わないでください。\n"
+            . "文章の修正と画像登録は同じGitHubのJSON書き込み経路を使います。GitHubの画像専用ツールやローカルファイル引数は不要です。元画像を読める実行ツールがある場合は、runtime内の wordpress-bridge/prepare-media.py で転送データを生成し、出力文字列をコードでGitHubツールへ渡してください。Base64を回答から書き写さないでください。画像を取得する手段が未確認のまま、GitHub全体が使えないと結論しないでください。\n"
+            . "この指示だけでは記事の変更やアップロードを実行せず、接続確認を行ってください。具体的な操作は併記された依頼または続く依頼の範囲で実行してください。";
     }
 
-    public static function catalog(string $version, string $repository, string $branch, string $site_host): array
+    public static function agents(string $repository, string $branch, string $host, string $version): string
     {
-        $operation_catalog = class_exists('TakKa_WordPress_Bridge_V099_Operations')
-            ? TakKa_WordPress_Bridge_V099_Operations::catalog()
-            : [];
+        return "# WP Agent Bridge runtime — CANONICAL\n\n"
+            . "Site: `{$host}`  \nRepository: `{$repository}`  \nBranch: `{$branch}`  \nBridge: `{$version}`\n\n"
+            . "## Mandatory fast path\n\n"
+            . "1. Reuse this repository/branch when already verified in the current task/session. Re-resolve only after an explicit reconnect/migration signal, a mapping mismatch, an inaccessible repository/branch, a non-canonical marker, or a connected GitHub account/tool-context change.\n"
+            . "2. Read `wordpress-bridge/RUNTIME_CAPABILITIES.json` before probing Bridge capabilities or searching source code for known routes/actions. Read it once per verified connection/version and reuse its operation catalog. Refresh after a version/connection change or a contradictory response, not before every command.\n"
+            . "3. For advertised common operations use `type=operation` with `operation` and `params`. The runtime selects `/takka-v099/v1/operate` internally. Do not reconstruct versioned routes when an operation is listed in the catalog.\n"
+            . "4. Never put `?query=...` in a REST `route` field. Put query parameters in the `query` object or in the deterministic operation params.\n"
+            . "5. Do not ask the user to identify repositories, files, routes, branches, or installed state that connected tools can inspect directly.\n"
+            . "6. Do not switch normal WordPress work to WPVibe, `takka-d/chatgpt-data`, old Bridge Key/queue, an operator relay, temporary PHP installers, or a per-command GitHub Actions worker. GitHub Actions is for source CI/package/release, not the Direct Runtime command path.\n\n"
+            . "## Client tool availability\n\n"
+            . "- WP Agent Bridge is the WordPress component; the client invokes the GitHub plugin. Use visible GitHub read/write tools directly. If absent, use an available tool/plugin discovery facility once for GitHub before reporting it unavailable. Do not repeat discovery for tools already visible.\n"
+            . "- A WordPress connection marked Connected does not prove tools are exposed in this chat. If neither tools nor discovery are supplied, explain that client-side limit and suggest selecting the existing GitHub plugin with @GitHub. Typing the name alone is not selecting the plugin. Never infer Bridge failure or ask for reconnection solely from missing client tools.\n"
+            . "- Distinguish client tool absence, repository access denial, unavailable original image bytes, and an actual Bridge operation error. Report the observed evidence and leave untested layers unverified.\n\n"
+            . "- Text edits and image uploads use the same GitHub text/JSON write tools. A missing binary-file argument or dedicated image tool is not missing GitHub access. A recent text mutation is evidence that this transport worked, not proof that the original image bytes are readable. Check these two conditions separately with available tools; never turn an asset-read failure into a blanket connector-unavailable claim.\n\n"
+            . "## Routing rules\n\n"
+            . "- Preferred pending JSON: `{\"id\":\"<unique-id>\",\"type\":\"operation\",\"operation\":\"post.get\",\"params\":{\"post_id\":123}}`. The filename is `<unique-id>.json`. This reaches `/takka-v099/v1/operate` without reconstructing a route or method; the explicit REST envelope remains available for compatibility.\n"
+            . "- For a low-level action not in the operation catalog, use `type=bridge` with `action` and `params`. Never send `/takka-bridge/v1/execute` as a REST target; that is a recursive proxy, not a direct action.\n"
+            . "- Create an article or page: post.create with fields (title/content) and optional post_type=page. It defaults to draft; explicit publish/schedule needs confirm_live. Reuse the command ID on uncertain outcomes. Creation returns the ID, type, status and URL without echoing full content.\n"
+            . "- Post/page metadata/status/featured image: `post.get` and `post.update`. The Bridge selects the posts/pages route from the actual object type; post_type, if supplied, must agree. `post.get` is metadata-oriented and bounded by default; do not request `content` through it. `post.update` must not replace `content`.\n"
+            . "- When the user supplies a post/page URL, preserve it as params.target_url for post.get, post.update, and post.content.*. Omit post_id unless already verified; the Bridge resolves it locally. If both are supplied they must identify the same object. A target conflict must not be bypassed by dropping or replacing the URL. For a title-only request use target_title (exact title, unique match required), optionally post_type=post or page. Duplicate or non-exact titles are rejected. Use post.find with search to return bounded candidates, then choose the user-intended URL; never silently select the first candidate.\n"
+            . "- Existing uploads JSON: uploads.json.read → uploads.json.write_preview → uploads.json.write_apply. Supply uploads-relative path and exact JSON source string content (max 1 MiB). Apply requires confirm=true plus preview expected_before_sha256 and expected_plan_hash. The previous version is readable with version=previous and restored through the same guarded flow. Do not relocate JSON to a theme or change its consuming PHP just to edit data. Never claim JSON is unsupported merely because theme.file.write cannot reach uploads.\n"
+            . "- Post content: `post.content.search`, `post.content.read_range`, guarded `post.content.patch_preview` → `post.content.patch_apply`. Avoid full-post rewrite when a targeted patch is sufficient.\n"
+            . "- Small local/conversation media up to 1 MiB decoded: one `media.upload.inline` operation. Supply `expected_bytes` and `expected_sha256` when already known. Do not stage/split/verify-first for this size range. Files above 1 MiB are rejected from the deterministic inline path so they cannot silently take the wrong transport.\n"
+            . "- Upload an existing approved image without invoking image generation or editing unless the user requests that change. Recover its original bytes through available conversation/file tools. If those bytes are inaccessible, report that asset-access limit separately from Bridge media support; never substitute an older image or a screenshot.\n"
+            . "- Client media preparation: read `wordpress-bridge/prepare-media.py` once and use its prepare_file() in an available local/file execution tool. It preserves bytes, calculates size/SHA and correct chunk_integrity keys, selects inline/staged transport, and returns exact command and Git tree strings. Pass those strings programmatically to existing GitHub tools; do not transcribe Base64 through model output. No GitHub credentials or network are needed by the preparer. If this chat cannot pass file bytes into tool arguments, name that exact transfer limit rather than claim WordPress/GitHub is unavailable. Do not assume a file ID or sandbox path is a downloadable URL.\n"
+            . "- Prepared media is not uploaded media. Check the matching result for an already submitted ID first. Publish generated tree entries against the latest base_tree in one non-forced commit when Git Data is available; otherwise create payload text files first and the single pending command last. Reuse the ID and payload after an uncertain publication. Only a successful media result supplies the attachment ID for the separately guarded article patch.\n"
+            . "- Larger media: staged Media Fast Path. Split original binary before Base64, publish payloads + pending upload command in one Git commit when Git Data is available, and use verify-only only for explicit verification or integrity diagnosis.\n"
+            . "- Two or more independent reads supported by the batch catalog: one `readonly.batch`. Check the catalog once before grouping; `post.get` is not currently a batch item and must be submitted separately. Nested items may use the same high-level operation names (`post.content.read_range`, `workspace.file.read_range`, etc.); the router normalizes them to the strict read-only action map. Do not hand-derive another action spelling when a documented alias exists.\n"
+            . "- Large iterative HTML/JS/CSS/JSON/POV-Ray work: Workspace search/range/patch/snapshot. Do not rediscover the artifact from File Library/history on every continuation.\n"
+            . "- For ordinary WordPress work, submit native runtime commands through the connected GitHub tools. Do not create or run local helper scripts just to wrap a known operation. Reading original media bytes and running the bundled media preparer is necessary asset preparation and is explicitly allowed by this rule; it is not image generation. When local asset generation/testing is necessary, reuse the existing project entrypoint; numbered replacement runners add setup and approval churn without improving the WordPress operation. Client-side approval policy remains outside Bridge control.\n"
+            . "- Self-update: use `self_update.status/apply/rollback` operations and pinned official source metadata; verify after apply.\n\n"
+            . "- Before changing a user-visible target, verify its identity against the requested page/post/media and the affected content or selector. A matching file hash or successful write proves storage, not the intended visual result. Verify the affected output; if rendering is unavailable, explicitly leave visual correctness unverified.\n\n"
+            . "## Failure rules\n\n"
+            . "- Keep one command ID and identical payload when checking/recovering an uncertain outcome. A new ID means a new operation; do not generate a fresh ID to retry an unconfirmed mutation.\n"
+            . "- Check the result `ok` and operation status, not just successful GitHub reads or outer HTTP 200. A 207 read batch is incomplete: inspect its failed items and do not rerun successful items.\n"
+            . "- Fetch the exact `wordpress-bridge/results/<id>.json` path. A missing result is pending/unknown, not proof of failure. Record submission-to-result time separately from `duration_ms`. Results include source_commit and timing for command loading and execution; timing.excludes lists unmeasured phases. Compare source/result commit timestamps only as second-resolution commit-creation evidence, not exact visibility. Never describe execution time as total user wait. Avoid fixed long sleeps: do independent work while pending and use bounded result checks without resubmitting mutations.\n"
+            . "- `rest_no_route`: do not repeat unchanged. Check operation catalog and query/route separation.\n"
+            . "- guarded content error from `post.update`: switch to `post.content.search/read_range` and guarded patch; do not fall back to a full content rewrite.\n"
+            . "- inline media threshold/integrity error: keep the reported bytes/SHA evidence. Use staged Fast Path only when the file is actually above the threshold; for mismatches fix the source data rather than changing transport blindly.\n"
+            . "- stale/plan 409: re-read only affected state, regenerate preview/plan, retry the guarded write once.\n"
+            . "- media integrity 409: replace only mismatched staging payloads when identifiable; do not change transport blindly.\n"
+            . "- runtime ref 409/422: check whether the matching result already exists before any retry. Never replay a WordPress mutation solely because Git publication/reading failed.\n"
+            . "- A visible matching result is the completion barrier when atomic bookkeeping is advertised; do not wait for another bookkeeping commit.\n";
+    }
 
-        return [
-            'schema' => 2,
-            'bridge_version' => $version,
-            'runtime' => [
-                'repository' => $repository,
-                'branch' => $branch,
-                'transport' => 'direct-github-webhook',
-                'site_host' => $site_host,
-                'pending_path' => 'wordpress-bridge/commands/pending/<id>.json',
-                'result_path' => 'wordpress-bridge/results/<id>.json',
-                'bookkeeping' => [
-                    'mode' => 'atomic_git_tree',
-                    'result_completed_pending_same_commit' => true,
-                    'max_ref_update_attempts' => 3,
-                    'result_visibility_is_completion_barrier' => true,
-                ],
-            ],
-            'release_pointer' => [
-                'repository' => 'takka-d/wp-agent-bridge',
-                'path' => 'UPDATE_MANIFEST.json',
-                'branch' => 'main',
-            ],
-            'features' => [
-                'source_self_update' => true,
-                'workspace' => true,
-                'workspace_read' => true,
-                'workspace_guarded_write' => true,
-                'workspace_exact_patch' => true,
-                'workspace_snapshot_rollback' => true,
-                'readonly_batch' => true,
-                'post_content_range_read' => true,
-                'deterministic_operation_router' => true,
-                'native_operation_command' => true,
-                'theme_file_inspection' => true,
-                'theme_guarded_write' => true,
-                'diagnostics' => true,
-                'media_inline_upload' => true,
-                'media_fast_path' => true,
-                'media_verify_only' => true,
-                'site_icon' => true,
-                'pending_recovery' => true,
-                'request_inflight_guard' => true,
-                'local_result_journal' => true,
-                'atomic_command_bookkeeping' => true,
-            ],
-            'routes' => [
-                'operations' => $operation_catalog,
-                'self_update' => [
-                    'route' => '/takka-bridge/v1/v06',
-                    'actions' => ['bridge.self_update.status', 'bridge.self_update.apply', 'bridge.self_update.rollback'],
-                ],
-                'post_content' => [
-                    'route' => '/takka-v084/v1/manage',
-                    'read_actions' => ['post.content.inspect', 'post.content.search', 'post.content.read.range'],
-                    'write_actions' => ['post.content.patch.preview', 'post.content.patch.apply'],
-                    'limits' => [
-                        'max_content_bytes' => 4194304,
-                        'max_read_range_lines' => 1000,
-                        'max_read_range_bytes' => 262144,
-                    ],
-                ],
-                'readonly_batch' => [
-                    'route' => '/takka-v098/v1/manage',
-                    'action' => 'readonly.batch',
-                    'limits' => [
-                        'max_operations' => 12,
-                        'max_operation_params_bytes' => 262144,
-                        'max_response_bytes' => 1048576,
-                        'max_total_ms' => 20000,
-                    ],
-                    'direct_actions' => [
-                        'v04.capabilities', 'plugin.list', 'theme.manage.list', 'cron.schedules',
-                        'admin.capabilities', 'v05.capabilities', 'idempotency.status', 'menu.list',
-                        'menu.get', 'updates.status', 'v06.capabilities', 'bridge.self_update.status',
-                    ],
-                    'rest_actions' => [
-                        'post.content.inspect', 'post.content.search', 'post.content.read.range',
-                        'v097.capabilities', 'workspace.list', 'workspace.file.get',
-                        'workspace.file.read.range', 'workspace.file.search', 'workspace.file.diff',
-                        'workspace.snapshot.list', 'theme.files.list', 'theme.files.search',
-                        'theme.file.read.many', 'theme.file.outline', 'theme.file.read.range',
-                        'page.html.inspect', 'media.file.inspect', 'site.icon.get',
-                        'media.upload.capabilities',
-                    ],
-                    'mutation_actions_allowed' => false,
-                    'arbitrary_rest_allowed' => false,
-                ],
-                'workspace' => [
-                    'route' => '/takka-v097/v1/manage',
-                    'actions' => [
-                        'v097.capabilities', 'workspace.list', 'workspace.file.get',
-                        'workspace.file.read.range', 'workspace.file.search', 'workspace.file.write',
-                        'workspace.file.patch', 'workspace.file.delete', 'workspace.file.diff',
-                        'workspace.snapshot.create', 'workspace.snapshot.list', 'workspace.snapshot.rollback',
-                    ],
-                    'limits' => [
-                        'max_file_bytes' => 2097152,
-                        'max_full_read_bytes' => 524288,
-                        'max_range_lines' => 1000,
-                        'max_search_files' => 100,
-                        'max_search_bytes' => 5242880,
-                        'max_search_results' => 100,
-                    ],
-                ],
-                'theme_inspection' => [
-                    'route' => '/takka-v096/v1/theme-files',
-                    'actions' => ['theme.files.list', 'theme.files.search', 'theme.file.read.many'],
-                ],
-                'diagnostics' => [
-                    'route' => '/takka-v094/v1/manage',
-                    'actions' => ['http.probe', 'http.probe.batch', 'media.file.inspect'],
-                ],
-                'structured_inspection' => [
-                    'route' => '/takka-v095/v1/manage',
-                    'actions' => [
-                        'theme.file.outline', 'theme.file.read.range', 'page.html.inspect',
-                        'classic_theme.create', 'classic_theme.preview_url', 'classic_theme.publish', 'classic_theme.discard',
-                    ],
-                ],
-                'site_media' => [
-                    'route' => '/takka-v096/v1/manage',
-                    'actions' => ['site.icon.get', 'site.icon.set', 'site.icon.clear', 'media.upload.capabilities'],
-                ],
-                'media_inline' => [
-                    'route' => '/takka-bridge/v1/manage',
-                    'action' => 'media.upload_base64',
-                    'max_decoded_bytes' => 6291456,
-                    'preferred_max_decoded_bytes' => 1048576,
-                ],
-                'media_fast_path' => [
-                    'upload_route' => '/wp-agent-bridge-runtime/v1/media-upload',
-                    'verify_route' => '/wp-agent-bridge-runtime/v1/media-verify',
-                    'max_decoded_bytes' => 6291456,
-                    'max_chunks' => 32,
-                ],
-            ],
-            'command_contract' => [
-                'preferred_command' => [
-                    'type' => 'operation',
-                    'operation' => '<operation>',
-                    'params' => '<object>',
-                ],
-                'preferred_common_task_route' => '/takka-v099/v1/operate',
-                'preferred_common_task_command' => [
-                    'type' => 'rest',
-                    'method' => 'POST',
-                    'route' => '/takka-v099/v1/operate',
-                    'body' => [
-                        'operation' => '<operation>',
-                        'params' => '<object>',
-                    ],
-                ],
-                'rules' => [
-                    'Use type=operation with operation and params for common tasks. The runtime supplies the fixed route and method; the REST shape below remains compatible.',
-                    'For low-level actions absent from the operation catalog, use type=bridge with action and params. Never proxy /takka-bridge/v1/execute through type=rest.',
-                    'Use the deterministic operation router for advertised common operations instead of reconstructing versioned Bridge routes.',
-                    'Never append a query string to a REST route field. Put query values in the query object.',
-                    'Do not issue capability probe commands or source-code searches for an operation already present in this catalog.',
-                    'Do not switch to WPVibe, an operator relay, old Bridge Key, takka-d/chatgpt-data, or a per-command GitHub Actions worker.',
-                    'Do not retry a mutating command merely because a later GitHub read failed. First check whether the matching result already exists.',
-                ],
-                'templates' => [
-                    'post_get_edit_context' => [
-                        'operation' => 'post.get',
-                        'params' => ['post_id' => '<id>', 'query' => ['context' => 'edit']],
-                    ],
-                    'post_update' => [
-                        'operation' => 'post.update',
-                        'params' => ['post_id' => '<id>', 'fields' => '<WordPress REST fields object>'],
-                    ],
-                    'post_content_search' => [
-                        'operation' => 'post.content.search',
-                        'params' => ['post_id' => '<id>', 'query' => '<literal>'],
-                    ],
-                    'post_content_read_range' => [
-                        'operation' => 'post.content.read_range',
-                        'params' => ['post_id' => '<id>', 'start_line' => 1, 'max_lines' => 200],
-                    ],
-                    'small_media_upload' => [
-                        'operation' => 'media.upload.inline',
-                        'params' => ['filename' => '<name>', 'mime_type' => '<mime>', 'data_b64' => '<base64>'],
-                    ],
-                    'workspace_search' => [
-                        'operation' => 'workspace.file.search',
-                        'params' => ['path' => '<workspace path>', 'query' => '<literal>'],
-                    ],
-                    'readonly_batch' => [
-                        'operation' => 'readonly.batch',
-                        'params' => ['operations' => '<read-only operations array>'],
-                    ],
-                    'self_update_status' => [
-                        'operation' => 'self_update.status',
-                        'params' => new stdClass(),
-                    ],
-                ],
-            ],
-            'task_recipes' => [
-                'targeted_post_edit' => [
-                    'steps' => ['post.content.search or post.content.read_range', 'post.content.patch_preview', 'post.content.patch_apply'],
-                    'rule' => 'Do not fetch and rewrite the full post when an exact guarded patch is sufficient.',
-                ],
-                'featured_image_small_file' => [
-                    'steps' => ['media.upload.inline', 'post.update with fields.featured_media'],
-                    'rule' => 'For decoded files up to 1 MiB, do not stage Git media chunks unless inline upload actually fails.',
-                ],
-                'featured_image_large_file' => [
-                    'steps' => ['stage binary-first chunks', 'POST staged media Fast Path once', 'post.update with fields.featured_media'],
-                    'rule' => 'Do not run verify-only before a normal staged upload; use verify-only for explicit verification or integrity diagnosis.',
-                ],
-                'large_iterative_artifact' => [
-                    'steps' => ['workspace.file.search/read_range', 'workspace.file.patch or guarded write', 'workspace snapshot when rollback point is needed'],
-                    'rule' => 'Do not rediscover the same artifact from File Library or historical chat on each continuation.',
-                ],
-                'multiple_independent_reads' => [
-                    'steps' => ['readonly.batch'],
-                    'rule' => 'Use one batch for two or more independent allowlisted reads instead of serial pending commands.',
-                ],
-            ],
-            'failure_policy' => [
-                'rest_no_route' => 'Do not repeat the same route. Check the deterministic operation catalog and query/route separation first.',
-                'stale_write_or_plan_409' => 'Re-read only the affected state, regenerate the preview/plan, then retry the guarded write once with fresh hashes.',
-                'media_integrity_409' => 'Inspect reported chunk/file integrity and replace only mismatched staging data. Do not switch transport blindly.',
-                'runtime_branch_race_409_422' => 'Check for the matching result first. If absent, retry only the Git publication step against the latest runtime head; do not replay the WordPress side effect.',
-                'unknown_operation' => 'Read this catalog. Do not enumerate unrelated connectors or fall back to WPVibe.',
-            ],
-            'media_routing' => [
-                'inline_action' => 'media.upload_base64',
-                'inline_preferred_max_decoded_bytes' => 1048576,
-                'staged_upload_route' => '/wp-agent-bridge-runtime/v1/media-upload',
-                'staged_preferred_above_decoded_bytes' => 1048576,
-                'verify_only_on_failure_or_explicit_request' => true,
-                'rule' => 'For a local or conversation-uploaded media file up to 1 MiB decoded, prefer one inline media.upload_base64 pending command. For larger files, prefer staged media Fast Path with binary-first chunking and integrity metadata.',
-            ],
-            'connector_policy' => [
-                'ordinary_command_write' => ['create_file'],
-                'preferred_atomic_git_data' => ['create_blob', 'create_tree', 'create_commit', 'update_ref'],
-                'discovery_rule' => 'Do not rediscover connector capabilities when the required write action is already visible in the current task/session.',
-                'question_rule' => 'Do not ask the user to identify or confirm repository/files/routes that the connected tools can inspect directly.',
-            ],
-            'fast_path' => [
-                'runtime_resolution' => 'Read RUNTIME_CONNECTION.json only when canonical runtime is not already verified or a migration signal appears.',
-                'capability_resolution' => 'Read this file before issuing capability probe commands or searching source code for known Bridge routes/actions.',
-                'operation_router' => 'For common tasks, use the single /takka-v099/v1/operate route and an allowlisted operation from routes.operations. This is preferred over reconstructing versioned internal routes.',
-                'command_chaining' => 'When atomic_command_bookkeeping=true, a visible matching result means result creation, completed-command storage, and pending deletion are already durable in the same commit. The next pending command may be submitted immediately without waiting for later bookkeeping commits.',
-                'readonly_batch' => 'When two or more independent allowlisted reads are needed, prefer one readonly.batch request instead of multiple pending commands/webhooks/results.',
-                'post_content_read' => 'For WordPress post content, use post.content.inspect for metadata, post.content.search for targeted lookup, and post.content.read_range for bounded source reads through the deterministic operation router.',
-                'media_upload' => 'For local or conversation-uploaded media up to 1 MiB decoded, prefer media.upload.inline through the deterministic operation router. Use staged Media Fast Path for larger files. Do not split or stage a small file unless inline upload actually fails or the caller explicitly requests staged transport.',
-                'workspace' => 'Prefer workspace operations for iterative large text artifacts instead of repeated File Library or historical-response reconstruction.',
-            ],
-        ];
+    public static function runtime(string $repository, string $branch, string $host, string $version): string
+    {
+        return "# WP Agent Bridge Direct Runtime\n\n"
+            . "Site: `{$host}`\n\n"
+            . "Repository: `{$repository}`\n\n"
+            . "Branch: `{$branch}`\n\n"
+            . "Installed Bridge: `{$version}`\n\n"
+            . "Normal transport: ChatGPT → user-owned private runtime repository → site-specific GitHub App signed Webhook → WordPress/WP Agent Bridge → same runtime repository → ChatGPT.\n\n"
+            . "GitHub Actions is not a command worker in this path. It belongs to source CI/package/release only.\n\n"
+            . "Machine-readable routing contract: `wordpress-bridge/RUNTIME_CAPABILITIES.json`. Common operations use `/takka-v099/v1/operate`; its policy layer bounds post reads, blocks unguarded content replacement, validates the small-media path, and normalizes read-only batch aliases.\n\n"
+            . "Pending: `wordpress-bridge/commands/pending/<id>.json`  \nResults: `wordpress-bridge/results/<id>.json`  \nCompleted: `wordpress-bridge/commands/completed/<id>.json`\n";
     }
 
     private static function bridge_version(): string
     {
-        if (!function_exists('get_file_data')) {
-            return '';
-        }
+        if (!function_exists('get_file_data')) return '';
         $data = get_file_data(dirname(__DIR__) . '/takka-wordpress-bridge.php', ['Version' => 'Version'], 'plugin');
         return isset($data['Version']) ? trim((string) $data['Version']) : '';
     }

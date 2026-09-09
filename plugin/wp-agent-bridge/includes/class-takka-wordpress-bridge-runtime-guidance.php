@@ -39,7 +39,9 @@ final class TakKa_WordPress_Bridge_Runtime_Guidance
         $branch = (string) $connection['runtime_branch'];
         $host = strtolower((string) wp_parse_url(home_url('/'), PHP_URL_HOST));
         if ($host === '') $host = 'wordpress';
-        $signature = $version . ':' . hash('sha256', self::agents($repository, $branch, $host, $version) . "\n" . self::runtime($repository, $branch, $host, $version));
+        $preparer = self::media_preparer($repository, $branch, $host);
+        if (is_wp_error($preparer)) return;
+        $signature = $version . ':' . hash('sha256', self::agents($repository, $branch, $host, $version) . "\n" . self::runtime($repository, $branch, $host, $version) . "\n" . $preparer);
         if ((string) get_option(self::OPTION_SYNCED_VERSION, '') === $signature) {
             return;
         }
@@ -73,10 +75,13 @@ final class TakKa_WordPress_Bridge_Runtime_Guidance
 
         $agents = self::agents($repository, $branch, $host, $version);
         $runtime = self::runtime($repository, $branch, $host, $version);
+        $preparer = self::media_preparer($repository, $branch, $host);
+        if (is_wp_error($preparer)) return $preparer;
         $results = [];
         foreach ([
             'AGENTS.md' => $agents,
             'wordpress-bridge/WEBHOOK_RUNTIME.md' => $runtime,
+            'wordpress-bridge/prepare-media.py' => $preparer,
         ] as $path => $content) {
             $current = TakKa_WordPress_Bridge_Direct_GitHub::get_text_file($token, $repository, $branch, $path);
             if (!is_wp_error($current) && hash_equals(hash('sha256', $current), hash('sha256', $content))) {
@@ -101,6 +106,15 @@ final class TakKa_WordPress_Bridge_Runtime_Guidance
         return ['ok' => true, 'files' => $results];
     }
 
+    private static function media_preparer(string $repository, string $branch, string $host)
+    {
+        $source = file_get_contents(dirname(__DIR__) . '/client/prepare-media.py');
+        if (!is_string($source) || $source === '') {
+            return new WP_Error('wpab_media_preparer_missing', 'The bundled client media preparer is missing.', ['status' => 500]);
+        }
+        return '# Runtime binding: ' . wp_json_encode(['repository' => $repository, 'runtime_branch' => $branch, 'site_host' => $host]) . "\n" . $source;
+    }
+
     public static function client_prompt(string $repository, string $branch, string $host): string
     {
         return "WordPress操作には、GitHubプラグイン経由でサイト {$host} のWP Agent Bridgeを使用してください。\n"
@@ -108,6 +122,7 @@ final class TakKa_WordPress_Bridge_Runtime_Guidance
             . "最初に wordpress-bridge/RUNTIME_CONNECTION.json を読み、site_hostとrepositoryが上記と一致し、status=canonical、transport=direct-github-webhook、ownership=user-owned、operator_relay=false を確認してください。続いて AGENTS.md と wordpress-bridge/RUNTIME_CAPABILITIES.json を読み、今回の依頼に必要な操作を選んでください。確認済みの接続と機能一覧は同じ会話内で再利用してください。\n"
             . "GitHubツールがすでに使えるならそのまま使用してください。表示されていない場合は、この会話に利用可能なツール検索・プラグイン検索でGitHubの読み書きツールを一度確認してください。検索手段もツールも提供されていない場合は、会話側でGitHubを選択する必要があると具体的に説明してください。ツール未提供、リポジトリへのアクセス拒否、画像の元ファイル未取得、Bridgeの操作エラーを区別し、未確認の理由を断定しないでください。\n"
             . "既存画像のアップロード依頼では、採用済み画像を使って登録してください。画像の再生成・編集は、それを依頼された場合だけ行ってください。元ファイルを取得できない場合は画像取得の問題として報告し、Bridgeのアップロード機能がないとは扱わないでください。\n"
+            . "文章の修正と画像登録は同じGitHubのJSON書き込み経路を使います。GitHubの画像専用ツールやローカルファイル引数は不要です。元画像を読める実行ツールがある場合は、runtime内の wordpress-bridge/prepare-media.py で転送データを生成し、出力文字列をコードでGitHubツールへ渡してください。Base64を回答から書き写さないでください。画像を取得する手段が未確認のまま、GitHub全体が使えないと結論しないでください。\n"
             . "この指示だけでは記事の変更やアップロードを実行せず、接続確認を行ってください。具体的な操作は併記された依頼または続く依頼の範囲で実行してください。";
     }
 
@@ -126,6 +141,7 @@ final class TakKa_WordPress_Bridge_Runtime_Guidance
             . "- WP Agent Bridge is the WordPress component; the client invokes the GitHub plugin. Use visible GitHub read/write tools directly. If absent, use an available tool/plugin discovery facility once for GitHub before reporting it unavailable. Do not repeat discovery for tools already visible.\n"
             . "- A WordPress connection marked Connected does not prove tools are exposed in this chat. If neither tools nor discovery are supplied, explain that client-side limit and suggest selecting the existing GitHub plugin with @GitHub. Typing the name alone is not selecting the plugin. Never infer Bridge failure or ask for reconnection solely from missing client tools.\n"
             . "- Distinguish client tool absence, repository access denial, unavailable original image bytes, and an actual Bridge operation error. Report the observed evidence and leave untested layers unverified.\n\n"
+            . "- Text edits and image uploads use the same GitHub text/JSON write tools. A missing binary-file argument or dedicated image tool is not missing GitHub access. A recent text mutation is evidence that this transport worked, not proof that the original image bytes are readable. Check these two conditions separately with available tools; never turn an asset-read failure into a blanket connector-unavailable claim.\n\n"
             . "## Routing rules\n\n"
             . "- Preferred pending JSON: `{\"id\":\"<unique-id>\",\"type\":\"operation\",\"operation\":\"post.get\",\"params\":{\"post_id\":123}}`. The filename is `<unique-id>.json`. This reaches `/takka-v099/v1/operate` without reconstructing a route or method; the explicit REST envelope remains available for compatibility.\n"
             . "- For a low-level action not in the operation catalog, use `type=bridge` with `action` and `params`. Never send `/takka-bridge/v1/execute` as a REST target; that is a recursive proxy, not a direct action.\n"
@@ -136,10 +152,12 @@ final class TakKa_WordPress_Bridge_Runtime_Guidance
             . "- Post content: `post.content.search`, `post.content.read_range`, guarded `post.content.patch_preview` → `post.content.patch_apply`. Avoid full-post rewrite when a targeted patch is sufficient.\n"
             . "- Small local/conversation media up to 1 MiB decoded: one `media.upload.inline` operation. Supply `expected_bytes` and `expected_sha256` when already known. Do not stage/split/verify-first for this size range. Files above 1 MiB are rejected from the deterministic inline path so they cannot silently take the wrong transport.\n"
             . "- Upload an existing approved image without invoking image generation or editing unless the user requests that change. Recover its original bytes through available conversation/file tools. If those bytes are inaccessible, report that asset-access limit separately from Bridge media support; never substitute an older image or a screenshot.\n"
+            . "- Client media preparation: read `wordpress-bridge/prepare-media.py` once and use its prepare_file() in an available local/file execution tool. It preserves bytes, calculates size/SHA and correct chunk_integrity keys, selects inline/staged transport, and returns exact command and Git tree strings. Pass those strings programmatically to existing GitHub tools; do not transcribe Base64 through model output. No GitHub credentials or network are needed by the preparer. If this chat cannot pass file bytes into tool arguments, name that exact transfer limit rather than claim WordPress/GitHub is unavailable. Do not assume a file ID or sandbox path is a downloadable URL.\n"
+            . "- Prepared media is not uploaded media. Check the matching result for an already submitted ID first. Publish generated tree entries against the latest base_tree in one non-forced commit when Git Data is available; otherwise create payload text files first and the single pending command last. Reuse the ID and payload after an uncertain publication. Only a successful media result supplies the attachment ID for the separately guarded article patch.\n"
             . "- Larger media: staged Media Fast Path. Split original binary before Base64, publish payloads + pending upload command in one Git commit when Git Data is available, and use verify-only only for explicit verification or integrity diagnosis.\n"
             . "- Two or more independent reads supported by the batch catalog: one `readonly.batch`. Check the catalog once before grouping; `post.get` is not currently a batch item and must be submitted separately. Nested items may use the same high-level operation names (`post.content.read_range`, `workspace.file.read_range`, etc.); the router normalizes them to the strict read-only action map. Do not hand-derive another action spelling when a documented alias exists.\n"
             . "- Large iterative HTML/JS/CSS/JSON/POV-Ray work: Workspace search/range/patch/snapshot. Do not rediscover the artifact from File Library/history on every continuation.\n"
-            . "- For ordinary WordPress work, submit native runtime commands through the connected GitHub tools. Do not create or run local helper scripts just to wrap a known operation. When local asset generation/testing is necessary, reuse the existing project entrypoint; numbered replacement runners add setup and approval churn without improving the WordPress operation. Client-side approval policy remains outside Bridge control.\n"
+            . "- For ordinary WordPress work, submit native runtime commands through the connected GitHub tools. Do not create or run local helper scripts just to wrap a known operation. Reading original media bytes and running the bundled media preparer is necessary asset preparation and is explicitly allowed by this rule; it is not image generation. When local asset generation/testing is necessary, reuse the existing project entrypoint; numbered replacement runners add setup and approval churn without improving the WordPress operation. Client-side approval policy remains outside Bridge control.\n"
             . "- Self-update: use `self_update.status/apply/rollback` operations and pinned official source metadata; verify after apply.\n\n"
             . "- Before changing a user-visible target, verify its identity against the requested page/post/media and the affected content or selector. A matching file hash or successful write proves storage, not the intended visual result. Verify the affected output; if rendering is unavailable, explicitly leave visual correctness unverified.\n\n"
             . "## Failure rules\n\n"

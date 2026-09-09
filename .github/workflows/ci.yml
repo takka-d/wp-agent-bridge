@@ -60,6 +60,9 @@ jobs:
           set -euo pipefail
           php tests/media-auto-path-resolution-test.php
 
+      - name: Client media preparation preserves actual file bytes
+        run: python3 tests/media-client-preparation-test.py
+
       - name: Workspace regression
         shell: bash
         run: |
