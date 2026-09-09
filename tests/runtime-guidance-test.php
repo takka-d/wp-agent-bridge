@@ -75,3 +75,7 @@ if (strpos($runtime, '/takka-v099/v1/operate') === false
 }
 
 echo "runtime-guidance-test: ok\n";
+
+require_once __DIR__ . '/runtime-sync-fixture.php';
+verify_runtime_sync('TakKa_WordPress_Bridge_Runtime_Guidance', 'takka_bridge_runtime_guidance_synced_version', ['AGENTS.md', 'wordpress-bridge/WEBHOOK_RUNTIME.md']);
+echo "same-version runtime sync: ok\n";

@@ -145,3 +145,7 @@ if (!is_string($json)
 }
 
 echo "runtime-capabilities-test: ok\n";
+
+require_once __DIR__ . '/runtime-sync-fixture.php';
+verify_runtime_sync('TakKa_WordPress_Bridge_Runtime_Capabilities', 'takka_bridge_runtime_capabilities_synced_version', ['wordpress-bridge/RUNTIME_CAPABILITIES.json']);
+echo "same-version runtime sync: ok\n";

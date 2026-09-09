@@ -22,7 +22,7 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
     public static function maybe_sync(): void
     {
         $version = self::bridge_version();
-        if ($version === '' || (string) get_option(self::OPTION_SYNCED_VERSION, '') === $version) {
+        if ($version === '') {
             return;
         }
         if (get_transient(self::TRANSIENT_SYNC_LOCK)) {
@@ -34,10 +34,21 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
             return;
         }
 
+        // Disk headers can advance while an older request still has old classes loaded.
+        // Stamp the generated contract, so the next fresh request repairs stale content.
+        $repository = (string) $connection['repository'];
+        $branch = (string) $connection['runtime_branch'];
+        $host = strtolower((string) wp_parse_url(home_url('/'), PHP_URL_HOST));
+        if ($host === '') $host = 'wordpress';
+        $signature = $version . ':' . hash('sha256', (string) wp_json_encode(self::catalog($version, $repository, $branch, $host)));
+        if ((string) get_option(self::OPTION_SYNCED_VERSION, '') === $signature) {
+            return;
+        }
+
         set_transient(self::TRANSIENT_SYNC_LOCK, '1', 300);
         $result = self::sync();
         if (!is_wp_error($result)) {
-            update_option(self::OPTION_SYNCED_VERSION, $version, false);
+            update_option(self::OPTION_SYNCED_VERSION, $signature, false);
             delete_transient(self::TRANSIENT_SYNC_LOCK);
         }
     }
