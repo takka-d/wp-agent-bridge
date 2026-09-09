@@ -442,6 +442,87 @@ try {
         op_integration_fail('Temporary integration media deletion failed.');
     }
 
+
+    // Existing uploads JSON stays at its original path and preserves exact bytes.
+    $uploads = wp_upload_dir();
+    $json_relative = 'wpab-json-integration-' . wp_generate_uuid4() . '.json';
+    $json_file = $uploads['basedir'] . '/' . $json_relative;
+    $json_before = '{"large":900719925474099312345,"rows":[{"name":"元","pattern":"\\\\d+\\\\.","path":"C:\\\\data"}],"empty":{}}' . "\n";
+    $json_after = str_replace('"元"', '"更新"', $json_before);
+    wp_mkdir_p($uploads['basedir']);
+    file_put_contents($json_file, $json_before);
+    $json_backup_key = 'wpab_json_previous_' . hash('sha256', realpath($json_file));
+    $json_unwrap = static function (array $outer): array { return $outer['data']['result']['data'] ?? []; };
+    $read = $json_unwrap(op_integration_call('uploads.json.read', ['path' => $json_relative]));
+    if (($read['content'] ?? '') !== $json_before) op_integration_fail('JSON source was not returned exactly.');
+    $json_params = ['path' => $json_relative, 'content' => $json_after];
+    $preview = $json_unwrap(op_integration_call('uploads.json.write_preview', $json_params));
+    if (empty($preview['changed']) || file_get_contents($json_file) !== $json_before) op_integration_fail('JSON preview mutated or failed.');
+    $apply_params = $json_params + ['confirm' => true, 'expected_before_sha256' => $preview['before_sha256'], 'expected_plan_hash' => $preview['plan_hash']];
+    $bad_cases = [
+        ['uploads.json.read', ['path' => '../outside.json'], 400],
+        ['uploads.json.read', ['path' => '/absolute.json'], 400],
+        ['uploads.json.read', ['path' => 'nested\\bad.json'], 400],
+        ['uploads.json.read', ['path' => 'x/../bad.json'], 400],
+        ['uploads.json.read', ['path' => 'x//bad.json'], 400],
+        ['uploads.json.read', ['path' => 'file.php'], 400],
+        ['uploads.json.read', ['path' => 'missing.json'], 404],
+        ['uploads.json.write_preview', ['path' => $json_relative, 'content' => '{bad'], 400],
+        ['uploads.json.write_preview', ['path' => $json_relative, 'content' => str_repeat(' ', 1048577)], 413],
+        ['uploads.json.write_apply', array_merge($apply_params, ['confirm' => false]), 400],
+        ['uploads.json.write_apply', array_merge($apply_params, ['expected_before_sha256' => str_repeat('0', 64)]), 409],
+        ['uploads.json.write_apply', array_merge($apply_params, ['content' => '{}']), 409],
+    ];
+    foreach ($bad_cases as [$op, $params, $status]) {
+        $bad = op_integration_call($op, $params);
+        if (($bad['status'] ?? 0) !== $status || file_get_contents($json_file) !== $json_before) {
+            op_integration_fail('JSON refusal failed: ' . $op . ' ' . wp_json_encode($bad));
+        }
+    }
+    $json_link = $json_file . '.link.json';
+    if (!symlink($json_file, $json_link)) op_integration_fail('Could not create symlink fixture.');
+    $bad = op_integration_call('uploads.json.read', ['path' => basename($json_link)]);
+    if (($bad['status'] ?? 0) !== 403) op_integration_fail('JSON symlink not rejected.');
+    unlink($json_link);
+    $held_lock = fopen($uploads['basedir'] . '/.wp-agent-bridge-json.lock', 'c');
+    flock($held_lock, LOCK_EX);
+    $busy = $runtime_call('json-busy', 'uploads.json.write_apply', $apply_params);
+    flock($held_lock, LOCK_UN);
+    fclose($held_lock);
+    if (($busy['status'] ?? 0) !== 409 || file_get_contents($json_file) !== $json_before) op_integration_fail('Concurrent JSON write did not fail without mutation.');
+    $saved_native = $runtime_call('json-apply', 'uploads.json.write_apply', $apply_params);
+    $saved = $saved_native['data']['data']['result']['data'] ?? [];
+    if (empty($saved_native['ok']) || empty($saved['verified']) || file_get_contents($json_file) !== $json_after) op_integration_fail('Native JSON atomic write failed.');
+    $previous = $json_unwrap(op_integration_call('uploads.json.read', ['path' => $json_relative, 'version' => 'previous']));
+    if (($previous['content'] ?? '') !== $json_before) op_integration_fail('JSON previous version not preserved.');
+    $replayed = $runtime_call('json-apply', 'uploads.json.write_apply', $apply_params);
+    if (empty($replayed['ok']) || file_get_contents($json_file) !== $json_after || get_option($json_backup_key)['content'] !== $json_before) op_integration_fail('JSON replay repeated the write.');
+    $stale = $runtime_call('json-stale-new-command', 'uploads.json.write_apply', $apply_params);
+    if (($stale['status'] ?? 0) !== 409) op_integration_fail('Stale JSON preview not rejected.');
+    $restore_params = ['path' => $json_relative, 'content' => $previous['content']];
+    $restore = $json_unwrap(op_integration_call('uploads.json.write_preview', $restore_params));
+    $restored = $json_unwrap(op_integration_call('uploads.json.write_apply', $restore_params + [
+        'confirm' => true, 'expected_before_sha256' => $restore['before_sha256'], 'expected_plan_hash' => $restore['plan_hash'],
+    ]));
+    if (empty($restored['verified']) || file_get_contents($json_file) !== $json_before) op_integration_fail('Guarded JSON restoration failed.');
+    wp_set_current_user(0);
+    $unauthorized = TakKa_WordPress_Bridge_Uploads_JSON::execute('uploads.json.read', ['path' => $json_relative]);
+    wp_set_current_user(1);
+    if (!is_wp_error($unauthorized) || $unauthorized->get_error_data()['status'] !== 403) op_integration_fail('JSON permission check failed.');
+    unlink($json_file);
+    delete_option($json_backup_key);
+
+    // WordPress unslashes wp_update_post input. Regexes, quoted JSON and
+    // Windows paths must survive the guarded patch and match its preview hash.
+    $escaped = '<pre>regex=\d+\. path=C:\data\new json={"quote":"\"","slash":"\\\\"} 日本語</pre>';
+    $patch_params = ['post_id' => $post_id, 'find' => 'line two target', 'replace' => $escaped];
+    $patch_preview = op_integration_core_payload(op_integration_v099_payload(op_integration_call('post.content.patch_preview', $patch_params)));
+    $patch_apply = op_integration_core_payload(op_integration_v099_payload(op_integration_call('post.content.patch_apply', $patch_params + [
+        'confirm' => true, 'expected_before_sha256' => $patch_preview['before_sha256'], 'expected_plan_hash' => $patch_preview['plan_hash'],
+    ])));
+    if (empty($patch_apply['ok']) || get_post($post_id)->post_content !== "line one\n" . $escaped . "\nline three"
+        || $patch_apply['after_sha256'] !== $patch_preview['after_sha256']) op_integration_fail('Post patch lost literal backslashes.');
+
     echo "Deterministic operation router clean-WordPress integration: OK\n";
 } finally {
     foreach ($created_test_posts as $created_id) wp_delete_post($created_id, true);

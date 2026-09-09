@@ -174,10 +174,11 @@ final class TakKa_WordPress_Bridge_V084_Post_Content
             return new WP_Error('takka_bridge_post_content_live_confirmation_required', 'Changing non-draft post content requires confirm_live=true.', ['status' => 400, 'status_value' => $plan['status']]);
         }
 
-        $updated = wp_update_post([
+        // wp_update_post unslashes its input; preserve literal JSON/JS escapes.
+        $updated = wp_update_post(wp_slash([
             'ID' => (int) $plan['post_id'],
             'post_content' => $plan['_after_content'],
-        ], true);
+        ]), true);
         if (is_wp_error($updated)) return $updated;
 
         $post = get_post((int) $plan['post_id']);

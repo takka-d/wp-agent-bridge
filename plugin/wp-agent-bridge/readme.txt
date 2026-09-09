@@ -106,6 +106,11 @@ High-impact writes remain subject to the Bridge's preview, confirmation, state-h
 
 == Changelog ==
 
+= 1.1.22 =
+* Add guarded in-place replacement of existing uploads JSON with preview hashes, exact-byte validation, atomic replacement, and a database-backed previous version.
+* Preserve literal backslashes when applying guarded post content patches.
+* Validate JSON scope, stale plans, backup recovery, and escaped post content on clean WordPress.
+
 = 1.1.21 =
 * Repair stale runtime guidance and capability catalogs after overlapping self-update requests by fingerprinting generated content, not only the disk version.
 
