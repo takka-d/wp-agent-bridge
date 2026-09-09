@@ -174,10 +174,13 @@ final class TakKa_WordPress_Bridge_V099_Operations
                 ],
             ],
             'operations' => array_values(array_merge(
-                ['health', 'post.find', 'post.create', 'post.get', 'post.update', 'media.delete'],
+                ['health', 'post.find', 'post.create', 'post.get', 'post.update', 'media.delete', 'uploads.json.read', 'uploads.json.write_preview', 'uploads.json.write_apply'],
                 array_keys(self::DIRECT_ACTIONS),
                 array_keys(self::REST_ACTIONS)
             )),
+            'uploads_json' => ['path' => 'existing uploads-relative .json; no symlinks or traversal', 'max_bytes' => 1048576,
+                'write' => 'content is a JSON source string; preview then apply with expected_before_sha256, expected_plan_hash, confirm=true',
+                'previous_version' => 'read with version=previous; restore through the same guarded write flow'],
             'arbitrary_route_allowed' => false,
             'arbitrary_action_allowed' => false,
             'query_must_be_object' => true,
@@ -211,6 +214,9 @@ final class TakKa_WordPress_Bridge_V099_Operations
                 $item['params'] = $resolved_params;
             }
             unset($item);
+        }
+        if (in_array($operation, ['uploads.json.read', 'uploads.json.write_preview', 'uploads.json.write_apply'], true)) {
+            return TakKa_WordPress_Bridge_Uploads_JSON::execute($operation, $params);
         }
         if ($operation === 'health') {
             return self::signed_local_request('GET', '/takka-bridge/v1/health', null, false);
