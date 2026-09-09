@@ -6,12 +6,9 @@ ChatGPTからWordPressの記事・ページ・設定などを更新するため�
 
 ## 現在の配布状態
 
-- Version: `1.1.5`
-- Status: **release candidate / validation in progress**
-- merged `main`にはv0.9.6互換レイヤーとして、Site Icon専用操作、media upload capability、ローカル/connector画像のbatched staged upload案内、複数theme fileのlist/search/read-manyを含みます。
-- v0.9.6機能を含むmerged-mainの1.1.5 ZIP、外部テストキット、配布参照は別工程で更新します。
-- 既存の`v1.1.4-rc1`は1.1.4時点のテスト成果物として保持し、上書きしません。
-- broader public / stable releaseはまだ宣言していません。
+- 開発版の正確なバージョンは `plugin/wp-agent-bridge/takka-wordpress-bridge.php`、更新対象のソースと照合値は `UPDATE_MANIFEST.json` を参照してください。
+- 公開安定版は `plugin/wp-agent-bridge/readme.txt` の Stable tag と公開リリースを参照してください。mainへのマージや本番検証だけでは公開安定版を更新しません。
+- 実行する操作は、接続先が生成した `wordpress-bridge/RUNTIME_CAPABILITIES.json` を優先します。
 
 ## 構成
 
@@ -87,6 +84,17 @@ ChatGPTはWordPress操作前に、runtime repositoryの`wordpress-bridge/RUNTIME
 
 repository名と`site_host`も、実際の接続先と一致している必要があります。
 
+## 通常の操作
+
+pending JSONは `{"id":"<unique-id>","type":"operation","operation":"<operation>","params":{}}` を使用します。
+
+- 候補検索: `post.find` の `search`。候補は自動選択しません。
+- URL指定: `target_url` を保持します。名前だけなら `target_title` を使い、完全一致が1件の場合だけ解決します。
+- 記事・固定ページの作成: `post.create` の `fields`、固定ページは `post_type=page`。標準は下書きです。
+- 取得・更新: `post.get` / `post.update`。実際の投稿種別から内部経路を決定します。
+- 本文変更: `post.content.patch_preview` → `post.content.patch_apply`。通常の更新操作で本文を丸ごと置換しません。
+- 結果確認: `wordpress-bridge/results/<id>.json` の成功状態を確認し、不明な結果を新IDで再実行しません。
+
 ## 主な用途
 
 - 投稿・固定ページの取得、作成、更新
@@ -115,7 +123,7 @@ WordPress側のmedia上限は6 MiBです。転送経路はsourceとconnector cap
 
 ### ChatGPTローカル／会話添付／sandbox／connectorから取得したファイル
 
-GitHub connectorに任意のローカルfile parameterがなくても、それ自体はblockerではありません。GitHubがUTF-8 text/blobを書ける場合は、**batched staged-media pathを優先**します。
+GitHub connectorに任意のローカルfile parameterがなくても、それ自体はblockerではありません。**1 MiB以下は `media.upload.inline` を1回使います。分割や事前検証コマンドは不要です。** 1 MiBを超え6 MiB以下の場合だけ、以下のbatched staged-media手順を使います。
 
 1. 元binary全体のbytes / SHA-256を計算する。
 2. 元binaryを順序付きのbounded chunkへ分割してから、各chunkを独立してBase64化する。
@@ -203,6 +211,4 @@ WordPress.org Plugin Directoryからの配布は予定していません。
 
 ## Status
 
-**1.1.5 release candidate / validation in progress.**
-
-v0.9.6のfunctional sourceはPR #32で`main`へmerge済みです。Site Icon、connector/local media、複数theme file inspectionについてWPVibeへ迂回する必要を減らす機能はsource側へ入っており、実環境installer検証、Markdown同期、merged-main ZIP、tester kit、配布参照は分離して更新します。
+基本操作の実装・本番検証と、公開完成判定は分けます。現在の判定条件は `PUBLIC_RELEASE.md`、第三者による検証手順は `docs/EXTERNAL_TEST_GUIDE_JA.md` を参照してください。

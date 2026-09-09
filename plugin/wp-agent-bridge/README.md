@@ -1,4 +1,4 @@
-# WP Agent Bridge 1.1.6
+# WP Agent Bridge
 
 ChatGPTからWordPressを更新するためのWordPressプラグインです。
 
@@ -23,6 +23,10 @@ ChatGPTからWordPressを更新するためのWordPressプラグインです。
 
 PAT、private key、Webhook secret、Bridge Key、GitHub Actions workflowを利用者が手入力することは想定していません。GitHub Appのprivate keyとWebhook secretは接続先WordPress内へ暗号化保存します。
 
+## 操作の入口
+
+接続先の `wordpress-bridge/RUNTIME_CAPABILITIES.json` を1回確認し、`type=operation` と `operation` / `params` を使います。`post.find` で候補を検索し、ユーザー指定の `target_url` または完全一致かつ一意の `target_title` で対象を照合します。`post.create` は下書きが標準で、`post_type=page` なら固定ページを作成します。`post.get` / `post.update` は対象種別から経路を決めます。
+
 ## 主な機能
 
 - 投稿・固定ページ等のWordPress REST API操作
@@ -34,7 +38,7 @@ PAT、private key、Webhook secret、Bridge Key、GitHub Actions workflowを利�
 - Draft Themeのpreview / publish / rollback
 - media upload
   - 最大6 MiB decoded
-  - ChatGPT-local / conversation / sandbox / connector-downloaded fileは、GitHubがUTF-8 text/blobを書ける場合、`wordpress-bridge/media/pending/*.b64` + `/wp-agent-bridge-runtime/v1/media-upload`の**batched staged-media pathを優先**
+  - ChatGPT-local / conversation / sandbox / connector-downloaded fileは、1 MiB以下なら `media.upload.inline` を1回使用。1 MiBを超え6 MiB以下の場合は、`wordpress-bridge/media/pending/*.b64` + `/wp-agent-bridge-runtime/v1/media-upload`のbatched staged-media pathを使用
   - GitHub local-file parameterは不要。元binaryを先に分割し、各chunkを独立Base64化してtext payloadとしてstageする
   - `data_paths`、whole-file bytes / SHA-256、必要に応じて`chunk_integrity`を持つupload commandは1件だけ作る
   - 通常成功経路では`media-verify`を先に実行しない。upload自身がattachment作成前にwhole-file / chunk integrityを検証する
@@ -52,7 +56,7 @@ PAT、private key、Webhook secret、Bridge Key、GitHub Actions workflowを利�
   - `site.icon.clear` (`confirm=true`、`expected_current_id`対応)
   - `media.upload.capabilities`
   - upload時に`set_site_icon=true` + `confirm_site_icon=true`を付けて、Media Library登録とSite Icon設定を1コマンドで実行可能
-- Google Drive等からChatGPT側で取得した画像もlocal binaryとして同じbatched media pathへ流せる。WordPress側のGoogle credentialは不要
+- Google Drive等からChatGPT側で取得した画像もlocal binaryとして同じサイズ基準でinlineまたはstaged media pathへ流せる。WordPress側のGoogle credentialは不要
 - request-ID completed-response idempotency
   - 同一request_id + 同一payloadは元のresponseを再生
   - 同一request_id + 異なるpayloadは409で拒否
@@ -80,12 +84,12 @@ PAT、private key、Webhook secret、Bridge Key、GitHub Actions workflowを利�
 
 `RUNTIME_CONNECTION.json`は`status: canonical`、`transport: direct-github-webhook`、`ownership: user-owned`、`operator_relay: false`を示します。
 
-1.1.6の生成`AGENTS.md`は、次も明示します。
+現行の生成`AGENTS.md`は、次も明示します。
 
 - 同一task/sessionでcanonical runtime確認済みなら、具体的なmigration signalがない限りruntime探索を繰り返さないこと
 - runtime解決が必要なら`wordpress-bridge/RUNTIME_CONNECTION.json`を最初に読み、retired runtimeでは調査を即終了して`replaced_by`を追うこと
 - GitHub connectorのwrite actionを確認してからblocker判定すること
-- ChatGPT-local / connector-downloaded mediaはbatched staged-mediaを優先すること
+- ChatGPT-local / connector-downloaded mediaは1 MiB以下なら `media.upload.inline`、それを超える場合だけstaged-mediaを使うこと
 - 正常時はverify-firstをせず、Git tree一括解決 + Git blob direct readのfast pathを使うこと
 - sequential chunk routeはfallbackであること
 - dedicated Site Icon surfaceを使うこと

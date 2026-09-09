@@ -106,6 +106,11 @@ High-impact writes remain subject to the Bridge's preview, confirmation, state-h
 
 == Changelog ==
 
+= 1.1.20 =
+* Add bounded post/page candidate search and exact unique-title target binding; reject ambiguous names without changing any candidate.
+* Add draft-default post/page creation and automatic post/page metadata routing, preserving deterministic command replay.
+* Document ordinary native workflows and avoid unnecessary local wrapper scripts.
+
 = 1.1.19 =
 * Resolve user-supplied post target URLs locally and reject conflicting IDs before reads or writes.
 * Add source commit and scoped command/execution timing to runtime results without extra network calls.

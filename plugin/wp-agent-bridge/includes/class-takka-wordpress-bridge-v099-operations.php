@@ -163,6 +163,7 @@ final class TakKa_WordPress_Bridge_V099_Operations
         return [
             'version' => self::VERSION,
             'route' => self::ROUTE,
+            'preferred_command_shape' => ['type' => 'operation', 'operation' => '<operation>', 'params' => '<object>'],
             'command_shape' => [
                 'type' => 'rest',
                 'method' => 'POST',
@@ -173,7 +174,7 @@ final class TakKa_WordPress_Bridge_V099_Operations
                 ],
             ],
             'operations' => array_values(array_merge(
-                ['health', 'post.get', 'post.update', 'media.delete'],
+                ['health', 'post.find', 'post.create', 'post.get', 'post.update', 'media.delete'],
                 array_keys(self::DIRECT_ACTIONS),
                 array_keys(self::REST_ACTIONS)
             )),
@@ -181,19 +182,23 @@ final class TakKa_WordPress_Bridge_V099_Operations
             'arbitrary_action_allowed' => false,
             'query_must_be_object' => true,
             'post_update_fields_must_be_object' => true,
+            'post_target_title' => ['exact' => true, 'unique_required' => true, 'ambiguity_status' => 409],
+            'post_types' => ['post', 'page'],
+            'post_find' => ['params' => ['search', 'post_type', 'limit'], 'default_limit' => 10, 'max_limit' => 20, 'returns' => 'bounded candidates; never auto-select a search result'],
+            'post_create' => ['params' => ['post_type', 'fields', 'confirm_live'], 'default_status' => 'draft'],
             'post_target_url' => ['optional' => true, 'resolves_post_id' => true, 'id_mismatch_status' => 409, 'same_site_only' => true],
         ];
     }
 
     private static function execute_operation(string $operation, array $params)
     {
-        if (array_key_exists('target_url', $params)) {
+        if (array_key_exists('target_url', $params) || array_key_exists('target_title', $params)) {
             $params = self::resolve_post_target($operation, $params);
             if (is_wp_error($params)) return $params;
         }
         if ($operation === 'readonly.batch' && isset($params['operations']) && is_array($params['operations'])) {
             foreach ($params['operations'] as &$item) {
-                if (!isset($item['params']) || !is_array($item['params']) || !array_key_exists('target_url', $item['params'])) continue;
+                if (!isset($item['params']) || !is_array($item['params']) || (!array_key_exists('target_url', $item['params']) && !array_key_exists('target_title', $item['params']))) continue;
                 $name = '';
                 foreach (self::REST_ACTIONS as $candidate => $spec) {
                     if (($item['action'] ?? '') === $spec[1]) {
@@ -210,12 +215,16 @@ final class TakKa_WordPress_Bridge_V099_Operations
         if ($operation === 'health') {
             return self::signed_local_request('GET', '/takka-bridge/v1/health', null, false);
         }
+        if ($operation === 'post.find') return self::find_posts($params);
+        if ($operation === 'post.create') return self::create_post($params);
         if ($operation === 'post.get') {
             $post_id = self::positive_id($params, 'post_id');
             if (is_wp_error($post_id)) return $post_id;
             $query = self::query_params($params);
             if (is_wp_error($query)) return $query;
-            return self::core_rest('GET', '/wp/v2/posts/' . $post_id, $query, null);
+            $route = self::post_route($post_id, $params);
+            if (is_wp_error($route)) return $route;
+            return self::core_rest('GET', $route, $query, null);
         }
         if ($operation === 'post.update') {
             $post_id = self::positive_id($params, 'post_id');
@@ -226,7 +235,9 @@ final class TakKa_WordPress_Bridge_V099_Operations
             }
             // A title/featured-image edit must not echo the entire post body.
             $response_fields = array_unique(array_merge(['id', 'status', 'modified', 'modified_gmt'], array_keys($fields)));
-            return self::core_rest('POST', '/wp/v2/posts/' . $post_id, ['_fields' => implode(',', $response_fields)], $fields);
+            $route = self::post_route($post_id, $params);
+            if (is_wp_error($route)) return $route;
+            return self::core_rest('POST', $route, ['_fields' => implode(',', $response_fields)], $fields);
         }
         if ($operation === 'media.delete') {
             $attachment_id = self::positive_id($params, 'attachment_id');
@@ -262,7 +273,25 @@ final class TakKa_WordPress_Bridge_V099_Operations
             && !(strpos($operation, 'post.content.') === 0 && isset(self::REST_ACTIONS[$operation]))) {
             return new WP_Error('takka_bridge_v099_target_operation', 'target_url is supported only for post metadata and content operations.', ['status' => 400]);
         }
-        $url = $params['target_url'];
+        $title_id = null;
+        if (array_key_exists('target_title', $params)) {
+            $title = $params['target_title'];
+            if (!is_string($title) || trim($title) === '' || strlen($title) > 1000) {
+                return new WP_Error('takka_bridge_v099_target_title', 'target_title must be a non-empty exact title of at most 1000 bytes.', ['status' => 400]);
+            }
+            $types = self::post_types($params);
+            if (is_wp_error($types)) return $types;
+            $matches = get_posts([
+                'post_type' => $types, 'post_status' => ['publish', 'private', 'draft', 'pending', 'future'],
+                'title' => $title, 'posts_per_page' => 2, 'orderby' => 'ID', 'order' => 'ASC',
+            ]);
+            if (!$matches) return new WP_Error('takka_bridge_v099_target_missing', 'No exact title matched. Use post.find; do not guess an ID.', ['status' => 404]);
+            if (count($matches) !== 1 || $matches[0]->post_title !== $title) {
+                return new WP_Error('takka_bridge_v099_target_ambiguous', 'Title is not unique and exact. Choose a URL from post.find before changing anything.', ['status' => 409]);
+            }
+            $title_id = (int) $matches[0]->ID;
+        }
+        $url = array_key_exists('target_url', $params) ? $params['target_url'] : home_url('/?p=' . $title_id);
         $parts = is_string($url) ? wp_parse_url($url) : false;
         $home = wp_parse_url(home_url('/'));
         if (!is_array($parts) || !is_array($home)
@@ -280,6 +309,9 @@ final class TakKa_WordPress_Bridge_V099_Operations
         if (!$post || $post->post_status === 'trash') {
             return new WP_Error('takka_bridge_v099_target_missing', 'target_url did not resolve to an existing local post or page. Do not guess an ID.', ['status' => 404]);
         }
+        if ($title_id !== null && $title_id !== $resolved) {
+            return new WP_Error('takka_bridge_v099_target_mismatch', 'target_title and target_url identify different objects. No change was applied.', ['status' => 409]);
+        }
         if (array_key_exists('post_id', $params)) {
             $expected = self::positive_id($params, 'post_id');
             if (is_wp_error($expected)) return $expected;
@@ -287,12 +319,89 @@ final class TakKa_WordPress_Bridge_V099_Operations
                 return new WP_Error('takka_bridge_v099_target_mismatch', 'post_id and target_url identify different objects. No change was applied.', ['status' => 409, 'post_id' => $expected, 'resolved_post_id' => $resolved]);
             }
         }
-        if (in_array($operation, ['post.get', 'post.update'], true) && $post->post_type !== 'post') {
-            return new WP_Error('takka_bridge_v099_target_type', 'This metadata operation supports posts only; the resolved object has another type.', ['status' => 400, 'post_type' => $post->post_type]);
+        if (!in_array($post->post_type, ['post', 'page'], true)) {
+            return new WP_Error('takka_bridge_v099_target_type', 'This target operation supports posts and pages only.', ['status' => 400, 'post_type' => $post->post_type]);
         }
+        $types = self::post_types($params);
+        if (is_wp_error($types)) return $types;
+        if (!in_array($post->post_type, $types, true)) return new WP_Error('takka_bridge_v099_target_type', 'post_type does not match the resolved target.', ['status' => 409]);
         $params['post_id'] = $resolved;
-        unset($params['target_url']);
+        unset($params['target_url'], $params['target_title']);
         return $params;
+    }
+
+    private static function post_types(array $params)
+    {
+        if (!array_key_exists('post_type', $params)) return ['post', 'page'];
+        if (!is_string($params['post_type']) || !in_array($params['post_type'], ['post', 'page'], true)) {
+            return new WP_Error('takka_bridge_v099_post_type', 'post_type must be post or page.', ['status' => 400]);
+        }
+        return [$params['post_type']];
+    }
+
+    private static function post_route(int $id, array $params)
+    {
+        $post = get_post($id);
+        if (!$post) return new WP_Error('takka_bridge_v099_post_missing', 'Post or page does not exist.', ['status' => 404]);
+        if (!in_array($post->post_type, ['post', 'page'], true)) {
+            return new WP_Error('takka_bridge_v099_post_type', 'Metadata operations support posts and pages only.', ['status' => 400]);
+        }
+        $types = self::post_types($params);
+        if (is_wp_error($types)) return $types;
+        if (!in_array($post->post_type, $types, true)) {
+            return new WP_Error('takka_bridge_v099_target_type', 'post_type does not match the selected target.', ['status' => 409]);
+        }
+        return '/wp/v2/' . ($post->post_type === 'page' ? 'pages/' : 'posts/') . $id;
+    }
+
+    private static function find_posts(array $params)
+    {
+        $search = $params['search'] ?? null;
+        if (!is_string($search) || trim($search) === '' || strlen($search) > 500) {
+            return new WP_Error('takka_bridge_v099_search', 'post.find requires a non-empty search string of at most 500 bytes.', ['status' => 400]);
+        }
+        $types = self::post_types($params);
+        if (is_wp_error($types)) return $types;
+        $limit = $params['limit'] ?? 10;
+        if (!is_int($limit) || $limit < 1 || $limit > 20) {
+            return new WP_Error('takka_bridge_v099_search_limit', 'limit must be an integer from 1 to 20.', ['status' => 400]);
+        }
+        $posts = get_posts([
+            's' => $search, 'post_type' => $types,
+            'post_status' => ['publish', 'private', 'draft', 'pending', 'future'],
+            'posts_per_page' => $limit + 1, 'orderby' => 'ID', 'order' => 'DESC',
+        ]);
+        $candidates = [];
+        foreach (array_slice($posts, 0, $limit) as $post) {
+            $candidates[] = [
+                'id' => (int) $post->ID, 'post_type' => $post->post_type,
+                'title' => $post->post_title, 'status' => $post->post_status,
+                'url' => get_permalink($post), 'modified_gmt' => $post->post_modified_gmt,
+            ];
+        }
+        return ['ok' => true, 'status' => 200, 'data' => [
+            'candidates' => $candidates, 'truncated' => count($posts) > $limit,
+            'selection_required' => true, 'returned_count' => count($candidates),
+        ]];
+    }
+
+    private static function create_post(array $params)
+    {
+        $types = self::post_types($params);
+        if (is_wp_error($types)) return $types;
+        $type = $params['post_type'] ?? 'post';
+        $fields = $params['fields'] ?? null;
+        if (!is_array($fields) || !is_string($fields['title'] ?? null) || trim($fields['title']) === ''
+            || isset($fields['id']) || isset($fields['ID'])) {
+            return new WP_Error('takka_bridge_v099_create_fields', 'post.create requires fields with a non-empty title and no existing ID.', ['status' => 400]);
+        }
+        $fields['status'] = $fields['status'] ?? 'draft';
+        if (in_array($fields['status'], ['publish', 'future'], true) && empty($params['confirm_live'])) {
+            return new WP_Error('takka_bridge_v099_create_live', 'Publishing or scheduling creation requires confirm_live=true.', ['status' => 400]);
+        }
+        return self::core_rest('POST', '/wp/v2/' . ($type === 'page' ? 'pages' : 'posts'), [
+            '_fields' => 'id,type,status,link,title,modified,modified_gmt,featured_media',
+        ], $fields);
     }
 
     private static function core_rest(string $method, string $route, array $query, $body)
