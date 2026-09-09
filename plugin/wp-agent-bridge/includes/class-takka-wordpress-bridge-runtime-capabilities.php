@@ -340,6 +340,15 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'unknown_operation' => 'Read this catalog. Do not enumerate unrelated connectors or fall back to WPVibe.',
             ],
             'media_routing' => [
+                'client_preparer' => [
+                    'path' => 'wordpress-bridge/prepare-media.py',
+                    'runtime' => 'Python 3 standard library in an available client execution tool',
+                    'network' => false,
+                    'preserves_original_bytes' => true,
+                    'returns' => ['manifest', 'command', 'tree'],
+                    'publication' => 'Pass generated strings directly to existing GitHub tools without model transcription; the preparer does not upload.',
+                    'asset_unavailable' => 'Original image bytes could not be read; this does not establish missing GitHub tools or a Bridge upload failure.',
+                ],
                 'inline_action' => 'media.upload_base64',
                 'inline_preferred_max_decoded_bytes' => 1048576,
                 'staged_upload_route' => '/wp-agent-bridge-runtime/v1/media-upload',
