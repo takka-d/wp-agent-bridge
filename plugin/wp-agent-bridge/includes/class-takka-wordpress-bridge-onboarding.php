@@ -103,6 +103,19 @@ final class TakKa_WordPress_Bridge_Onboarding
                 <p><strong>GitHub App:</strong> <code><?php echo esc_html((string) ($app['slug'] ?? '')); ?></code></p>
                 <p><strong>Normal runtime:</strong> ChatGPT &rarr; GitHub &rarr; this WordPress &rarr; GitHub &rarr; ChatGPT.</p>
                 <p>No operator-owned relay server or per-command GitHub Actions workflow is used by this transport.</p>
+                <h2>ChatGPTで操作を始める・再開する</h2>
+                <p>上のConnectedは、このWordPressとGitHubの接続状態です。現在のチャットでGitHubツールを利用できるかは別に確認します。</p>
+                <ol>
+                    <li>ChatGPTの入力欄で<strong>@GitHub</strong>と入力し、候補に出る<strong>GitHubプラグインを選択</strong>してください。名前を文字として書くだけでは選択になりません。</li>
+                    <li>下の指示をコピーして送信します。サイトと接続先はこの画面の設定から入力済みです。接続確認後は、同じチャットで記事や画像の操作を依頼できます。</li>
+                </ol>
+                <label for="wpab-chat-start"><strong>このサイト用の開始・復旧用指示</strong></label>
+                <textarea id="wpab-chat-start" class="large-text" rows="12" readonly><?php echo esc_textarea(TakKa_WordPress_Bridge_Runtime_Guidance::client_prompt(
+                    (string) $connection['repository'],
+                    (string) ($connection['runtime_branch'] ?? self::RUNTIME_BRANCH),
+                    (string) wp_parse_url(home_url('/'), PHP_URL_HOST)
+                )); ?></textarea>
+                <p>GitHubが候補に出ない場合は、ChatGPT側の既存プラグインの利用状態を確認してください。候補に出ないことだけを理由に、このWordPressの接続を作り直す必要はありません。</p>
             <?php else : ?>
                 <p><strong>Status:</strong> Not connected</p>
                 <p>This prototype creates a private GitHub App owned by you. Its webhook points directly to this WordPress site.</p>

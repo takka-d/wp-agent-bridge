@@ -49,6 +49,11 @@ foreach ([
     'Do not ask the user',
     'Do not switch normal WordPress work to WPVibe, `takka-d/chatgpt-data`',
     'A visible matching result is the completion barrier',
+    'Client tool availability',
+    'If absent, use an available tool/plugin discovery facility once',
+    'client-side limit',
+    'without invoking image generation or editing',
+    'unavailable original image bytes',
 ] as $required) {
     if (strpos($agents, $required) === false) {
         guidance_fail('Canonical AGENTS guidance is missing: ' . $required);
@@ -75,6 +80,17 @@ if (strpos($runtime, '/takka-v099/v1/operate') === false
 }
 
 echo "runtime-guidance-test: ok\n";
+
+$prompt = TakKa_WordPress_Bridge_Runtime_Guidance::client_prompt('alice/site-runtime', 'wp-agent-bridge-runtime', 'site.example');
+$other_prompt = TakKa_WordPress_Bridge_Runtime_Guidance::client_prompt('bob/other-runtime', 'wp-agent-bridge-runtime', 'other.example');
+foreach (['alice/site-runtime', 'site.example', 'RUNTIME_CONNECTION.json', 'RUNTIME_CAPABILITIES.json', 'status=canonical', 'operator_relay=false', '記事の変更やアップロードを実行せず'] as $required) {
+    if (strpos($prompt, $required) === false) guidance_fail('Client start prompt is missing: ' . $required);
+}
+if (strpos($other_prompt, 'bob/other-runtime') === false || strpos($other_prompt, 'other.example') === false
+    || strpos($other_prompt, 'alice/site-runtime') !== false || strpos($other_prompt, 'site.example') !== false) {
+    guidance_fail('Client start prompt leaked a different connection target.');
+}
+echo "client-start-prompt: ok\n";
 
 require_once __DIR__ . '/runtime-sync-fixture.php';
 verify_runtime_sync('TakKa_WordPress_Bridge_Runtime_Guidance', 'takka_bridge_runtime_guidance_synced_version', ['AGENTS.md', 'wordpress-bridge/WEBHOOK_RUNTIME.md']);
