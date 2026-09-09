@@ -217,6 +217,7 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
 
     private static function process_command(string $token, string $repository, string $ref, string $path): array
     {
+        $command_started = microtime(true);
         $meta = TakKa_WordPress_Bridge_Direct_GitHub::get_content_metadata($token, $repository, $ref, $path);
         if (is_wp_error($meta)) {
             return self::command_error($path, '', $meta->get_error_message());
@@ -268,12 +269,21 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
             } else {
                 $started = microtime(true);
                 $result = self::execute_command($command, $request_id);
+                $finished = microtime(true);
                 $output = [
                     'id' => $id,
                     'request_id' => $request_id,
                     'command_file' => $path,
                     'executed_at' => gmdate('c'),
-                    'duration_ms' => (int) round((microtime(true) - $started) * 1000),
+                    'duration_ms' => (int) round(($finished - $started) * 1000),
+                    'source_commit' => $ref,
+                    'timing' => [
+                        'command_started_at_ms' => (int) round($command_started * 1000),
+                        'execution_started_at_ms' => (int) round($started * 1000),
+                        'execution_finished_at_ms' => (int) round($finished * 1000),
+                        'pre_execution_ms' => (int) round(($started - $command_started) * 1000),
+                        'excludes' => ['webhook_delivery', 'initial_authentication', 'result_publication', 'client_polling'],
+                    ],
                     'transport' => 'direct-github-webhook',
                     'command' => self::summarize_command($command),
                     'result' => self::sanitize_result($result),

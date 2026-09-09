@@ -181,11 +181,32 @@ final class TakKa_WordPress_Bridge_V099_Operations
             'arbitrary_action_allowed' => false,
             'query_must_be_object' => true,
             'post_update_fields_must_be_object' => true,
+            'post_target_url' => ['optional' => true, 'resolves_post_id' => true, 'id_mismatch_status' => 409, 'same_site_only' => true],
         ];
     }
 
     private static function execute_operation(string $operation, array $params)
     {
+        if (array_key_exists('target_url', $params)) {
+            $params = self::resolve_post_target($operation, $params);
+            if (is_wp_error($params)) return $params;
+        }
+        if ($operation === 'readonly.batch' && isset($params['operations']) && is_array($params['operations'])) {
+            foreach ($params['operations'] as &$item) {
+                if (!isset($item['params']) || !is_array($item['params']) || !array_key_exists('target_url', $item['params'])) continue;
+                $name = '';
+                foreach (self::REST_ACTIONS as $candidate => $spec) {
+                    if (($item['action'] ?? '') === $spec[1]) {
+                        $name = $candidate;
+                        break;
+                    }
+                }
+                $resolved_params = self::resolve_post_target($name, $item['params']);
+                if (is_wp_error($resolved_params)) return $resolved_params;
+                $item['params'] = $resolved_params;
+            }
+            unset($item);
+        }
         if ($operation === 'health') {
             return self::signed_local_request('GET', '/takka-bridge/v1/health', null, false);
         }
@@ -229,6 +250,49 @@ final class TakKa_WordPress_Bridge_V099_Operations
             'status' => 400,
             'operation' => $operation,
         ]);
+    }
+
+    /**
+     * Bind a supplied URL to the local object before any mutation. Clients may
+     * omit post_id; supplying both is an assertion, never permission to retarget.
+     */
+    private static function resolve_post_target(string $operation, array $params)
+    {
+        if (!in_array($operation, ['post.get', 'post.update'], true)
+            && !(strpos($operation, 'post.content.') === 0 && isset(self::REST_ACTIONS[$operation]))) {
+            return new WP_Error('takka_bridge_v099_target_operation', 'target_url is supported only for post metadata and content operations.', ['status' => 400]);
+        }
+        $url = $params['target_url'];
+        $parts = is_string($url) ? wp_parse_url($url) : false;
+        $home = wp_parse_url(home_url('/'));
+        if (!is_array($parts) || !is_array($home)
+            || !in_array(strtolower((string) ($parts['scheme'] ?? '')), ['http', 'https'], true)
+            || empty($parts['host']) || isset($parts['user']) || isset($parts['pass'])) {
+            return new WP_Error('takka_bridge_v099_target_url', 'target_url must be an absolute HTTP(S) URL without credentials.', ['status' => 400]);
+        }
+        $port = (int) ($parts['port'] ?? (strtolower($parts['scheme']) === 'https' ? 443 : 80));
+        $home_port = (int) ($home['port'] ?? (strtolower((string) ($home['scheme'] ?? '')) === 'https' ? 443 : 80));
+        if (strtolower($parts['host']) !== strtolower((string) ($home['host'] ?? '')) || $port !== $home_port) {
+            return new WP_Error('takka_bridge_v099_target_site', 'target_url does not belong to this site. Do not substitute another target.', ['status' => 409]);
+        }
+        $resolved = (int) url_to_postid($url);
+        $post = $resolved > 0 ? get_post($resolved) : null;
+        if (!$post || $post->post_status === 'trash') {
+            return new WP_Error('takka_bridge_v099_target_missing', 'target_url did not resolve to an existing local post or page. Do not guess an ID.', ['status' => 404]);
+        }
+        if (array_key_exists('post_id', $params)) {
+            $expected = self::positive_id($params, 'post_id');
+            if (is_wp_error($expected)) return $expected;
+            if ($expected !== $resolved) {
+                return new WP_Error('takka_bridge_v099_target_mismatch', 'post_id and target_url identify different objects. No change was applied.', ['status' => 409, 'post_id' => $expected, 'resolved_post_id' => $resolved]);
+            }
+        }
+        if (in_array($operation, ['post.get', 'post.update'], true) && $post->post_type !== 'post') {
+            return new WP_Error('takka_bridge_v099_target_type', 'This metadata operation supports posts only; the resolved object has another type.', ['status' => 400, 'post_type' => $post->post_type]);
+        }
+        $params['post_id'] = $resolved;
+        unset($params['target_url']);
+        return $params;
     }
 
     private static function core_rest(string $method, string $route, array $query, $body)
