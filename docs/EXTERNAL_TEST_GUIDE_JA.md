@@ -72,7 +72,7 @@ WP Agent Bridge運営者のOrganizationへ参加したり、運営者所有repos
 
 `AGENTS.md`ではv0.9.6の案内として、少なくとも次を確認する。
 
-- ChatGPT-local / conversation / sandbox / connector-downloaded mediaは、GitHubがUTF-8 text/blobを書ける場合、batched staged-mediaを優先する。
+- ChatGPT-local / conversation / sandbox / connector-downloaded mediaは1 MiB以下なら media.upload.inline を1回使い、1 MiB超〜6 MiBの場合だけbatched staged-mediaを使う。
 - 任意のGitHub local-file parameterがなくてもblockerとは判断しない。
 - `/wp-agent-bridge-media/v1/upload-chunk`はbatched stagingが使えない、または実際に失敗した場合のfallbackである。
 - `site.icon.get` / `site.icon.set` / `site.icon.clear` / `media.upload.capabilities`が案内される。
@@ -153,14 +153,14 @@ WP Agent Bridgeのv0.9.6 theme file surfaceだけを使って、active themeのt
 - theme root外を読まない。
 - WPVibeへ迂回しない。
 
-## 10. ChatGPT-local画像転送 — preferred batched path
+## 10. ChatGPT-local画像転送 — サイズによる最短経路
 
 同梱の約2.4 MiB PNGを**このChatGPT会話へ添付して**使う。ファイルはChatGPT-local sourceとして扱う。
 
 ChatGPTへ次のように依頼する。
 
 ```text
-この添付画像を、今確認したuser-owned WP Agent Bridge runtimeだけを使ってWordPress Media Libraryへアップロードして。AGENTS.mdのv0.9.6 media手順に従って、GitHub connectorがUTF-8 text/blobを書けるならbatched staged-media pathを使って。元binary全体のbytesとSHA-256を最初に計算し、元binaryをbounded chunkに分割してから各chunkを独立Base64化し、wordpress-bridge/media/pending/*.b64へtext payloadとしてstageして。ordered data_paths、filename、expected_bytes、expected_sha256を持つ/wp-agent-bridge-runtime/v1/media-upload commandは1件だけ作って。Git Data操作が使えるならpayload群とcommandを1つのtree/commit/ref更新で公開して。別のWordPress連携サービスへは迂回しないで。
+この添付画像を、今確認したuser-owned WP Agent Bridge runtimeだけを使ってWordPress Media Libraryへアップロードして。現行AGENTS.mdに従い、1 MiB以下なら media.upload.inline を1回使って。1 MiB超〜6 MiBの場合はbatched staged-media pathを使い、以下の分割手順を適用して。元binary全体のbytesとSHA-256を最初に計算し、元binaryをbounded chunkに分割してから各chunkを独立Base64化し、wordpress-bridge/media/pending/*.b64へtext payloadとしてstageして。ordered data_paths、filename、expected_bytes、expected_sha256を持つ/wp-agent-bridge-runtime/v1/media-upload commandは1件だけ作って。Git Data操作が使えるならpayload群とcommandを1つのtree/commit/ref更新で公開して。別のWordPress連携サービスへは迂回しないで。
 ```
 
 確認ポイント:
