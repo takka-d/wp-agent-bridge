@@ -35,6 +35,13 @@ if (($bookkeeping['mode'] ?? null) !== 'atomic_git_tree'
     || empty($bookkeeping['result_visibility_is_completion_barrier'])) {
     fail_test('Atomic command bookkeeping metadata mismatch.');
 }
+$pending_recovery = $catalog['runtime']['pending_recovery'] ?? [];
+if (($pending_recovery['max_age_seconds'] ?? null) !== 86400
+    || ($pending_recovery['unknown_age'] ?? null) !== 'skip_without_execution'
+    || ($pending_recovery['expired_action'] ?? null) !== 'quarantine_to_commands_expired'
+    || ($pending_recovery['expired_path'] ?? null) !== 'wordpress-bridge/commands/expired/<id>.json') {
+    fail_test('Pending recovery safety metadata mismatch.');
+}
 if (($catalog['release_pointer']['path'] ?? null) !== 'UPDATE_MANIFEST.json') {
     fail_test('Official release pointer is missing.');
 }
@@ -135,6 +142,10 @@ if (strpos((string) ($catalog['fast_path']['media_upload'] ?? ''), 'media.upload
 }
 if (strpos((string) ($catalog['fast_path']['command_chaining'] ?? ''), 'next pending command may be submitted immediately') === false) {
     fail_test('Atomic command chaining guidance is missing.');
+}
+if (strpos((string) ($catalog['fast_path']['pending_recovery'] ?? ''), 'never re-executes') === false
+    || strpos((string) ($catalog['fast_path']['pending_recovery'] ?? ''), 'commands/expired') === false) {
+    fail_test('Pending recovery safety guidance is missing.');
 }
 $json = json_encode($catalog, JSON_UNESCAPED_SLASHES);
 if (!is_string($json)

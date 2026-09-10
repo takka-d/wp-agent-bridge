@@ -54,6 +54,9 @@ foreach ([
     'client-side limit',
     'without invoking image generation or editing',
     'unavailable original image bytes',
+    'created_at',
+    'age cannot be established',
+    '86400 seconds',
 ] as $required) {
     if (strpos($agents, $required) === false) {
         guidance_fail('Canonical AGENTS guidance is missing: ' . $required);

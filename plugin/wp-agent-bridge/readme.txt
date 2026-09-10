@@ -29,6 +29,7 @@ The project is designed around these principles:
 * Draft theme preview, backup, publish, and rollback workflows.
 * Completed-response request IDs for retry-safe delivery.
 * Pending-directory reconciliation after missed Webhook/bookkeeping delivery.
+* Expiry and quarantine for abandoned pending commands so recovery cannot replay stale writes.
 * Protected handling for user data, post meta, options, and other sensitive WordPress state.
 * Media transport selected according to source and available GitHub write capabilities.
 * Private runtime workspace for persistent HTML, JavaScript, CSS, JSON, POV-Ray, Markdown, and related text artifacts.
@@ -105,6 +106,11 @@ This is a custom proprietary/source-available license, not an open-source licens
 High-impact writes remain subject to the Bridge's preview, confirmation, state-hash, plan-hash, impact-hash, active-theme/plugin, and sensitive-key protections.
 
 == Changelog ==
+
+= 1.1.25 =
+* Stops automatic recovery from re-executing pending commands whose age cannot be established.
+* Quarantines pending commands older than 24 hours with an explicit result instead of executing the WordPress action.
+* Publishes pending-recovery age and quarantine behavior in the runtime capability catalog and guidance.
 
 = 1.1.22 =
 * Add guarded in-place replacement of existing uploads JSON with preview hashes, exact-byte validation, atomic replacement, and a database-backed previous version.

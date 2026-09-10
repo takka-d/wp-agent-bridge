@@ -130,5 +130,10 @@ assert_true($load_journal->invoke(null, $journal_request, $journal_id, $command_
 $v2 = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-runtime-v2.php');
 assert_true(is_string($v2) && strpos($v2, 'command_inflight($request_id)') !== false, 'V2 recovery must consult Direct Runtime in-flight ownership');
 assert_true(strpos($v2, "'reason' => 'command-in-flight'") !== false, 'V2 recovery must expose the in-flight skip reason');
+assert_true(strpos($v2, 'MAX_RECOVERY_AGE_SECONDS = 86400') !== false, 'V2 recovery must bound automatic pending-command recovery age');
+assert_true(strpos($v2, "'reason' => 'age-unavailable'") !== false, 'V2 recovery must not re-execute commands whose age cannot be established');
+assert_true(strpos($v2, 'commands/expired/') !== false, 'V2 recovery must quarantine expired pending commands');
+assert_true(strpos($v2, 'takka_bridge_pending_expired') !== false, 'V2 recovery must record an explicit expired-command result');
+assert_true(strpos($v2, 'put_if_absent_or_identical') !== false && strpos($v2, 'delete_if_matches') !== false, 'V2 quarantine must preserve conflict-safe bookkeeping');
 
 echo "direct command in-flight ownership and local journal: OK\n";
