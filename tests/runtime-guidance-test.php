@@ -56,6 +56,7 @@ foreach ([
     'unavailable original image bytes',
     'created_at',
     'age cannot be established',
+    'GitHub commit timestamp',
     '86400 seconds',
 ] as $required) {
     if (strpos($agents, $required) === false) {

@@ -250,6 +250,18 @@ final class TakKa_WordPress_Bridge_Direct_Runtime_V2
         }
 
         $age = self::pending_age_seconds($command, $id);
+        $age_source = $age === null ? 'github_path_commit_history' : 'command_metadata_or_id';
+        if ($age === null) {
+            $last_modified = TakKa_WordPress_Bridge_Direct_GitHub_Recovery::path_last_modified_timestamp(
+                $token,
+                $repository,
+                TakKa_WordPress_Bridge_Direct_Runtime::RUNTIME_BRANCH,
+                $path
+            );
+            if (!is_wp_error($last_modified)) {
+                $age = max(0, time() - (int) $last_modified);
+            }
+        }
         if ($age === null) {
             return [
                 'path' => $path,
@@ -257,6 +269,7 @@ final class TakKa_WordPress_Bridge_Direct_Runtime_V2
                 'ok' => true,
                 'skipped' => true,
                 'reason' => 'age-unavailable',
+                'age_source' => 'none_available',
                 'recovery_required' => true,
             ];
         }
@@ -270,7 +283,8 @@ final class TakKa_WordPress_Bridge_Direct_Runtime_V2
                 $id,
                 $request_id,
                 $result_path,
-                $age
+                $age,
+                $age_source
             );
         }
 
@@ -442,7 +456,8 @@ final class TakKa_WordPress_Bridge_Direct_Runtime_V2
         string $id,
         string $request_id,
         string $result_path,
-        int $age
+        int $age,
+        string $age_source
     ): array {
         $expired_path = 'wordpress-bridge/commands/expired/' . basename($pending_path);
         $result = [
@@ -454,6 +469,7 @@ final class TakKa_WordPress_Bridge_Direct_Runtime_V2
             'recovery' => [
                 'code' => 'takka_bridge_pending_expired',
                 'pending_age_seconds' => $age,
+                'age_source' => $age_source,
                 'max_recovery_age_seconds' => self::MAX_RECOVERY_AGE_SECONDS,
                 'quarantine_path' => $expired_path,
             ],
@@ -512,6 +528,7 @@ final class TakKa_WordPress_Bridge_Direct_Runtime_V2
             'expired' => true,
             'quarantined' => true,
             'pending_age_seconds' => $age,
+            'age_source' => $age_source,
             'quarantine_path' => $expired_path,
         ];
     }

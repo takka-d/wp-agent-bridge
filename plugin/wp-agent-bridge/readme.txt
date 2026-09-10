@@ -107,6 +107,10 @@ High-impact writes remain subject to the Bridge's preview, confirmation, state-h
 
 == Changelog ==
 
+= 1.1.26 =
+* Determines pending-command age from command metadata, timestamp-bearing IDs, or exact pending-file GitHub commit history.
+* Skips recovery only when all age evidence is unavailable; records the evidence source for expired-command quarantine.
+
 = 1.1.25 =
 * Stops automatic recovery from re-executing pending commands whose age cannot be established.
 * Quarantines pending commands older than 24 hours with an explicit result instead of executing the WordPress action.
