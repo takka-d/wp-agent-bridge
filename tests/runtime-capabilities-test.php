@@ -37,6 +37,7 @@ if (($bookkeeping['mode'] ?? null) !== 'atomic_git_tree'
 }
 $pending_recovery = $catalog['runtime']['pending_recovery'] ?? [];
 if (($pending_recovery['max_age_seconds'] ?? null) !== 86400
+    || ($pending_recovery['age_sources'] ?? null) !== ['created_at', 'id_timestamp', 'github_path_commit_history']
     || ($pending_recovery['unknown_age'] ?? null) !== 'skip_without_execution'
     || ($pending_recovery['expired_action'] ?? null) !== 'quarantine_to_commands_expired'
     || ($pending_recovery['expired_path'] ?? null) !== 'wordpress-bridge/commands/expired/<id>.json') {

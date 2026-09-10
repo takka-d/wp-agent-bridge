@@ -57,6 +57,56 @@ final class TakKa_WordPress_Bridge_Direct_GitHub_Recovery
         return $sha;
     }
 
+
+    /**
+     * Return the latest commit timestamp for a pending file path.
+     *
+     * The command payload and filename are preferred sources, but older
+     * commands may not contain either timestamp. GitHub's path history then
+     * supplies the last-write evidence for the exact pending file without
+     * guessing from an opaque ID.
+     */
+    public static function path_last_modified_timestamp(
+        string $token,
+        string $repository,
+        string $branch,
+        string $path
+    ) {
+        if (!self::valid_repository($repository)
+            || !self::valid_path($path)
+            || !preg_match('/^[A-Za-z0-9._\/-]{1,200}$/', $branch)) {
+            return new WP_Error('wpab_direct_recovery_history', 'Invalid GitHub repository, branch, or path.');
+        }
+
+        $response = TakKa_WordPress_Bridge_Direct_GitHub::github_api(
+            'GET',
+            '/repos/' . $repository . '/commits?path=' . rawurlencode(trim($path, '/'))
+                . '&sha=' . rawurlencode($branch) . '&per_page=1',
+            $token
+        );
+        if (is_wp_error($response)) {
+            return $response;
+        }
+
+        $data = isset($response['data']) && is_array($response['data']) ? $response['data'] : [];
+        if (!isset($data[0]) || !is_array($data[0])) {
+            return new WP_Error(
+                'wpab_direct_recovery_history_missing',
+                'GitHub returned no commit history for the pending file.',
+                ['status' => 404]
+            );
+        }
+
+        $date = $data[0]['commit']['committer']['date']
+            ?? $data[0]['commit']['author']['date']
+            ?? null;
+        $timestamp = is_string($date) ? strtotime($date) : false;
+        if ($timestamp === false || $timestamp < 1) {
+            return new WP_Error('wpab_direct_recovery_history_date', 'GitHub commit history has no usable timestamp.');
+        }
+        return (int) $timestamp;
+    }
+
     /**
      * Create a bookkeeping file exactly once. Existing identical content is an
      * idempotent success; different content is never overwritten.
