@@ -22,6 +22,7 @@ final class TakKa_WordPress_Bridge_Direct_Runtime_V2
     private const LOCK_OPTION = 'takka_bridge_direct_reconcile_lock_v2';
     private const MAX_RECOVERY_PER_PUSH = 20;
     private const MAX_COMMAND_BYTES = 2097152;
+    private const MAX_RECOVERY_AGE_SECONDS = 86400;
 
     public static function init(): void
     {
@@ -224,6 +225,9 @@ final class TakKa_WordPress_Bridge_Direct_Runtime_V2
             $result_path
         );
         if (!is_wp_error($existing_result)) {
+            $bookkeeping_path = self::is_expired_result($existing_result)
+                ? 'wordpress-bridge/commands/expired/' . basename($path)
+                : $completed_path;
             $repaired = self::repair_bookkeeping(
                 $token,
                 $repository,
@@ -233,7 +237,7 @@ final class TakKa_WordPress_Bridge_Direct_Runtime_V2
                 $id,
                 $request_id,
                 $result_path,
-                $completed_path,
+                $bookkeeping_path,
                 $existing_result
             );
             if (is_wp_error($repaired)) {
@@ -243,6 +247,31 @@ final class TakKa_WordPress_Bridge_Direct_Runtime_V2
         }
         if (TakKa_WordPress_Bridge_Direct_GitHub_Recovery::error_status($existing_result) !== 404) {
             return self::error_outcome($path, $id, $existing_result->get_error_message());
+        }
+
+        $age = self::pending_age_seconds($command, $id);
+        if ($age === null) {
+            return [
+                'path' => $path,
+                'id' => $id,
+                'ok' => true,
+                'skipped' => true,
+                'reason' => 'age-unavailable',
+                'recovery_required' => true,
+            ];
+        }
+        if ($age > self::MAX_RECOVERY_AGE_SECONDS) {
+            return self::quarantine_expired(
+                $token,
+                $repository,
+                $path,
+                $pending_sha,
+                $raw,
+                $id,
+                $request_id,
+                $result_path,
+                $age
+            );
         }
 
         // No GitHub result exists. Re-dispatch the exact current pending command
@@ -401,6 +430,130 @@ final class TakKa_WordPress_Bridge_Direct_Runtime_V2
             'recovered' => true,
             'bookkeeping_only' => true,
         ];
+    }
+
+
+    private static function quarantine_expired(
+        string $token,
+        string $repository,
+        string $pending_path,
+        string $pending_sha,
+        string $raw_command,
+        string $id,
+        string $request_id,
+        string $result_path,
+        int $age
+    ): array {
+        $expired_path = 'wordpress-bridge/commands/expired/' . basename($pending_path);
+        $result = [
+            'id' => $id,
+            'request_id' => $request_id,
+            'command_file' => $pending_path,
+            'handled_at' => gmdate('c'),
+            'transport' => 'direct-github-webhook',
+            'recovery' => [
+                'code' => 'takka_bridge_pending_expired',
+                'pending_age_seconds' => $age,
+                'max_recovery_age_seconds' => self::MAX_RECOVERY_AGE_SECONDS,
+                'quarantine_path' => $expired_path,
+            ],
+            'result' => [
+                'ok' => false,
+                'status' => 409,
+                'code' => 'takka_bridge_pending_expired',
+                'message' => 'Pending command exceeded the automatic recovery age and was quarantined without execution.',
+            ],
+        ];
+        $result_json = wp_json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n";
+        if (!is_string($result_json)) {
+            return self::error_outcome($pending_path, $id, 'Could not encode expired-command result.');
+        }
+
+        $archived = TakKa_WordPress_Bridge_Direct_GitHub_Recovery::put_if_absent_or_identical(
+            $token,
+            $repository,
+            TakKa_WordPress_Bridge_Direct_Runtime::RUNTIME_BRANCH,
+            $expired_path,
+            $raw_command,
+            'WP Bridge: quarantine expired pending command ' . $id
+        );
+        if (is_wp_error($archived)) {
+            return self::error_outcome($pending_path, $id, $archived->get_error_message());
+        }
+
+        $written = TakKa_WordPress_Bridge_Direct_GitHub_Recovery::put_if_absent_or_identical(
+            $token,
+            $repository,
+            TakKa_WordPress_Bridge_Direct_Runtime::RUNTIME_BRANCH,
+            $result_path,
+            $result_json,
+            'WP Bridge: record expired pending command ' . $id
+        );
+        if (is_wp_error($written)) {
+            return self::error_outcome($pending_path, $id, $written->get_error_message());
+        }
+
+        $deleted = TakKa_WordPress_Bridge_Direct_GitHub_Recovery::delete_if_matches(
+            $token,
+            $repository,
+            TakKa_WordPress_Bridge_Direct_Runtime::RUNTIME_BRANCH,
+            $pending_path,
+            $pending_sha,
+            'WP Bridge: remove quarantined pending command ' . $id
+        );
+        if (is_wp_error($deleted)) {
+            return self::error_outcome($pending_path, $id, $deleted->get_error_message());
+        }
+
+        return [
+            'path' => $pending_path,
+            'id' => $id,
+            'ok' => true,
+            'expired' => true,
+            'quarantined' => true,
+            'pending_age_seconds' => $age,
+            'quarantine_path' => $expired_path,
+        ];
+    }
+
+    private static function is_expired_result(string $result_json): bool
+    {
+        $result = json_decode($result_json, true);
+        return is_array($result)
+            && (($result['recovery']['code'] ?? '') === 'takka_bridge_pending_expired');
+    }
+
+    private static function pending_age_seconds(array $command, string $id): ?int
+    {
+        $created = $command['created_at'] ?? null;
+        if (is_int($created) || (is_string($created) && ctype_digit($created))) {
+            $timestamp = (int) $created;
+        } elseif (is_string($created) && trim($created) !== '') {
+            $timestamp = strtotime($created);
+            if ($timestamp === false) {
+                $timestamp = 0;
+            }
+        } else {
+            $timestamp = 0;
+        }
+
+        if ($timestamp < 1 && preg_match('/(\d{13})$/', $id, $match)) {
+            $timestamp = (int) floor(((int) $match[1]) / 1000);
+        }
+        if ($timestamp < 1 && preg_match('/(20\d{6})[-_](\d{4,6})$/', $id, $match)) {
+            $date = DateTimeImmutable::createFromFormat(
+                '!Ymd-His',
+                $match[1] . '-' . str_pad($match[2], 6, '0'),
+                new DateTimeZone('UTC')
+            );
+            if ($date instanceof DateTimeImmutable) {
+                $timestamp = $date->getTimestamp();
+            }
+        }
+        if ($timestamp < 1) {
+            return null;
+        }
+        return max(0, time() - $timestamp);
     }
 
     private static function acquire_lock(): ?string

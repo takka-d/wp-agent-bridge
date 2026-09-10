@@ -124,6 +124,12 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'site_host' => $site_host,
                 'pending_path' => 'wordpress-bridge/commands/pending/<id>.json',
                 'result_path' => 'wordpress-bridge/results/<id>.json',
+                'pending_recovery' => [
+                    'max_age_seconds' => 86400,
+                    'unknown_age' => 'skip_without_execution',
+                    'expired_action' => 'quarantine_to_commands_expired',
+                    'expired_path' => 'wordpress-bridge/commands/expired/<id>.json',
+                ],
                 'bookkeeping' => [
                     'mode' => 'atomic_git_tree',
                     'result_completed_pending_same_commit' => true,
@@ -367,6 +373,7 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'capability_resolution' => 'Read this file before issuing capability probe commands or searching source code for known Bridge routes/actions.',
                 'operation_router' => 'For common tasks, use the single /takka-v099/v1/operate route and an allowlisted operation from routes.operations. This is preferred over reconstructing versioned internal routes.',
                 'command_chaining' => 'When atomic_command_bookkeeping=true, a visible matching result means result creation, completed-command storage, and pending deletion are already durable in the same commit. The next pending command may be submitted immediately without waiting for later bookkeeping commits.',
+                'pending_recovery' => 'Automatic recovery never re-executes a pending command when its age cannot be established. Commands older than 86400 seconds are recorded as expired, copied to commands/expired, and removed from commands/pending without executing the WordPress action.',
                 'readonly_batch' => 'When two or more independent allowlisted reads are needed, prefer one readonly.batch request instead of multiple pending commands/webhooks/results.',
                 'post_content_read' => 'For WordPress post content, use post.content.inspect for metadata, post.content.search for targeted lookup, and post.content.read_range for bounded source reads through the deterministic operation router.',
                 'media_upload' => 'For local or conversation-uploaded media up to 1 MiB decoded, prefer media.upload.inline through the deterministic operation router. Use staged Media Fast Path for larger files. Do not split or stage a small file unless inline upload actually fails or the caller explicitly requests staged transport.',
