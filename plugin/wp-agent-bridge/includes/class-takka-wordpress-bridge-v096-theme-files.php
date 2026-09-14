@@ -303,6 +303,9 @@ final class TakKa_WordPress_Bridge_V096_Theme_Files
         // mb_strcut preserves UTF-8 boundaries and includes the complete match.
         $prefix = mb_strcut($line, 0, $start, 'UTF-8');
         $start = strlen($prefix);
+        if ($match_offset + $match_bytes > $start + $limit) {
+            $start = $match_offset;
+        }
         $text = mb_strcut($line, $start, $limit, 'UTF-8');
         return [
             'text' => $text,

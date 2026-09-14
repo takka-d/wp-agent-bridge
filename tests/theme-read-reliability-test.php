@@ -64,6 +64,10 @@ try {
     check(strpos($hit['results'][0]['text'], 'CYP3A4') !== false && mb_check_encoding($hit['results'][0]['text'], 'UTF-8'), 'Match or valid UTF-8 lost');
     check($hit['excerpts_truncated'] && !$hit['matches_truncated'], 'Excerpt and match completeness must be separate');
     check($search(['query' => 'CYP3A4', 'pattern' => '*.php'])['returned'] === 0, 'Search ignored pattern');
+    $long_query = str_repeat('薬', 42);
+    file_put_contents($root . '/utf8.txt', '前後' . $long_query . '末尾');
+    $utf8 = $search(['query' => $long_query, 'pattern' => 'utf8.txt', 'max_excerpt_bytes' => 128]);
+    check(strpos($utf8['results'][0]['text'], $long_query) !== false, 'UTF-8 boundary rounding clipped a long query');
     file_put_contents($root . '/context.txt', str_repeat('前', 10000) . "\nneedle\n" . str_repeat('後', 10000));
     $context = $search(['query' => 'needle', 'pattern' => 'context.txt']);
     check(strlen($context['results'][0]['before'][0]['text']) <= 1024 && strlen($context['results'][0]['after'][0]['text']) <= 1024, 'Context lines bypassed excerpt budget');
