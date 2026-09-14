@@ -215,6 +215,8 @@ final class TakKa_WordPress_Bridge_V098_Read_Batch
         $started = microtime(true);
         $results = [];
         $failed = 0;
+        $execution_failed = 0;
+        $omitted = 0;
         $stopped_reason = null;
 
         foreach ($prepared as $index => $operation) {
@@ -231,6 +233,7 @@ final class TakKa_WordPress_Bridge_V098_Read_Batch
             $ok = !empty($result['ok']);
             if (!$ok) {
                 $failed++;
+                $execution_failed++;
             }
 
             $entry = [
@@ -254,9 +257,14 @@ final class TakKa_WordPress_Bridge_V098_Read_Batch
                     'status' => 413,
                     'duration_ms' => $op_ms,
                     'result_omitted' => true,
+                    'execution_ok' => $ok,
+                    'execution_status' => isset($result['status']) ? (int) $result['status'] : null,
                     'error' => 'Batch response size limit reached after this read-only operation.',
                 ];
-                $failed++;
+                if ($ok) {
+                    $failed++;
+                }
+                $omitted++;
                 $stopped_reason = 'response_limit';
                 break;
             }
@@ -282,6 +290,9 @@ final class TakKa_WordPress_Bridge_V098_Read_Batch
             'operation_count' => count($prepared),
             'completed_count' => $completed,
             'failed_count' => $failed,
+            'execution_failed_count' => $execution_failed,
+            'result_omitted_count' => $omitted,
+            'not_started_count' => count($prepared) - $completed,
             'duration_ms' => (int) round((microtime(true) - $started) * 1000),
             'stopped_reason' => $stopped_reason,
             'results' => $results,

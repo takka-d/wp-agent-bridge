@@ -523,6 +523,43 @@ try {
     if (empty($patch_apply['ok']) || get_post($post_id)->post_content !== "line one\n" . $escaped . "\nline three"
         || $patch_apply['after_sha256'] !== $patch_preview['after_sha256']) op_integration_fail('Post patch lost literal backslashes.');
 
+// Included by the clean WordPress operation integration; never run on a live site.
+$theme_fixture = 'wpab-read-fixture-' . wp_generate_uuid4();
+$theme_dir = get_stylesheet_directory() . '/' . $theme_fixture;
+if (!mkdir($theme_dir)) op_integration_fail('Cannot create isolated theme read fixture.');
+try {
+    file_put_contents($theme_dir . '/range.txt', implode("\n", range(1, 700)));
+    $large = wp_json_encode(['padding' => str_repeat('日本語', 45000), 'terms' => 'sample-one sample-two CYP3A4'], JSON_UNESCAPED_UNICODE);
+    file_put_contents($theme_dir . '/table.json', $large);
+    $unwrap_theme_read = static fn($response) => op_integration_core_payload(op_integration_v099_payload($response));
+    $range = $unwrap_theme_read(op_integration_call('theme.file.read_range', [
+        'path' => $theme_fixture . '/range.txt', 'start_line' => 120, 'max_lines' => 110,
+    ]));
+    if (($range['end_line'] ?? null) !== 229 || count($range['lines'] ?? []) !== 110) {
+        op_integration_fail('Signed theme range did not honor max_lines.');
+    }
+    $batch = $unwrap_theme_read(op_integration_call('readonly.batch', ['operations' => array_map(
+        static fn($query) => ['operation' => 'theme.files.search', 'params' => ['query' => $query, 'pattern' => $theme_fixture . '/table.json']],
+        ['sample-one', 'sample-two', 'CYP3A4']
+    )]));
+    if (empty($batch['ok']) || ($batch['failed_count'] ?? null) !== 0 || count($batch['results'] ?? []) !== 3) {
+        op_integration_fail('Signed minified JSON search batch failed.');
+    }
+    foreach ($batch['results'] as $item) {
+        $search = $item['result']['data']['data'] ?? [];
+        if (($search['returned'] ?? null) !== 1 || empty($search['excerpts_truncated']) || !empty($search['matches_truncated'])
+            || strlen($search['results'][0]['text'] ?? '') > 1024) {
+            op_integration_fail('Search excerpt bounds or completeness flags were lost through the router.');
+        }
+    }
+    if (file_get_contents($theme_dir . '/table.json') !== $large) op_integration_fail('Search changed theme JSON.');
+    echo "Signed theme range and bounded JSON batch integration: OK\n";
+} finally {
+    foreach (['range.txt', 'table.json'] as $name) {
+        if (is_file($theme_dir . '/' . $name)) unlink($theme_dir . '/' . $name);
+    }
+    rmdir($theme_dir);
+}
     echo "Deterministic operation router clean-WordPress integration: OK\n";
 } finally {
     foreach ($created_test_posts as $created_id) wp_delete_post($created_id, true);

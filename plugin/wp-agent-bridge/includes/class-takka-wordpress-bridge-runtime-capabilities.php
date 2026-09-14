@@ -228,6 +228,8 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'theme_inspection' => [
                     'route' => '/takka-v096/v1/theme-files',
                     'actions' => ['theme.files.list', 'theme.files.search', 'theme.file.read.many'],
+                    'search_limits' => ['default_excerpt_bytes' => 1024, 'max_excerpt_bytes' => 8192, 'max_results_bytes' => 65536],
+                    'search_pattern' => true,
                 ],
                 'diagnostics' => [
                     'route' => '/takka-v094/v1/manage',
@@ -235,6 +237,8 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 ],
                 'structured_inspection' => [
                     'route' => '/takka-v095/v1/manage',
+                    'read_range_params' => ['path', 'start_line', 'end_line', 'max_lines'],
+                    'max_range_lines' => 500,
                     'actions' => [
                         'theme.file.outline', 'theme.file.read.range', 'page.html.inspect',
                         'classic_theme.create', 'classic_theme.preview_url', 'classic_theme.publish', 'classic_theme.discard',
@@ -258,6 +262,18 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 ],
             ],
             'command_contract' => [
+                'result_observation' => [
+                    'path' => 'wordpress-bridge/results/<id>.json',
+                    'header_field' => 'outcome',
+                    'header_lines' => 80,
+                    'missing_result_state' => 'pending_or_unknown',
+                    'retrieval_error_is_execution_failure' => false,
+                    'max_observations' => 2,
+                    'initial_wait_seconds' => 5,
+                    'second_observation_after_seconds' => 10,
+                    'same_command_id_required' => true,
+                    'never_resubmit_for_missing_result' => true,
+                ],
                 'preferred_command' => [
                     'type' => 'operation',
                     'operation' => '<operation>',
@@ -283,6 +299,14 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                     'Do not retry a mutating command merely because a later GitHub read failed. First check whether the matching result already exists.',
                 ],
                 'templates' => [
+                    'theme_file_read_range' => [
+                        'operation' => 'theme.file.read_range',
+                        'params' => ['path' => '<theme-relative path>', 'start_line' => 1, 'max_lines' => 100],
+                    ],
+                    'theme_files_search' => [
+                        'operation' => 'theme.files.search',
+                        'params' => ['query' => '<text>', 'pattern' => '<path glob>', 'max_results' => 20, 'context_lines' => 0],
+                    ],
                     'post_get_edit_context' => [
                         'operation' => 'post.get',
                         'params' => ['post_id' => '<id>', 'query' => ['context' => 'edit']],

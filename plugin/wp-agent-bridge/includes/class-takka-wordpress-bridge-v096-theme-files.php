@@ -26,6 +26,8 @@ final class TakKa_WordPress_Bridge_V096_Theme_Files
     private const MAX_FILE_BYTES = 2097152;
     private const MAX_SCAN_BYTES = 20971520;
     private const MAX_RESULTS = 200;
+    private const MAX_SEARCH_RESPONSE_BYTES = 65536;
+    private const MAX_EXCERPT_BYTES = 8192;
     private const MAX_READ_ITEMS = 20;
     private const MAX_READ_CHARS = 800000;
     private const DEFAULT_EXTENSIONS = ['php', 'css', 'js', 'json', 'html', 'htm', 'txt', 'svg'];
@@ -183,6 +185,9 @@ final class TakKa_WordPress_Bridge_V096_Theme_Files
         $case_sensitive = !empty($params['case_sensitive']);
         $max_results = isset($params['max_results']) ? max(1, min(self::MAX_RESULTS, (int) $params['max_results'])) : 100;
         $context_lines = isset($params['context_lines']) ? max(0, min(5, (int) $params['context_lines'])) : 1;
+        $excerpt_bytes = isset($params['max_excerpt_bytes']) ? max(128, min(self::MAX_EXCERPT_BYTES, (int) $params['max_excerpt_bytes'])) : 1024;
+        $excerpt_bytes = max($excerpt_bytes, strlen($query));
+        $pattern = is_string($params['pattern'] ?? null) ? trim($params['pattern']) : '';
         $extensions = self::extensions($params);
         if (is_wp_error($extensions)) {
             return $extensions;
@@ -196,7 +201,14 @@ final class TakKa_WordPress_Bridge_V096_Theme_Files
         $scanned_files = 0;
         $scanned_bytes = 0;
         $skipped_large = 0;
+        $response_bytes = 2;
+        $stopped_reason = null;
+        $excerpts_truncated = false;
+        $unreadable_files = 0;
         foreach ($files as $entry) {
+            if ($pattern !== '' && !self::glob_match($pattern, $entry['path'])) {
+                continue;
+            }
             if (!in_array($entry['extension'], $extensions, true)) {
                 continue;
             }
@@ -205,10 +217,12 @@ final class TakKa_WordPress_Bridge_V096_Theme_Files
                 continue;
             }
             if ($scanned_bytes + $entry['bytes'] > self::MAX_SCAN_BYTES) {
+                $stopped_reason = 'scan_byte_limit';
                 break;
             }
             $content = file_get_contents($entry['absolute']);
             if (!is_string($content)) {
+                $unreadable_files++;
                 continue;
             }
             $scanned_files++;
@@ -225,24 +239,40 @@ final class TakKa_WordPress_Bridge_V096_Theme_Files
                 $before = [];
                 $after = [];
                 for ($n = max(0, $index - $context_lines); $n < $index; $n++) {
-                    $before[] = ['line' => $n + 1, 'text' => $lines[$n]];
+                    $snippet = self::excerpt($lines[$n], 0, 0, $excerpt_bytes);
+                    $before[] = ['line' => $n + 1] + $snippet;
+                    $excerpts_truncated = $excerpts_truncated || $snippet['text_truncated'];
                 }
                 for ($n = $index + 1; $n <= min(count($lines) - 1, $index + $context_lines); $n++) {
-                    $after[] = ['line' => $n + 1, 'text' => $lines[$n]];
+                    $snippet = self::excerpt($lines[$n], 0, 0, $excerpt_bytes);
+                    $after[] = ['line' => $n + 1] + $snippet;
+                    $excerpts_truncated = $excerpts_truncated || $snippet['text_truncated'];
                 }
-                $results[] = [
+                $snippet = self::excerpt($line, $found, strlen($query), $excerpt_bytes);
+                $entry_result = [
                     'path' => $entry['path'],
                     'line' => $index + 1,
-                    'text' => $line,
                     'before' => $before,
                     'after' => $after,
-                ];
+                ] + $snippet;
+                $encoded = wp_json_encode($entry_result, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                if (!is_string($encoded) || $response_bytes + strlen($encoded) + 1 > self::MAX_SEARCH_RESPONSE_BYTES) {
+                    $stopped_reason = 'response_limit';
+                    break 2;
+                }
+                $results[] = $entry_result;
+                $response_bytes += strlen($encoded) + 1;
+                $excerpts_truncated = $excerpts_truncated || $snippet['text_truncated'];
                 if (count($results) >= $max_results) {
+                    $stopped_reason = 'max_results';
                     break 2;
                 }
             }
         }
 
+        if ($stopped_reason === null && count($files) >= self::MAX_FILES) {
+            $stopped_reason = 'file_limit';
+        }
         return rest_ensure_response([
             'ok' => true,
             'scope' => $root['scope'],
@@ -252,12 +282,34 @@ final class TakKa_WordPress_Bridge_V096_Theme_Files
             'extensions' => $extensions,
             'results' => $results,
             'returned' => count($results),
-            'truncated' => count($results) >= $max_results || $scanned_bytes >= self::MAX_SCAN_BYTES,
+            'truncated' => $stopped_reason !== null || $excerpts_truncated || $skipped_large > 0 || $unreadable_files > 0,
+            'matches_truncated' => $stopped_reason !== null || $skipped_large > 0 || $unreadable_files > 0,
+            'excerpts_truncated' => $excerpts_truncated,
+            'stopped_reason' => $stopped_reason,
+            'max_excerpt_bytes' => $excerpt_bytes,
+            'max_results_bytes' => self::MAX_SEARCH_RESPONSE_BYTES,
+            'pattern' => $pattern !== '' ? $pattern : null,
             'scanned_files' => $scanned_files,
             'scanned_bytes' => $scanned_bytes,
             'skipped_large_files' => $skipped_large,
+            'unreadable_files' => $unreadable_files,
             'scan_byte_limit' => self::MAX_SCAN_BYTES,
         ]);
+    }
+
+    private static function excerpt(string $line, int $match_offset, int $match_bytes, int $limit): array
+    {
+        $start = max(0, $match_offset - intdiv(max(0, $limit - $match_bytes), 2));
+        // mb_strcut preserves UTF-8 boundaries and includes the complete match.
+        $prefix = mb_strcut($line, 0, $start, 'UTF-8');
+        $start = strlen($prefix);
+        $text = mb_strcut($line, $start, $limit, 'UTF-8');
+        return [
+            'text' => $text,
+            'text_truncated' => $start > 0 || strlen($text) < strlen($line),
+            'text_start_byte' => $start,
+            'line_bytes' => strlen($line),
+        ];
     }
 
     private static function read_many(array $params)
@@ -295,8 +347,11 @@ final class TakKa_WordPress_Bridge_V096_Theme_Files
             }
             if (isset($item['end_line'])) {
                 $read['end_line'] = (int) $item['end_line'];
-            } else {
+            } elseif (!isset($item['max_lines'])) {
                 $read['end_line'] = isset($read['start_line']) ? $read['start_line'] + 499 : 500;
+            }
+            if (isset($item['max_lines'])) {
+                $read['max_lines'] = (int) $item['max_lines'];
             }
 
             $response = TakKa_WordPress_Bridge_V095_Outline::read_range($read);
@@ -473,6 +528,10 @@ final class TakKa_WordPress_Bridge_V096_Theme_Files
                 'context_lines' => true,
                 'max_results' => self::MAX_RESULTS,
                 'max_scan_bytes' => self::MAX_SCAN_BYTES,
+                'pattern' => true,
+                'max_excerpt_bytes' => self::MAX_EXCERPT_BYTES,
+                'default_excerpt_bytes' => 1024,
+                'max_results_bytes' => self::MAX_SEARCH_RESPONSE_BYTES,
             ],
             'read_many' => [
                 'max_files' => self::MAX_READ_ITEMS,
