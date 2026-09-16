@@ -8,12 +8,13 @@ if (!defined('ABSPATH')) {
  * Bounded atomic theme patch engine used by the deterministic operation router.
  *
  * The legacy v0.4 theme.file.patch action remains unchanged for compatibility.
- * High-level clients call this engine through /takka-v099/v1/operate so several
- * distinct edits can be previewed and applied atomically without transferring
- * the complete theme asset through the client.
+ * Advanced multi-patch requests are authenticated and short-circuited at
+ * rest_pre_dispatch before the legacy callback, because rest_request_before_callbacks
+ * does not reliably suppress the callback path in the supported WordPress flow.
  */
 final class TakKa_WordPress_Bridge_Theme_Patch
 {
+    private const V04_ROUTE = '/takka-bridge/v1/manage';
     private const MAX_FILE_BYTES = 2097152;
     private const MAX_PATCHES = 32;
     private const MAX_DIFF_BYTES = 12000;
@@ -21,9 +22,52 @@ final class TakKa_WordPress_Bridge_Theme_Patch
 
     public static function init(): void
     {
-        // Deliberately no REST interception here. The deterministic operation
-        // router invokes execute() only after its signed internal permission
-        // path has succeeded. The legacy v0.4 action keeps its existing behavior.
+        // Run before the generic Bridge idempotency pre-dispatch filter. The
+        // high-level /takka-v099 operation is already idempotent at its signed
+        // outer request; direct advanced calls remain replay-safe through the
+        // mandatory before-SHA/plan guards on multi-patch apply.
+        add_filter('rest_pre_dispatch', [self::class, 'pre_dispatch'], 15, 3);
+    }
+
+    public static function pre_dispatch($result, WP_REST_Server $server, WP_REST_Request $request)
+    {
+        if ($result !== null
+            || $request->get_route() !== self::V04_ROUTE
+            || strtoupper($request->get_method()) !== 'POST') {
+            return $result;
+        }
+
+        $json = json_decode((string) $request->get_body(), true);
+        if (!is_array($json) || !isset($json['payload_b64']) || !is_string($json['payload_b64'])) {
+            return $result;
+        }
+        $decoded = base64_decode(trim($json['payload_b64']), true);
+        if (!is_string($decoded)) {
+            return $result;
+        }
+        $payload = json_decode($decoded, true);
+        if (!is_array($payload) || ($payload['action'] ?? '') !== 'theme.file.patch') {
+            return $result;
+        }
+        $params = isset($payload['params']) && is_array($payload['params']) ? $payload['params'] : [];
+
+        // Preserve the existing v0.4 single-replacement callback unless the
+        // caller explicitly opts into the atomic contract.
+        if (!array_key_exists('patches', $params)
+            && !array_key_exists('expected_plan_hash', $params)
+            && !array_key_exists('expected_after_sha256', $params)) {
+            return $result;
+        }
+
+        // rest_pre_dispatch runs before the route permission callback, so the
+        // short-circuit must perform exactly the same HMAC/admin authorization
+        // the v0.4 endpoint would have performed before mutating anything.
+        $authorized = TakKa_WordPress_Bridge_V04::authorize_request($request);
+        if (is_wp_error($authorized)) {
+            return $authorized;
+        }
+
+        return self::execute($params);
     }
 
     public static function execute(array $params)
