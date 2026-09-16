@@ -5,14 +5,15 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Extends the existing theme.file.patch action with bounded atomic multi-patch
- * support. The v0.4 action remains the storage/write implementation for legacy
- * single replacements; this layer handles multi-edit plans before the callback
- * so large theme assets never need a client-side full-file rewrite.
+ * Bounded atomic theme patch engine used by the deterministic operation router.
+ *
+ * The legacy v0.4 theme.file.patch action remains unchanged for compatibility.
+ * High-level clients call this engine through /takka-v099/v1/operate so several
+ * distinct edits can be previewed and applied atomically without transferring
+ * the complete theme asset through the client.
  */
 final class TakKa_WordPress_Bridge_Theme_Patch
 {
-    private const V04_ROUTE = '/takka-bridge/v1/manage';
     private const MAX_FILE_BYTES = 2097152;
     private const MAX_PATCHES = 32;
     private const MAX_DIFF_BYTES = 12000;
@@ -20,42 +21,9 @@ final class TakKa_WordPress_Bridge_Theme_Patch
 
     public static function init(): void
     {
-        add_filter('rest_request_before_callbacks', [self::class, 'intercept'], 72, 3);
-    }
-
-    public static function intercept($response, array $handler, WP_REST_Request $request)
-    {
-        if ($response !== null
-            || $request->get_route() !== self::V04_ROUTE
-            || strtoupper($request->get_method()) !== 'POST'
-            || !current_user_can('manage_options')) {
-            return $response;
-        }
-
-        $json = $request->get_json_params();
-        if (!is_array($json) || !isset($json['payload_b64']) || !is_string($json['payload_b64'])) {
-            return $response;
-        }
-        $decoded = base64_decode(trim($json['payload_b64']), true);
-        if (!is_string($decoded)) {
-            return $response;
-        }
-        $payload = json_decode($decoded, true);
-        if (!is_array($payload) || ($payload['action'] ?? '') !== 'theme.file.patch') {
-            return $response;
-        }
-        $params = isset($payload['params']) && is_array($payload['params']) ? $payload['params'] : [];
-
-        // Preserve the long-standing v0.4 single-replacement behavior unless a
-        // caller opts into the advanced contract. High-level clients use the
-        // multi-patch form so preview/apply can stay atomic and bounded.
-        if (!array_key_exists('patches', $params)
-            && !array_key_exists('expected_plan_hash', $params)
-            && !array_key_exists('expected_after_sha256', $params)) {
-            return $response;
-        }
-
-        return self::execute($params);
+        // Deliberately no REST interception here. The deterministic operation
+        // router invokes execute() only after its signed internal permission
+        // path has succeeded. The legacy v0.4 action keeps its existing behavior.
     }
 
     public static function execute(array $params)
@@ -101,6 +69,7 @@ final class TakKa_WordPress_Bridge_Theme_Patch
                 'status' => 409,
                 'expected_sha256' => $expected_before,
                 'current_sha256' => $before_sha,
+                'side_effects' => false,
             ]);
         }
 
