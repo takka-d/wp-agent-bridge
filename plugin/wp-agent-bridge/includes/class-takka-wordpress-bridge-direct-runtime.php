@@ -273,6 +273,7 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
                 $output = [
                     'id' => $id,
                     'request_id' => $request_id,
+                    'outcome' => self::summarize_outcome($result),
                     'command_file' => $path,
                     'executed_at' => gmdate('c'),
                     'duration_ms' => (int) round(($finished - $started) * 1000),
@@ -763,6 +764,52 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
             'url' => $url,
             'data' => ['body' => $body],
         ];
+    }
+
+    private static function summarize_outcome(array $result): array
+    {
+        $status = (int) ($result['status'] ?? 0);
+        $ok = !empty($result['ok']);
+        $summary = [
+            'state' => $status === 207 ? 'partial' : ($ok ? 'succeeded' : 'failed'),
+            'command_execution_finished' => true,
+            'operation_ok' => $ok,
+            'status' => $status,
+            'reason' => $status === 207 ? 'incomplete_batch' : ($ok ? null : 'operation_error'),
+        ];
+        // Follow only transport envelopes, never arbitrary post/JSON fields.
+        $payload = $result;
+        for ($depth = 0; $depth < 8; $depth++) {
+            if (($payload['mode'] ?? '') === 'read-only' && isset($payload['operation_count'], $payload['results'])) {
+                $summary['reason'] = $payload['stopped_reason'] ?? ($ok ? null : 'operation_error');
+                $summary['failed_indexes'] = [];
+                $summary['omitted_indexes'] = [];
+                $seen = [];
+                foreach ($payload['results'] as $entry) {
+                    $index = (int) $entry['index'];
+                    $seen[] = $index;
+                    if (!empty($entry['result_omitted'])) {
+                        $summary['omitted_indexes'][] = $index;
+                        if (isset($entry['execution_ok']) && !$entry['execution_ok']) {
+                            $summary['failed_indexes'][] = $index;
+                        }
+                    } elseif (empty($entry['ok'])) {
+                        $summary['failed_indexes'][] = $index;
+                    }
+                }
+                $count = max(0, min(12, (int) $payload['operation_count']));
+                $summary['not_started_indexes'] = $count > 0 ? array_values(array_diff(range(0, $count - 1), $seen)) : [];
+                break;
+            }
+            if (isset($payload['operation'], $payload['result']) && is_array($payload['result'])) {
+                $payload = $payload['result'];
+            } elseif (isset($payload['status'], $payload['data']) && is_array($payload['data'])) {
+                $payload = $payload['data'];
+            } else {
+                break;
+            }
+        }
+        return $summary;
     }
 
     private static function summarize_command($value, string $key = '')

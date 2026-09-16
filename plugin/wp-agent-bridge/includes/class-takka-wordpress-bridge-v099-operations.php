@@ -27,6 +27,7 @@ final class TakKa_WordPress_Bridge_V099_Operations
 
     private const DIRECT_ACTIONS = [
         'plugin.list' => ['/takka-bridge/v1/manage', 'plugin.list'],
+        'theme.file.patch' => ['/takka-bridge/v1/manage', 'theme.file.patch'],
         'media.upload.inline' => ['/takka-bridge/v1/manage', 'media.upload_base64'],
         'self_update.status' => ['/takka-bridge/v1/v06', 'bridge.self_update.status'],
         'self_update.apply' => ['/takka-bridge/v1/v06', 'bridge.self_update.apply'],
@@ -178,6 +179,22 @@ final class TakKa_WordPress_Bridge_V099_Operations
                 array_keys(self::DIRECT_ACTIONS),
                 array_keys(self::REST_ACTIONS)
             )),
+            'theme_file_patch' => [
+                'operation' => 'theme.file.patch',
+                'max_file_bytes' => 2097152,
+                'max_patches' => 32,
+                'single_patch' => ['find', 'replace', 'replace_all', 'expected_replacements'],
+                'atomic_multi_patch' => [
+                    'params' => ['path', 'patches', 'dry_run', 'expected_sha256', 'expected_plan_hash', 'expected_after_sha256', 'confirm_active', 'draft_id'],
+                    'preview' => 'dry_run=true returns before_sha256, after_sha256 and plan_hash without writing',
+                    'apply' => 'send identical patches with expected_sha256 and expected_plan_hash from preview; active-theme writes also require confirm_active=true',
+                    'all_or_nothing' => true,
+                ],
+                'recommended_flow' => ['theme.files.search or theme.file.read_range', 'theme.file.patch dry_run', 'theme.file.patch guarded apply'],
+                'temporary_php_required' => false,
+                'full_file_rewrite_required' => false,
+                'bounded_diff' => true,
+            ],
             'uploads_json' => ['path' => 'existing uploads-relative .json; no symlinks or traversal', 'max_bytes' => 1048576,
                 'write' => 'content is a JSON source string; preview then apply with expected_before_sha256, expected_plan_hash, confirm=true',
                 'previous_version' => 'read with version=previous; restore through the same guarded write flow'],

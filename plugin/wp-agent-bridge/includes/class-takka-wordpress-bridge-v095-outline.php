@@ -75,7 +75,11 @@ final class TakKa_WordPress_Bridge_V095_Outline
                 'total_lines' => $total,
             ]);
         }
-        $requested_end = isset($params['end_line']) ? max($start, (int) $params['end_line']) : $start + 199;
+        $max_lines = isset($params['max_lines']) ? max(1, min(500, (int) $params['max_lines'])) : null;
+        $requested_end = isset($params['end_line']) ? max($start, (int) $params['end_line']) : $start + ($max_lines ?? 200) - 1;
+        if ($max_lines !== null) {
+            $requested_end = min($requested_end, $start + $max_lines - 1);
+        }
         $end = min($total, min($requested_end, $start + 499));
         $selected = array_slice($lines, $start - 1, $end - $start + 1);
         $numbered = [];

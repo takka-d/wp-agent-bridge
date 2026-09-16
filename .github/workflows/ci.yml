@@ -99,6 +99,7 @@ jobs:
         run: |
           set -euo pipefail
           php tests/read-only-batch-test.php
+          php tests/theme-read-reliability-test.php
 
       - name: Integrity diagnostics regression
         shell: bash
