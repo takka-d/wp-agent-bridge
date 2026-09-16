@@ -131,7 +131,10 @@ try {
         || !preg_match('/^[a-f0-9]{64}$/', (string) ($preview['before_sha256'] ?? ''))
         || !preg_match('/^[a-f0-9]{64}$/', (string) ($preview['after_sha256'] ?? ''))
         || !preg_match('/^[a-f0-9]{64}$/', (string) ($preview['plan_hash'] ?? ''))) {
-        tp_fail('Atomic theme patch preview failed.');
+        tp_fail('Atomic theme patch preview failed: ' . wp_json_encode([
+            'outer_status' => $preview_outer['status'] ?? null,
+            'v099' => $preview_v099,
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
     }
     if (strlen((string) ($preview['diff'] ?? '')) > 12000 || empty($preview['diff_truncated'])) {
         tp_fail('Large minified theme patch diff was not bounded.');
@@ -158,7 +161,7 @@ try {
         || empty($apply['applied'])
         || empty($apply['side_effects'])
         || (string) ($apply['after_sha256'] ?? '') !== (string) $preview['after_sha256']) {
-        tp_fail('Atomic theme patch apply failed.');
+        tp_fail('Atomic theme patch apply failed: ' . wp_json_encode($apply_v099, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
     }
 
     $read_after = tp_legacy('theme.file.read', ['path' => $path]);
