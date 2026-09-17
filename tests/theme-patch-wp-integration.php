@@ -126,8 +126,9 @@ try {
         ]],
         'dry_run' => true,
     ]);
-    $bad_json = wp_json_encode($bad_outer, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-    if ((int) ($bad_outer['status'] ?? 0) !== 409
+    $bad_v099 = tp_v099($bad_outer);
+    $bad_json = wp_json_encode($bad_v099, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    if ((int) ($bad_v099['status'] ?? 0) !== 409
         || strpos((string) $bad_json, 'wpab_theme_patch_match_conflict') === false
         || strpos((string) $bad_json, 'whitespace_normalized_match_count') === false
         || strpos((string) $bad_json, 'approximate_candidates') === false
