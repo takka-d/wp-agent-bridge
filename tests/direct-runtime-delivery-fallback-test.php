@@ -4,14 +4,16 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__);
 $hardeningPath = $root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-hardening.php';
+$reconcilerPath = $root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-pending-reconciler.php';
 $identityPath = $root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-runtime-identity.php';
 $bootstrapPath = $root . '/plugin/wp-agent-bridge/takka-wordpress-bridge.php';
 
 $hardening = file_get_contents($hardeningPath);
+$reconciler = file_get_contents($reconcilerPath);
 $identity = file_get_contents($identityPath);
 $bootstrap = file_get_contents($bootstrapPath);
 
-foreach (compact('hardening', 'identity', 'bootstrap') as $name => $source) {
+foreach (compact('hardening', 'reconciler', 'identity', 'bootstrap') as $name => $source) {
     if (!is_string($source) || $source === '') {
         fwrite(STDERR, "Missing source: {$name}\n");
         exit(1);
@@ -42,6 +44,25 @@ foreach ([
 }
 
 foreach ([
+    "private const CRON_HOOK = 'takka_bridge_direct_reconcile_cron_v4'",
+    "add_action(self::CRON_HOOK, [self::class, 'run'], 20)",
+    "'pending_recovery_detail'",
+    "'executor-command-failed'",
+    "'executor-returned-without-result'",
+    "'target-command-outcome-missing'",
+    "'result-visible-pending-not-finalized'",
+    "'pending_recovery_terminal_observation'",
+    "'recovery_required' => true",
+    'TakKa_WordPress_Bridge_Direct_Runtime::command_inflight(',
+    'TakKa_WordPress_Bridge_Direct_Runtime::webhook($request)',
+] as $needle) {
+    if (strpos($reconciler, $needle) === false) {
+        fwrite(STDERR, "Detailed pending reconciler is missing: {$needle}\n");
+        exit(1);
+    }
+}
+
+foreach ([
     "'transport' => 'direct-github-webhook'",
     "'primary' => 'github-push-webhook'",
     "'fallback' => 'wp-cron-pending-reconcile'",
@@ -55,12 +76,18 @@ foreach ([
     }
 }
 
-if (strpos($bootstrap, ' * Version: 1.1.28') === false) {
-    fwrite(STDERR, "Plugin version was not bumped to 1.1.28.\n");
-    exit(1);
+foreach ([
+    ' * Version: 1.1.29',
+    "class-takka-wordpress-bridge-direct-pending-reconciler.php",
+    'TakKa_WordPress_Bridge_Direct_Pending_Reconciler::init()',
+] as $needle) {
+    if (strpos($bootstrap, $needle) === false) {
+        fwrite(STDERR, "Plugin bootstrap is missing 1.1.29 pending recovery marker: {$needle}\n");
+        exit(1);
+    }
 }
 
-foreach ([$hardeningPath, $identityPath, $bootstrapPath] as $path) {
+foreach ([$hardeningPath, $reconcilerPath, $identityPath, $bootstrapPath] as $path) {
     $source = file_get_contents($path);
     try {
         $tokens = token_get_all((string) $source, TOKEN_PARSE);

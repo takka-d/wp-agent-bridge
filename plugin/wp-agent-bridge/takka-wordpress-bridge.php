@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Agent Bridge
  * Description: Secure WordPress management bridge for ChatGPT using GitHub App connectivity, guarded writes, previews, and rollback.
- * Version: 1.1.28
+ * Version: 1.1.29
  * Author: TakKa
  * Requires at least: 6.9
  * Requires PHP: 7.4
@@ -84,6 +84,7 @@ require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-github.php
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-github-recovery.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-runtime.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-runtime-v2.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-pending-reconciler.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-webhook-loop-guard.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-media.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-media-auto-path.php';
@@ -133,6 +134,7 @@ TakKa_WordPress_Bridge_V099_Operations::init();
 TakKa_WordPress_Bridge_V099_Policy::init();
 TakKa_WordPress_Bridge_Direct_Runtime::init();
 TakKa_WordPress_Bridge_Direct_Runtime_V2::init();
+TakKa_WordPress_Bridge_Direct_Pending_Reconciler::init();
 TakKa_WordPress_Bridge_Direct_Webhook_Loop_Guard::init();
 TakKa_WordPress_Bridge_Direct_Media::init();
 TakKa_WordPress_Bridge_Direct_Media_Auto_Path::init();
