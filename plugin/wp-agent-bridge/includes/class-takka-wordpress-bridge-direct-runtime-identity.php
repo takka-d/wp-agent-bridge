@@ -47,6 +47,12 @@ final class TakKa_WordPress_Bridge_Direct_Runtime_Identity
             'schema' => 1,
             'status' => 'canonical',
             'transport' => 'direct-github-webhook',
+            'delivery' => [
+                'primary' => 'github-push-webhook',
+                'fallback' => 'wp-cron-pending-reconcile',
+                'same_transport' => true,
+                'fallback_interval_seconds' => 120,
+            ],
             'repository' => $repository,
             'runtime_branch' => $branch,
             'site_host' => $site_host,

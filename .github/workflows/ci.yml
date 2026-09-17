@@ -42,6 +42,12 @@ jobs:
           set -euo pipefail
           php tests/direct-atomic-bookkeeping-test.php
 
+      - name: Direct Runtime scheduled delivery fallback regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/direct-runtime-delivery-fallback-test.php
+
       - name: Direct Media pre-dispatch short-circuit regression
         shell: bash
         run: |
