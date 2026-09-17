@@ -80,7 +80,7 @@ if (!isset($restore_template['expected_current_revision_fields_hash'], $restore_
 }
 $rules = implode("\n", $catalog['command_contract']['rules'] ?? []);
 if (strpos($rules, 'read-only location hints') === false
-    || strpos($rules, 'Revision rollback covers title/content/excerpt') === false
+    || strpos($rules, 'explicit title/content/excerpt rollback') === false
     || strpos($rules, 'side_effects=null') === false) {
     prrg_fail('Post reliability command rules are incomplete.');
 }
