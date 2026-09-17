@@ -87,14 +87,25 @@ final class TakKa_WordPress_Bridge_V099_Response_Contract
         if (!array_key_exists('status', $data)) {
             $data['status'] = $status;
         }
+
+        $nested_error = empty($data['ok']) ? self::find_error_node($data, 0) : null;
         if (!array_key_exists('code', $data)) {
-            $data['code'] = null;
+            $data['code'] = is_array($nested_error) && is_string($nested_error['code'] ?? null)
+                ? $nested_error['code']
+                : null;
         }
         if (!array_key_exists('message', $data)) {
-            $data['message'] = null;
+            $data['message'] = is_array($nested_error) && is_string($nested_error['message'] ?? null)
+                ? $nested_error['message']
+                : null;
+        }
+        if (empty($data['ok']) && !array_key_exists('data', $data) && is_array($nested_error)) {
+            $data['data'] = isset($nested_error['data']) && is_array($nested_error['data'])
+                ? $nested_error['data']
+                : [];
         }
         if (!array_key_exists('side_effects', $data)) {
-            $data['side_effects'] = self::nested_side_effects($data);
+            $data['side_effects'] = self::nested_side_effects($data, $nested_error);
         }
         $data['response_contract_version'] = self::CONTRACT_VERSION;
         $rest->set_data($data);
@@ -138,6 +149,7 @@ final class TakKa_WordPress_Bridge_V099_Response_Contract
             'version' => self::CONTRACT_VERSION,
             'fields' => ['ok', 'operation', 'status', 'code', 'message', 'data|result', 'side_effects'],
             'error_http_status_matches_status' => true,
+            'nested_operation_errors_promoted' => true,
             'side_effects_values' => [true, false, null],
             'side_effects_null_means' => 'not_proven_by_operation_response',
             'wp_error_details_preserved_in_data' => true,
@@ -155,9 +167,32 @@ final class TakKa_WordPress_Bridge_V099_Response_Contract
             : '';
     }
 
-    private static function nested_side_effects(array $data)
+    private static function find_error_node(array $value, int $depth): ?array
+    {
+        if ($depth > 6) {
+            return null;
+        }
+        if (isset($value['code'], $value['message'])
+            && is_string($value['code'])
+            && is_string($value['message'])) {
+            return $value;
+        }
+        foreach (['data', 'result'] as $key) {
+            if (isset($value[$key]) && is_array($value[$key])) {
+                $found = self::find_error_node($value[$key], $depth + 1);
+                if ($found !== null) {
+                    return $found;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static function nested_side_effects(array $data, ?array $nested_error = null)
     {
         $candidates = [
+            $nested_error['data']['side_effects'] ?? null,
+            $nested_error['side_effects'] ?? null,
             $data['result']['data']['side_effects'] ?? null,
             $data['result']['side_effects'] ?? null,
             $data['data']['side_effects'] ?? null,
