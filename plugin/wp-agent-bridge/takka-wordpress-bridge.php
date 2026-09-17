@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Agent Bridge
  * Description: Secure WordPress management bridge for ChatGPT using GitHub App connectivity, guarded writes, previews, and rollback.
- * Version: 1.1.33
+ * Version: 1.1.34
  * Author: TakKa
  * Requires at least: 6.9
  * Requires PHP: 7.4
@@ -78,6 +78,10 @@ require_once __DIR__ . '/includes/class-takka-wordpress-bridge-uploads-json.php'
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v099-operations.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v099-policy.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-post-update-concurrency.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-post-content-diagnostics.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-post-revisions.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-post-revisions-pre-dispatch.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v099-response-contract.php';
 
 // Self-contained runtime. All GitHub App credentials remain on this WordPress
 // installation and normal runtime traffic goes directly between the user's own
@@ -97,6 +101,7 @@ require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-runtime-id
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-runtime-capabilities.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-runtime-guidance.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-post-concurrency-runtime-guidance.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-post-reliability-runtime-guidance.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-hardening.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-onboarding-guard.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-runtime-media-chunks.php';
@@ -138,6 +143,10 @@ TakKa_WordPress_Bridge_V098_Read_Batch::init();
 TakKa_WordPress_Bridge_V099_Operations::init();
 TakKa_WordPress_Bridge_V099_Policy::init();
 TakKa_WordPress_Bridge_Post_Update_Concurrency::init();
+TakKa_WordPress_Bridge_Post_Content_Diagnostics::init();
+TakKa_WordPress_Bridge_Post_Revisions::init();
+TakKa_WordPress_Bridge_Post_Revisions_Pre_Dispatch::init();
+TakKa_WordPress_Bridge_V099_Response_Contract::init();
 TakKa_WordPress_Bridge_Direct_Runtime::init();
 TakKa_WordPress_Bridge_Direct_Runtime_V2::init();
 TakKa_WordPress_Bridge_Direct_Invalid_Pending::init();
@@ -150,6 +159,7 @@ TakKa_WordPress_Bridge_Integrity::init();
 TakKa_WordPress_Bridge_Runtime_Capabilities::init();
 TakKa_WordPress_Bridge_Runtime_Guidance::init();
 TakKa_WordPress_Bridge_Post_Concurrency_Runtime_Guidance::init();
+TakKa_WordPress_Bridge_Post_Reliability_Runtime_Guidance::init();
 TakKa_WordPress_Bridge_V096_Media_Hook::init();
 TakKa_WordPress_Bridge_Direct_Hardening::init();
 TakKa_WordPress_Bridge_Direct_Onboarding_Guard::init();
