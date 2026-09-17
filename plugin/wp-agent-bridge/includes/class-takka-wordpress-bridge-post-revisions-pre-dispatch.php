@@ -46,15 +46,20 @@ final class TakKa_WordPress_Bridge_Post_Revisions_Pre_Dispatch
         // the deterministic route into a directly callable admin endpoint.
         $permission = TakKa_WordPress_Bridge_V099_Operations::permission();
         if (is_wp_error($permission)) {
-            return $permission;
+            return TakKa_WordPress_Bridge_V099_Response_Contract::normalize_operation($permission, [], $request);
         }
         if ($permission !== true) {
-            return new WP_Error('wpab_post_revision_internal_only', 'Revision operations are only callable through the signed Bridge operation path.', [
+            $denied = new WP_Error('wpab_post_revision_internal_only', 'Revision operations are only callable through the signed Bridge operation path.', [
                 'status' => 403,
                 'side_effects' => false,
             ]);
+            return TakKa_WordPress_Bridge_V099_Response_Contract::normalize_operation($denied, [], $request);
         }
 
-        return TakKa_WordPress_Bridge_Post_Revisions::dispatch(null, [], $request);
+        $handled = TakKa_WordPress_Bridge_Post_Revisions::dispatch(null, [], $request);
+        // A response returned from rest_pre_dispatch does not pass through
+        // rest_request_after_callbacks. Normalize it here so revision operations
+        // use the same deterministic response contract as ordinary v0.9.9 calls.
+        return TakKa_WordPress_Bridge_V099_Response_Contract::normalize_operation($handled, [], $request);
     }
 }
