@@ -4,16 +4,18 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__);
 $hardeningPath = $root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-hardening.php';
+$invalidPath = $root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-invalid-pending.php';
 $reconcilerPath = $root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-pending-reconciler.php';
 $identityPath = $root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-runtime-identity.php';
 $bootstrapPath = $root . '/plugin/wp-agent-bridge/takka-wordpress-bridge.php';
 
 $hardening = file_get_contents($hardeningPath);
+$invalid = file_get_contents($invalidPath);
 $reconciler = file_get_contents($reconcilerPath);
 $identity = file_get_contents($identityPath);
 $bootstrap = file_get_contents($bootstrapPath);
 
-foreach (compact('hardening', 'reconciler', 'identity', 'bootstrap') as $name => $source) {
+foreach (compact('hardening', 'invalid', 'reconciler', 'identity', 'bootstrap') as $name => $source) {
     if (!is_string($source) || $source === '') {
         fwrite(STDERR, "Missing source: {$name}\n");
         exit(1);
@@ -39,6 +41,23 @@ foreach ([
 ] as $needle) {
     if (strpos($hardening, $needle) === false) {
         fwrite(STDERR, "Direct Runtime scheduled recovery is missing: {$needle}\n");
+        exit(1);
+    }
+}
+
+foreach ([
+    "private const CRON_HOOK = 'takka_bridge_direct_reconcile_cron_v4'",
+    "add_action(self::CRON_HOOK, [self::class, 'run'], 1)",
+    "'wordpress-bridge/commands/invalid/'",
+    "'takka_bridge_pending_invalid_json'",
+    "'command_execution_finished' => false",
+    "'side_effects' => false",
+    'put_if_absent_or_identical(',
+    'delete_if_matches(',
+    "'invalid_pending_quarantine'",
+] as $needle) {
+    if (strpos($invalid, $needle) === false) {
+        fwrite(STDERR, "Invalid pending quarantine is missing: {$needle}\n");
         exit(1);
     }
 }
@@ -77,17 +96,19 @@ foreach ([
 }
 
 foreach ([
-    ' * Version: 1.1.29',
+    ' * Version: 1.1.30',
+    "class-takka-wordpress-bridge-direct-invalid-pending.php",
+    'TakKa_WordPress_Bridge_Direct_Invalid_Pending::init()',
     "class-takka-wordpress-bridge-direct-pending-reconciler.php",
     'TakKa_WordPress_Bridge_Direct_Pending_Reconciler::init()',
 ] as $needle) {
     if (strpos($bootstrap, $needle) === false) {
-        fwrite(STDERR, "Plugin bootstrap is missing 1.1.29 pending recovery marker: {$needle}\n");
+        fwrite(STDERR, "Plugin bootstrap is missing 1.1.30 pending recovery marker: {$needle}\n");
         exit(1);
     }
 }
 
-foreach ([$hardeningPath, $reconcilerPath, $identityPath, $bootstrapPath] as $path) {
+foreach ([$hardeningPath, $invalidPath, $reconcilerPath, $identityPath, $bootstrapPath] as $path) {
     $source = file_get_contents($path);
     try {
         $tokens = token_get_all((string) $source, TOKEN_PARSE);
