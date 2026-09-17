@@ -80,6 +80,7 @@ require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v099-policy.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-post-update-concurrency.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-post-content-diagnostics.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-post-revisions.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-post-revisions-pre-dispatch.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-v099-response-contract.php';
 
 // Self-contained runtime. All GitHub App credentials remain on this WordPress
@@ -144,6 +145,7 @@ TakKa_WordPress_Bridge_V099_Policy::init();
 TakKa_WordPress_Bridge_Post_Update_Concurrency::init();
 TakKa_WordPress_Bridge_Post_Content_Diagnostics::init();
 TakKa_WordPress_Bridge_Post_Revisions::init();
+TakKa_WordPress_Bridge_Post_Revisions_Pre_Dispatch::init();
 TakKa_WordPress_Bridge_V099_Response_Contract::init();
 TakKa_WordPress_Bridge_Direct_Runtime::init();
 TakKa_WordPress_Bridge_Direct_Runtime_V2::init();
