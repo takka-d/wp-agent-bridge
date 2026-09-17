@@ -105,8 +105,36 @@ try {
     if (!is_array($contract)
         || empty($contract['atomic_multi_patch']['all_or_nothing'])
         || ($contract['temporary_php_required'] ?? true) !== false
-        || ($contract['full_file_rewrite_required'] ?? true) !== false) {
+        || ($contract['full_file_rewrite_required'] ?? true) !== false
+        || (int) ($contract['plan_hash_version'] ?? 0) !== 2
+        || empty($contract['apply_match_verification']['automatic_with_v2_plan_hash'])
+        || empty($contract['match_conflict_diagnostics']['read_only'])
+        || ($contract['match_conflict_diagnostics']['never_auto_apply_approximate_match'] ?? false) !== true) {
         tp_fail('theme.file.patch catalog contract is incomplete.');
+    }
+
+    // An intentionally stale/incorrect target must still stop at 409, but now
+    // it should explain the mismatch without mutating the theme file. The exact
+    // token exists after whitespace normalization and as a bounded anchor.
+    $bad_outer = tp_operation('theme.file.patch', [
+        'path' => $path,
+        'patches' => [[
+            'label' => 'diagnostic mismatch',
+            'find' => "CHAIN_FRONT   ",
+            'replace' => 'SHOULD_NOT_WRITE',
+            'expected_replacements' => 1,
+        ]],
+        'dry_run' => true,
+    ]);
+    $bad_json = wp_json_encode($bad_outer, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    if ((int) ($bad_outer['status'] ?? 0) !== 409
+        || strpos((string) $bad_json, 'wpab_theme_patch_match_conflict') === false
+        || strpos((string) $bad_json, 'whitespace_normalized_match_count') === false
+        || strpos((string) $bad_json, 'approximate_candidates') === false
+        || strpos((string) $bad_json, 'same_theme_candidates') === false
+        || strpos((string) $bad_json, '"side_effects":false') === false
+        || file_get_contents(get_stylesheet_directory() . '/' . $path) !== $initial) {
+        tp_fail('Theme patch mismatch diagnostics were incomplete or mutated the file: ' . $bad_json);
     }
 
     $patches = [
@@ -128,13 +156,28 @@ try {
         || empty($preview['dry_run'])
         || (int) ($preview['patch_count'] ?? 0) !== 3
         || (int) ($preview['replacements'] ?? 0) !== 3
+        || (int) ($preview['plan_hash_version'] ?? 0) !== 2
+        || empty($preview['match_fingerprint_verified'])
+        || !empty($preview['approximate_matches_used_for_write'])
+        || count($preview['match_fingerprints'] ?? []) !== 3
         || !preg_match('/^[a-f0-9]{64}$/', (string) ($preview['before_sha256'] ?? ''))
         || !preg_match('/^[a-f0-9]{64}$/', (string) ($preview['after_sha256'] ?? ''))
-        || !preg_match('/^[a-f0-9]{64}$/', (string) ($preview['plan_hash'] ?? ''))) {
+        || !preg_match('/^[a-f0-9]{64}$/', (string) ($preview['plan_hash'] ?? ''))
+        || !preg_match('/^[a-f0-9]{64}$/', (string) ($preview['match_fingerprint_digest'] ?? ''))) {
         tp_fail('Atomic theme patch preview failed: ' . wp_json_encode([
             'outer_status' => $preview_outer['status'] ?? null,
             'v099' => $preview_v099,
         ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    }
+    foreach ($preview['match_fingerprints'] as $index => $match_row) {
+        $fingerprint = $match_row['fingerprints'][0] ?? null;
+        if (!is_array($fingerprint)
+            || !isset($fingerprint['match_offset'])
+            || !preg_match('/^[a-f0-9]{64}$/', (string) ($fingerprint['matched_text_sha256'] ?? ''))
+            || !preg_match('/^[a-f0-9]{64}$/', (string) ($fingerprint['before_context_sha256'] ?? ''))
+            || !preg_match('/^[a-f0-9]{64}$/', (string) ($fingerprint['after_context_sha256'] ?? ''))) {
+            tp_fail('Preview match fingerprint is incomplete at patch ' . $index . '.');
+        }
     }
     if (strlen((string) ($preview['diff'] ?? '')) > 12000 || empty($preview['diff_truncated'])) {
         tp_fail('Large minified theme patch diff was not bounded.');
@@ -160,6 +203,12 @@ try {
         || empty($apply['ok'])
         || empty($apply['applied'])
         || empty($apply['side_effects'])
+        || empty($apply['match_fingerprint_verified'])
+        || !empty($apply['legacy_plan_hash_accepted'])
+        || !empty($apply['approximate_matches_used_for_write'])
+        || (int) ($apply['plan_hash_version'] ?? 0) !== 2
+        || (string) ($apply['plan_hash'] ?? '') !== (string) $preview['plan_hash']
+        || (string) ($apply['match_fingerprint_digest'] ?? '') !== (string) $preview['match_fingerprint_digest']
         || (string) ($apply['after_sha256'] ?? '') !== (string) $preview['after_sha256']) {
         tp_fail('Atomic theme patch apply failed: ' . wp_json_encode($apply_v099, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
     }
