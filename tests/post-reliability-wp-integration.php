@@ -219,12 +219,10 @@ try {
     }
 
     // 4. Health separates installed plugin version from legacy API version.
-    $health_request = new WP_REST_Request('GET', '/takka-bridge/v1/health');
-    $health = rest_do_request($health_request);
-    if (is_wp_error($health)) {
-        pr_fail('Health request failed: ' . $health->get_error_message());
-    }
-    $health_data = rest_ensure_response($health)->get_data();
+    // Use the same signed deterministic operation path as production clients;
+    // the health endpoint itself is intentionally not an unsigned public read.
+    $health_v099 = pr_v099(pr_operation('health'));
+    $health_data = $health_v099['result']['data'] ?? null;
     if (!is_array($health_data)
         || ($health_data['plugin_version'] ?? '') !== '1.1.34'
         || !is_string($health_data['api_compatibility_version'] ?? null)
@@ -232,7 +230,7 @@ try {
         || ($health_data['bridge_version_semantics'] ?? '') !== 'legacy_api_compatibility_version'
         || !in_array('post_revision_inspection', $health_data['features'] ?? [], true)
         || !in_array('post_content_patch_match_diagnostics', $health_data['features'] ?? [], true)) {
-        pr_fail('Health version/reliability contract is incomplete: ' . wp_json_encode($health_data));
+        pr_fail('Health version/reliability contract is incomplete: ' . wp_json_encode($health_v099));
     }
 
     echo "Post reliability integration: OK\n";
