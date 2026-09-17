@@ -9,6 +9,7 @@ on:
       - 'tests/operation-policy-test.php'
       - 'tests/operation-router-wp-integration.php'
       - 'tests/theme-patch-wp-integration.php'
+      - 'tests/post-update-concurrency-wp-integration.php'
       - '.github/workflows/operation-router-integration.yml'
   push:
     branches: [main]
@@ -17,6 +18,7 @@ on:
       - 'tests/operation-policy-test.php'
       - 'tests/operation-router-wp-integration.php'
       - 'tests/theme-patch-wp-integration.php'
+      - 'tests/post-update-concurrency-wp-integration.php'
       - '.github/workflows/operation-router-integration.yml'
 
 permissions:
@@ -97,6 +99,10 @@ jobs:
                 fwrite(STDERR, "Atomic theme patch class is missing.\n");
                 exit(1);
             }
+            if (!class_exists("TakKa_WordPress_Bridge_Post_Update_Concurrency")) {
+                fwrite(STDERR, "Post metadata concurrency class is missing.\n");
+                exit(1);
+            }
             echo "Deterministic operation routes registered.\n";
           ' --path=/tmp/wpab-operation-test
 
@@ -111,3 +117,9 @@ jobs:
         run: |
           set -euo pipefail
           /tmp/wp eval-file "$GITHUB_WORKSPACE/tests/theme-patch-wp-integration.php" --path=/tmp/wpab-operation-test
+
+      - name: Post metadata concurrency regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/wp eval-file "$GITHUB_WORKSPACE/tests/post-update-concurrency-wp-integration.php" --path=/tmp/wpab-operation-test
