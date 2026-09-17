@@ -93,6 +93,12 @@ jobs:
           set -euo pipefail
           php tests/post-concurrency-runtime-guidance-test.php
 
+      - name: Post reliability runtime guidance regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/post-reliability-runtime-guidance-test.php
+
       - name: Deterministic operation policy regression
         shell: bash
         run: |
