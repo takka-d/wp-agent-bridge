@@ -95,15 +95,20 @@ foreach ([
     }
 }
 
+if (!preg_match('/^ \* Version: ([0-9]+\.[0-9]+\.[0-9]+)$/m', $bootstrap, $version_match)
+    || version_compare($version_match[1], '1.1.30', '<')) {
+    fwrite(STDERR, "Plugin bootstrap version predates pending recovery support.\n");
+    exit(1);
+}
+
 foreach ([
-    ' * Version: 1.1.30',
     "class-takka-wordpress-bridge-direct-invalid-pending.php",
     'TakKa_WordPress_Bridge_Direct_Invalid_Pending::init()',
     "class-takka-wordpress-bridge-direct-pending-reconciler.php",
     'TakKa_WordPress_Bridge_Direct_Pending_Reconciler::init()',
 ] as $needle) {
     if (strpos($bootstrap, $needle) === false) {
-        fwrite(STDERR, "Plugin bootstrap is missing 1.1.30 pending recovery marker: {$needle}\n");
+        fwrite(STDERR, "Plugin bootstrap is missing pending recovery marker: {$needle}\n");
         exit(1);
     }
 }
