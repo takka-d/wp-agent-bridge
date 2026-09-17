@@ -99,6 +99,12 @@ jobs:
           set -euo pipefail
           php tests/post-reliability-runtime-guidance-test.php
 
+      - name: Compound mutation runtime guidance regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/compound-runtime-guidance-test.php
+
       - name: Deterministic operation policy regression
         shell: bash
         run: |
