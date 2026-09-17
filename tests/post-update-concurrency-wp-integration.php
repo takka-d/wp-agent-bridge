@@ -70,6 +70,17 @@ function pc_v099(array $outer): array
     return $payload;
 }
 
+function pc_status(array $payload): int
+{
+    if (isset($payload['status']) && is_numeric($payload['status'])) {
+        return (int) $payload['status'];
+    }
+    if (isset($payload['data']['status']) && is_numeric($payload['data']['status'])) {
+        return (int) $payload['data']['status'];
+    }
+    return 0;
+}
+
 $post_id = wp_insert_post([
     'post_type' => 'post',
     'post_status' => 'draft',
@@ -141,7 +152,7 @@ try {
         'expected_field_hashes' => ['title' => $snapshot['field_hashes']['title']],
     ]));
     $stale_json = wp_json_encode($stale_title, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-    if ((int) ($stale_title['status'] ?? 0) !== 409
+    if (pc_status($stale_title) !== 409
         || strpos((string) $stale_json, 'wpab_post_update_field_conflict') === false
         || strpos((string) $stale_json, '"side_effects":false') === false
         || get_post($post_id)->post_title !== 'Title from chat A') {
@@ -165,8 +176,8 @@ try {
         'fields' => ['status' => 'pending'],
         'expected_state_hash' => $fresh_snapshot['state_hash'] ?? '',
     ]));
-    if ((int) ($state_stale['status'] ?? 0) !== 409 || get_post($post_id)->post_status !== 'draft') {
-        pc_fail('Stale whole-state update was not rejected.');
+    if (pc_status($state_stale) !== 409 || get_post($post_id)->post_status !== 'draft') {
+        pc_fail('Stale whole-state update was not rejected: ' . wp_json_encode($state_stale));
     }
 
     // Unsupported/complex fields need a coarse guard when field hashes are used.
@@ -175,9 +186,9 @@ try {
         'fields' => ['meta' => ['example' => 'value']],
         'expected_field_hashes' => ['title' => ($state_update['concurrency']['field_hashes']['title'] ?? '')],
     ]));
-    if ((int) ($unsupported['status'] ?? 0) !== 400
+    if (pc_status($unsupported) !== 400
         || strpos((string) wp_json_encode($unsupported), 'wpab_post_update_unsupported_field_guard') === false) {
-        pc_fail('Unsupported guarded field did not require a coarse guard.');
+        pc_fail('Unsupported guarded field did not require a coarse guard: ' . wp_json_encode($unsupported));
     }
 
     // Backward compatibility remains explicit rather than pretending an old
