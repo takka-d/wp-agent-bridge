@@ -11,6 +11,7 @@ on:
       - 'tests/theme-patch-wp-integration.php'
       - 'tests/post-update-concurrency-wp-integration.php'
       - 'tests/post-reliability-wp-integration.php'
+      - 'tests/post-compound-media-wp-integration.php'
       - '.github/workflows/operation-router-integration.yml'
   push:
     branches: [main]
@@ -21,6 +22,7 @@ on:
       - 'tests/theme-patch-wp-integration.php'
       - 'tests/post-update-concurrency-wp-integration.php'
       - 'tests/post-reliability-wp-integration.php'
+      - 'tests/post-compound-media-wp-integration.php'
       - '.github/workflows/operation-router-integration.yml'
 
 permissions:
@@ -99,7 +101,9 @@ jobs:
                 "TakKa_WordPress_Bridge_Post_Update_Concurrency",
                 "TakKa_WordPress_Bridge_Post_Content_Diagnostics",
                 "TakKa_WordPress_Bridge_Post_Revisions",
-                "TakKa_WordPress_Bridge_V099_Response_Contract"
+                "TakKa_WordPress_Bridge_V099_Response_Contract",
+                "TakKa_WordPress_Bridge_Post_Compound_Change",
+                "TakKa_WordPress_Bridge_Media_Upload_Assign"
             ] as $class) {
                 if (!class_exists($class)) {
                     fwrite(STDERR, "Missing deterministic reliability class: {$class}\n");
@@ -132,3 +136,9 @@ jobs:
         run: |
           set -euo pipefail
           /tmp/wp eval-file "$GITHUB_WORKSPACE/tests/post-reliability-wp-integration.php" --path=/tmp/wpab-operation-test
+
+      - name: Compound post and media regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/wp eval-file "$GITHUB_WORKSPACE/tests/post-compound-media-wp-integration.php" --path=/tmp/wpab-operation-test
