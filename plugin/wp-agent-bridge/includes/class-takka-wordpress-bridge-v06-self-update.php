@@ -7,6 +7,8 @@ if (!defined('ABSPATH')) {
 final class TakKa_WordPress_Bridge_V06_Self_Update
 {
     private const OPTION_BACKUPS = 'takka_bridge_self_update_backups';
+    private const LEGACY_BOOTSTRAP = 'takka-wordpress-bridge.php';
+    private const GENERIC_BOOTSTRAP = 'wp-agent-bridge.php';
     private const MAX_FILES = 200;
     private const MAX_BYTES = 2097152;
     private const MAX_BACKUPS = 3;
@@ -106,6 +108,22 @@ final class TakKa_WordPress_Bridge_V06_Self_Update
         }
 
         self::store_backup($backup);
+
+        $migration = self::migrate_generic_identity_if_needed($manifest['files']);
+        if (is_wp_error($migration)) {
+            $restore = self::restore_record($backup);
+            return new WP_Error(
+                'takka_bridge_self_update_identity_migration_failed',
+                'Self-update wrote the new plugin but could not migrate the active plugin identity.',
+                [
+                    'status' => 500,
+                    'migration_error' => $migration->get_error_message(),
+                    'rollback_error' => is_wp_error($restore) ? $restore->get_error_message() : null,
+                    'backup_id' => $backup['id'],
+                ]
+            );
+        }
+
         return rest_ensure_response([
             'ok' => true,
             'from_version' => $current,
@@ -237,11 +255,12 @@ final class TakKa_WordPress_Bridge_V06_Self_Update
                 'actual' => $actual_manifest_sha,
             ]);
         }
-        if (!isset($files['takka-wordpress-bridge.php'])) {
-            return new WP_Error('takka_bridge_self_update_bootstrap_missing', 'Manifest must contain takka-wordpress-bridge.php.', ['status' => 400]);
+        $bootstrap_path = self::manifest_bootstrap_path($files);
+        if ($bootstrap_path === null) {
+            return new WP_Error('takka_bridge_self_update_bootstrap_missing', 'Manifest must contain a supported WP Agent Bridge bootstrap file.', ['status' => 400]);
         }
 
-        $version = self::header_version($files['takka-wordpress-bridge.php']['data']);
+        $version = self::header_version($files[$bootstrap_path]['data']);
         if ($version === '') {
             return new WP_Error('takka_bridge_self_update_version_missing', 'Could not read Version from plugin bootstrap.', ['status' => 400]);
         }
@@ -472,10 +491,100 @@ final class TakKa_WordPress_Bridge_V06_Self_Update
         return is_array($backups) ? array_values(array_filter($backups, 'is_array')) : [];
     }
 
+    private static function manifest_bootstrap_path(array $files): ?string
+    {
+        if (isset($files[self::GENERIC_BOOTSTRAP])) {
+            return self::GENERIC_BOOTSTRAP;
+        }
+        if (isset($files[self::LEGACY_BOOTSTRAP])) {
+            return self::LEGACY_BOOTSTRAP;
+        }
+        return null;
+    }
+
+    private static function migrate_generic_identity_if_needed(array $files)
+    {
+        if (!isset($files[self::GENERIC_BOOTSTRAP])) {
+            return true;
+        }
+
+        global $wpdb;
+        if (!isset($wpdb) || !is_object($wpdb) || !isset($wpdb->options)) {
+            return new WP_Error('takka_bridge_self_update_identity_db', 'WordPress options table is unavailable.', ['status' => 500]);
+        }
+
+        $like = method_exists($wpdb, 'esc_like') ? $wpdb->esc_like('takka_') . '%' : 'takka\_%';
+        $query = method_exists($wpdb, 'prepare')
+            ? $wpdb->prepare("SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s", $like)
+            : '';
+        $names = $query !== '' ? $wpdb->get_col($query) : [];
+        if (is_array($names)) {
+            $missing = new stdClass();
+            foreach ($names as $old_name) {
+                if (!is_string($old_name) || strpos($old_name, 'takka_') !== 0) {
+                    continue;
+                }
+                if (strpos($old_name, 'takka_bridge_') === 0) {
+                    $new_name = 'wpab_' . substr($old_name, strlen('takka_bridge_'));
+                } elseif (strpos($old_name, 'takka_direct_') === 0) {
+                    $new_name = 'wpab_direct_' . substr($old_name, strlen('takka_direct_'));
+                } else {
+                    $new_name = 'wpab_' . substr($old_name, strlen('takka_'));
+                }
+                $value = get_option($old_name, $missing);
+                if ($value === $missing) {
+                    continue;
+                }
+                if (get_option($new_name, $missing) === $missing) {
+                    add_option($new_name, $value, '', false);
+                } else {
+                    update_option($new_name, $value, false);
+                }
+            }
+        }
+
+        $legacy_plugin = 'wp-agent-bridge/' . self::LEGACY_BOOTSTRAP;
+        $generic_plugin = 'wp-agent-bridge/' . self::GENERIC_BOOTSTRAP;
+
+        $active = get_option('active_plugins', []);
+        if (is_array($active)) {
+            $changed = false;
+            foreach ($active as $index => $plugin) {
+                if ($plugin === $legacy_plugin) {
+                    $active[$index] = $generic_plugin;
+                    $changed = true;
+                }
+            }
+            if ($changed) {
+                update_option('active_plugins', array_values(array_unique($active)), false);
+            }
+        }
+
+        if (function_exists('get_site_option') && function_exists('update_site_option')) {
+            $network = get_site_option('active_sitewide_plugins', []);
+            if (is_array($network) && isset($network[$legacy_plugin])) {
+                $timestamp = $network[$legacy_plugin];
+                unset($network[$legacy_plugin]);
+                $network[$generic_plugin] = $timestamp;
+                update_site_option('active_sitewide_plugins', $network);
+            }
+        }
+
+        return true;
+    }
+
     private static function current_version(): string
     {
-        $bootstrap = @file_get_contents(self::root() . '/takka-wordpress-bridge.php');
-        return is_string($bootstrap) ? self::header_version($bootstrap) : '';
+        foreach ([self::GENERIC_BOOTSTRAP, self::LEGACY_BOOTSTRAP] as $filename) {
+            $bootstrap = @file_get_contents(self::root() . '/' . $filename);
+            if (is_string($bootstrap)) {
+                $version = self::header_version($bootstrap);
+                if ($version !== '') {
+                    return $version;
+                }
+            }
+        }
+        return '';
     }
 
     private static function header_version(string $bootstrap): string
