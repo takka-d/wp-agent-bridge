@@ -240,7 +240,9 @@ final class TakKa_WordPress_Bridge_V06_Self_Update_Source
         }
 
         $plugin_root = $extract_root . '/' . $prefix . '/plugin/wp-agent-bridge';
-        if (!is_dir($plugin_root) || !is_file($plugin_root . '/takka-wordpress-bridge.php')) {
+        $has_bootstrap = is_file($plugin_root . '/takka-wordpress-bridge.php')
+            || is_file($plugin_root . '/wp-agent-bridge.php');
+        if (!is_dir($plugin_root) || !$has_bootstrap) {
             self::remove_tree($extract_root);
             return new WP_Error('takka_bridge_self_update_source_plugin_root', 'Extracted archive does not contain the expected plugin tree.', ['status' => 409]);
         }
