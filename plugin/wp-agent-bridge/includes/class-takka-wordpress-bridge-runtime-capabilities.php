@@ -124,6 +124,17 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'site_host' => $site_host,
                 'pending_path' => 'wordpress-bridge/commands/pending/<id>.json',
                 'result_path' => 'wordpress-bridge/results/<id>.json',
+                'bootstrap' => [
+                    'explicit_ref_required_for_runtime_io' => true,
+                    'default_branch_read_mirror' => true,
+                    'default_branch_is_bootstrap_only' => true,
+                    'mutations_require_runtime_branch' => true,
+                    'canonical_connection_path' => 'wordpress-bridge/RUNTIME_CONNECTION.json',
+                    'connection_alias_path' => 'RUNTIME_CONNECTION.json',
+                    'canonical_capabilities_path' => 'wordpress-bridge/RUNTIME_CAPABILITIES.json',
+                    'capabilities_alias_path' => 'RUNTIME_CAPABILITIES.json',
+                    'wrong_branch_404_is_access_denial' => false,
+                ],
                 'pending_recovery' => [
                     'max_age_seconds' => 86400,
                     'age_sources' => ['created_at', 'id_timestamp', 'github_path_commit_history'],
@@ -165,6 +176,8 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'request_inflight_guard' => true,
                 'local_result_journal' => true,
                 'atomic_command_bookkeeping' => true,
+                'default_branch_bootstrap_mirror' => true,
+                'runtime_root_bootstrap_aliases' => true,
             ],
             'routes' => [
                 'operations' => $operation_catalog,
@@ -381,6 +394,7 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'media_integrity_409' => 'Inspect reported chunk/file integrity and replace only the mismatched chunk. Reuse the same upload_id and chunk index.',
                 'media_base64_truncation' => 'Do not repeat the same inline Base64 command. Re-run prepare-media.py and publish connector-safe chunk commands whose JSON stays below 16384 bytes.',
                 'runtime_branch_race_409_422' => 'Check for the matching result first. If absent, retry only the Git publication step against the latest runtime head; do not replay the WordPress side effect.',
+                'bootstrap_404' => 'Check the exact repository, path and branch/ref. A file read with no ref can hit the default branch; correct the tuple once before treating 404 as a runtime bootstrap problem. Do not interpret a wrong-branch 404 as repository access denial.',
                 'unknown_operation' => 'Read this catalog. Do not enumerate unrelated connectors or fall back to WPVibe.',
             ],
             'media_routing' => [
@@ -408,9 +422,10 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'preferred_atomic_git_data' => ['create_blob', 'create_tree', 'create_commit', 'update_ref'],
                 'discovery_rule' => 'Do not rediscover connector capabilities when the required write action is already visible in the current task/session.',
                 'question_rule' => 'Do not ask the user to identify or confirm repository/files/routes that the connected tools can inspect directly.',
+                'branch_rule' => 'Pass the canonical runtime branch/ref explicitly on every runtime read and write. Never rely on the repository default branch for command publication.',
             ],
             'fast_path' => [
-                'runtime_resolution' => 'Read RUNTIME_CONNECTION.json only when canonical runtime is not already verified or a migration signal appears.',
+                'runtime_resolution' => 'Use the exact repository plus explicit runtime branch/ref. Read wordpress-bridge/RUNTIME_CONNECTION.json when canonical runtime is not already verified or a migration signal appears. Root RUNTIME_CONNECTION.json and default-branch mirrors are bootstrap aliases only; never publish commands there.',
                 'capability_resolution' => 'Read this file before issuing capability probe commands or searching source code for known Bridge routes/actions.',
                 'operation_router' => 'For common tasks, use the single /takka-v099/v1/operate route and an allowlisted operation from routes.operations. This is preferred over reconstructing versioned internal routes.',
                 'command_chaining' => 'When atomic_command_bookkeeping=true, a visible matching result means result creation, completed-command storage, and pending deletion are already durable in the same commit. The next pending command may be submitted immediately without waiting for later bookkeeping commits.',
