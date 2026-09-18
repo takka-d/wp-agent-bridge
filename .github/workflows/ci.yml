@@ -90,6 +90,12 @@ jobs:
           set -euo pipefail
           php tests/runtime-guidance-test.php
 
+      - name: Classic-safe runtime bootstrap regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/runtime-bootstrap-test.php
+
       - name: Post metadata concurrency runtime guidance regression
         shell: bash
         run: |

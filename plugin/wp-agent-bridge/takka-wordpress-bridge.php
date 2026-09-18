@@ -2,7 +2,7 @@
 /**
  * Plugin Name: WP Agent Bridge
  * Description: Secure WordPress management bridge for ChatGPT using GitHub App connectivity, guarded writes, previews, and rollback.
- * Version: 1.1.35
+ * Version: 1.1.36
  * Author: TakKa
  * Requires at least: 6.9
  * Requires PHP: 7.4
@@ -100,6 +100,7 @@ require_once __DIR__ . '/includes/class-takka-wordpress-bridge-integrity.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-runtime-identity.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-runtime-capabilities.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-runtime-guidance.php';
+require_once __DIR__ . '/includes/class-takka-wordpress-bridge-runtime-bootstrap.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-post-concurrency-runtime-guidance.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-post-reliability-runtime-guidance.php';
 require_once __DIR__ . '/includes/class-takka-wordpress-bridge-direct-hardening.php';
@@ -158,6 +159,7 @@ TakKa_WordPress_Bridge_Direct_Media_Pre_Dispatch::init();
 TakKa_WordPress_Bridge_Integrity::init();
 TakKa_WordPress_Bridge_Runtime_Capabilities::init();
 TakKa_WordPress_Bridge_Runtime_Guidance::init();
+TakKa_WordPress_Bridge_Runtime_Bootstrap::init();
 TakKa_WordPress_Bridge_Post_Concurrency_Runtime_Guidance::init();
 TakKa_WordPress_Bridge_Post_Reliability_Runtime_Guidance::init();
 TakKa_WordPress_Bridge_V096_Media_Hook::init();
