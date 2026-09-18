@@ -42,12 +42,12 @@ jobs:
         run: |
           set -euo pipefail
           plugin='plugin/wp-agent-bridge'
-          ! grep -R -F 'takka-note.com' "$plugin"
+          ! grep -R -F 'wp-agent-bridge-note.com' "$plugin"
           ! grep -R -F 'wp-agent-bridge-runtime/wordpress-bridge-' "$plugin"
           ! grep -R -E 'invite_collaborator|repository_invitations|/collaborators/' "$plugin"
-          ! grep -R -F 'takka-d/chatgpt-data' "$plugin" --exclude='class-takka-wordpress-bridge-direct-runtime-identity.php' --exclude='class-takka-wordpress-bridge-runtime-guidance.php'
-          grep -q "operator_relay.*false" "$plugin/includes/class-takka-wordpress-bridge-direct-runtime-identity.php"
-          grep -q "ownership.*user-owned" "$plugin/includes/class-takka-wordpress-bridge-direct-runtime-identity.php"
+          ! grep -R -F 'legacy operator-owned runtime repository' "$plugin" --exclude='class-wp-agent-bridge-direct-runtime-identity.php' --exclude='class-wp-agent-bridge-runtime-guidance.php'
+          grep -q "operator_relay.*false" "$plugin/includes/class-wp-agent-bridge-direct-runtime-identity.php"
+          grep -q "ownership.*user-owned" "$plugin/includes/class-wp-agent-bridge-direct-runtime-identity.php"
 
       - name: Install WP-CLI and clean WordPress 7.1
         shell: bash
@@ -153,9 +153,9 @@ jobs:
               'installation_id' => 888,
               'runtime_branch' => 'wp-agent-bridge-runtime',
           ];
-          update_option('takka_bridge_github_connection_v1', $legacy, false);
-          TakKa_WordPress_Bridge_Direct_Onboarding_Guard::preserve_legacy_connection();
-          $backup = get_option('takka_bridge_legacy_connection_backup_v1', null);
+          update_option('wpab_github_connection_v1', $legacy, false);
+          WP_Agent_Bridge_Direct_Onboarding_Guard::preserve_legacy_connection();
+          $backup = get_option('wpab_legacy_connection_backup_v1', null);
           if (!is_array($backup) || ($backup['repository'] ?? '') !== 'operator-old/runtime') {
               m_fail('Legacy connection was not preserved before Direct Runtime setup.');
           }
@@ -163,10 +163,10 @@ jobs:
           $key = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
           $pem = '';
           if ($key === false || !openssl_pkey_export($key, $pem)) m_fail('Could not create test App key.');
-          if (!TakKa_WordPress_Bridge_Direct_GitHub::store_app_credentials(123, 'wpab-migration-app', $pem, str_repeat('w', 40))) {
+          if (!WP_Agent_Bridge_Direct_GitHub::store_app_credentials(123, 'wpab-migration-app', $pem, str_repeat('w', 40))) {
               m_fail('Could not store Direct App credentials.');
           }
-          if (!TakKa_WordPress_Bridge_Direct_Runtime::store_connection([
+          if (!WP_Agent_Bridge_Direct_Runtime::store_connection([
               'installation_id' => 42,
               'repository_id' => 99,
               'repository' => 'test-user/runtime-repo',
@@ -178,12 +178,12 @@ jobs:
           // The legacy onboarding prototype deletes this option after the new
           // Direct connection is committed. The migration guard must restore it
           // locally so rollback remains possible until explicit cutover cleanup.
-          delete_option('takka_bridge_github_connection_v1');
+          delete_option('wpab_github_connection_v1');
           $installed_request = new WP_REST_Request('GET', '/wp-agent-bridge-onboarding/v2/installed');
           $installed_response = new WP_REST_Response(['ok' => true], 200);
-          TakKa_WordPress_Bridge_Direct_Onboarding_Guard::after_direct_setup($installed_response, [], $installed_request);
+          WP_Agent_Bridge_Direct_Onboarding_Guard::after_direct_setup($installed_response, [], $installed_request);
 
-          $restored = get_option('takka_bridge_github_connection_v1', null);
+          $restored = get_option('wpab_github_connection_v1', null);
           if (!is_array($restored) || ($restored['repository'] ?? '') !== 'operator-old/runtime') {
               m_fail('Legacy local rollback mapping was not restored after Direct setup.');
           }
@@ -216,10 +216,10 @@ jobs:
 
           $agents = $GLOBALS['migration_files']['AGENTS.md']['content'];
           foreach ([
-              '/takka-v099/v1/operate',
+              '/wpab-v099/v1/operate',
               'RUNTIME_CAPABILITIES.json',
               'media.upload.inline',
-              'Do not switch normal WordPress work to WPVibe, `takka-d/chatgpt-data`',
+              'Do not switch normal WordPress work to WPVibe, `legacy operator-owned runtime repository`',
           ] as $needle) {
               if (strpos($agents, $needle) === false) m_fail('AGENTS.md missing canonical guidance marker: ' . $needle);
           }
@@ -227,21 +227,21 @@ jobs:
           // Identity and guidance sync are independently idempotent: a second
           // pass of both owners must not perform any GitHub write.
           $puts_before = $GLOBALS['migration_puts'];
-          $second_identity = TakKa_WordPress_Bridge_Direct_Runtime_Identity::sync();
+          $second_identity = WP_Agent_Bridge_Direct_Runtime_Identity::sync();
           if (is_wp_error($second_identity)) m_fail('Second identity sync failed: ' . $second_identity->get_error_message());
-          $second_guidance = TakKa_WordPress_Bridge_Runtime_Guidance::sync();
+          $second_guidance = WP_Agent_Bridge_Runtime_Guidance::sync();
           if (is_wp_error($second_guidance)) m_fail('Second guidance sync failed: ' . $second_guidance->get_error_message());
           if ($GLOBALS['migration_puts'] !== $puts_before) m_fail('Second identity/guidance sync performed unnecessary GitHub writes.');
 
           // Guard must run before the destructive legacy onboarding callback.
-          $guard_priority = has_action('admin_post_takka_bridge_connect_github', [TakKa_WordPress_Bridge_Direct_Onboarding_Guard::class, 'block_unsafe_reconnect']);
-          $onboarding_priority = has_action('admin_post_takka_bridge_connect_github', [TakKa_WordPress_Bridge_Onboarding::class, 'handle_connect']);
+          $guard_priority = has_action('admin_post_wpab_connect_github', [WP_Agent_Bridge_Direct_Onboarding_Guard::class, 'block_unsafe_reconnect']);
+          $onboarding_priority = has_action('admin_post_wpab_connect_github', [WP_Agent_Bridge_Onboarding::class, 'handle_connect']);
           if ($guard_priority !== 1 || $onboarding_priority === false || $guard_priority >= $onboarding_priority) {
               m_fail('Reconnect guard does not run before onboarding connection reset.');
           }
 
           do_action('rest_api_init');
-          $tombstone = new WP_REST_Request('POST', '/takka-bridge-onboarding/v1/complete');
+          $tombstone = new WP_REST_Request('POST', '/wp-agent-bridge-onboarding/v1/complete');
           $tombstone_response = rest_do_request($tombstone);
           if ($tombstone_response->get_status() !== 410) {
               m_fail('Retired operator onboarding callback did not return 410.');
