@@ -87,19 +87,19 @@ jobs:
             wp_set_current_user(1);
             do_action("rest_api_init");
             $routes = rest_get_server()->get_routes();
-            foreach (["/takka-v099/v1/operate", "/takka-v098/v1/manage", "/takka-v084/v1/manage"] as $route) {
+            foreach (["/wpab-v099/v1/operate", "/wpab-v098/v1/manage", "/wpab-v084/v1/manage"] as $route) {
                 if (!isset($routes[$route])) {
                     fwrite(STDERR, "Missing deterministic dependency route: {$route}\n");
                     exit(1);
                 }
             }
             foreach ([
-                "TakKa_WordPress_Bridge_V099_Policy",
-                "TakKa_WordPress_Bridge_Theme_Patch",
-                "TakKa_WordPress_Bridge_Post_Update_Concurrency",
-                "TakKa_WordPress_Bridge_Post_Content_Diagnostics",
-                "TakKa_WordPress_Bridge_Post_Revisions",
-                "TakKa_WordPress_Bridge_V099_Response_Contract"
+                "WP_Agent_Bridge_V099_Policy",
+                "WP_Agent_Bridge_Theme_Patch",
+                "WP_Agent_Bridge_Post_Update_Concurrency",
+                "WP_Agent_Bridge_Post_Content_Diagnostics",
+                "WP_Agent_Bridge_Post_Revisions",
+                "WP_Agent_Bridge_V099_Response_Contract"
             ] as $class) {
                 if (!class_exists($class)) {
                     fwrite(STDERR, "Missing deterministic reliability class: {$class}\n");
