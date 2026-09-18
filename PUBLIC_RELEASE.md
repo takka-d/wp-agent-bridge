@@ -2,13 +2,13 @@
 
 ## Candidate and evidence
 
-Read the development version from plugin/wp-agent-bridge/takka-wordpress-bridge.php and the pinned source/manifest from UPDATE_MANIFEST.json. The Stable tag in plugin/wp-agent-bridge/readme.txt and published release artifacts describe the public distribution. Do not infer a stable release from a merge or a successful production self-update. Never replace an old release artifact with new bytes.
+Read the development version from plugin/wp-agent-bridge/wp-agent-bridge.php and the pinned source/manifest from UPDATE_MANIFEST.json. The Stable tag in plugin/wp-agent-bridge/readme.txt and published release artifacts describe the public distribution. Do not infer a stable release from a merge or a successful production self-update. Never replace an old release artifact with new bytes.
 
 A release assessment must name the exact commit, artifact hash, test results, live scenarios, and known limitations. Historical green checks are not current evidence.
 
 ## Architecture and identity
 
-Normal operation uses the user's private runtime repository and site-specific signed GitHub App webhook. No operator relay, per-command Actions worker, old Bridge Key, takka-d/chatgpt-data, or WPVibe is the normal path.
+Normal operation uses the user's private runtime repository and site-specific signed GitHub App webhook. No operator relay, per-command Actions worker, old Bridge Key, legacy operator-owned runtime repository, or WPVibe is the normal path.
 
 Verify wordpress-bridge/RUNTIME_CONNECTION.json: status=canonical, transport=direct-github-webhook, ownership=user-owned, operator_relay=false, and matching repository/branch/site_host. Reuse the catalog for the verified connection/version. Generated AGENTS.md, WEBHOOK_RUNTIME.md, RUNTIME_CAPABILITIES.json and packaged documentation must agree.
 

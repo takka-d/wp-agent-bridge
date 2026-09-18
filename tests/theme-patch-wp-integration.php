@@ -15,18 +15,18 @@ function tp_fail(string $message): void
 }
 
 $secret = str_repeat('b', 64);
-update_option('takka_bridge_secret', $secret, false);
-update_option('takka_bridge_user_id', 1, false);
+update_option('wpab_secret', $secret, false);
+update_option('wpab_user_id', 1, false);
 
 function tp_operation(string $operation, array $params = []): array
 {
-    $secret = (string) get_option('takka_bridge_secret');
+    $secret = (string) get_option('wpab_secret');
     $inner = [
         'request_id' => 'theme-patch-' . substr(hash('sha256', $operation . '|' . wp_json_encode($params)), 0, 32),
         'action' => 'rest.call',
         'params' => [
             'method' => 'POST',
-            'route' => '/takka-v099/v1/operate',
+            'route' => '/wpab-v099/v1/operate',
             'query' => [],
             'body' => ['operation' => $operation, 'params' => $params],
         ],
@@ -37,13 +37,13 @@ function tp_operation(string $operation, array $params = []): array
     ];
     $body = wp_json_encode($transport, JSON_UNESCAPED_SLASHES);
     $timestamp = (string) time();
-    $outer = '/takka-bridge/v1/execute';
+    $outer = '/wp-agent-bridge/v1/execute';
     $signature = hash_hmac('sha256', $timestamp . "\nPOST\n" . $outer . "\n" . hash('sha256', $body), $secret);
 
     $request = new WP_REST_Request('POST', $outer);
     $request->set_header('content-type', 'application/json');
-    $request->set_header('X-TakKa-Timestamp', $timestamp);
-    $request->set_header('X-TakKa-Signature', $signature);
+    $request->set_header('X-WPAB-Timestamp', $timestamp);
+    $request->set_header('X-WPAB-Signature', $signature);
     $request->set_body($body);
     $response = rest_do_request($request);
     if (is_wp_error($response)) {
@@ -62,10 +62,10 @@ function tp_operation(string $operation, array $params = []): array
 
 function tp_legacy(string $action, array $params)
 {
-    $request = new WP_REST_Request('POST', '/takka-bridge/v1/execute');
+    $request = new WP_REST_Request('POST', '/wp-agent-bridge/v1/execute');
     $request->set_param('action', $action);
     $request->set_param('params', $params);
-    return TakKa_WordPress_Bridge::execute($request);
+    return WP_Agent_Bridge::execute($request);
 }
 
 function tp_v099(array $outer): array

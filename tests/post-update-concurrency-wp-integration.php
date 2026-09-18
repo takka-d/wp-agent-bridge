@@ -15,19 +15,19 @@ function pc_fail(string $message): void
 }
 
 $secret = str_repeat('c', 64);
-update_option('takka_bridge_secret', $secret, false);
-update_option('takka_bridge_user_id', 1, false);
+update_option('wpab_secret', $secret, false);
+update_option('wpab_user_id', 1, false);
 
 function pc_operation(string $operation, array $params = [], ?string $request_id = null): array
 {
-    $secret = (string) get_option('takka_bridge_secret');
+    $secret = (string) get_option('wpab_secret');
     $request_id = $request_id ?: 'post-concurrency-' . substr(hash('sha256', $operation . '|' . wp_json_encode($params) . '|' . wp_generate_uuid4()), 0, 32);
     $inner = [
         'request_id' => $request_id,
         'action' => 'rest.call',
         'params' => [
             'method' => 'POST',
-            'route' => '/takka-v099/v1/operate',
+            'route' => '/wpab-v099/v1/operate',
             'query' => [],
             'body' => ['operation' => $operation, 'params' => $params],
         ],
@@ -38,13 +38,13 @@ function pc_operation(string $operation, array $params = [], ?string $request_id
     ];
     $body = wp_json_encode($transport, JSON_UNESCAPED_SLASHES);
     $timestamp = (string) time();
-    $outer = '/takka-bridge/v1/execute';
+    $outer = '/wp-agent-bridge/v1/execute';
     $signature = hash_hmac('sha256', $timestamp . "\nPOST\n" . $outer . "\n" . hash('sha256', $body), $secret);
 
     $request = new WP_REST_Request('POST', $outer);
     $request->set_header('content-type', 'application/json');
-    $request->set_header('X-TakKa-Timestamp', $timestamp);
-    $request->set_header('X-TakKa-Signature', $signature);
+    $request->set_header('X-WPAB-Timestamp', $timestamp);
+    $request->set_header('X-WPAB-Signature', $signature);
     $request->set_body($body);
     $response = rest_do_request($request);
     if (is_wp_error($response)) {

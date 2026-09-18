@@ -22,7 +22,7 @@ final class WP_Error
 function is_wp_error($value): bool { return $value instanceof WP_Error; }
 function wp_json_encode($value, $flags = 0) { return json_encode($value, $flags); }
 
-require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v098-read-batch.php';
+require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-v098-read-batch.php';
 
 function fail_test(string $message): void
 {
@@ -32,7 +32,7 @@ function fail_test(string $message): void
 
 function batch_private_method(string $name): ReflectionMethod
 {
-    $method = new ReflectionMethod('TakKa_WordPress_Bridge_V098_Read_Batch', $name);
+    $method = new ReflectionMethod('WP_Agent_Bridge_V098_Read_Batch', $name);
     $method->setAccessible(true);
     return $method;
 }
@@ -88,7 +88,7 @@ foreach ([
     'rest.call',
 ] as $blocked_action) {
     $blocked = $validate->invoke(null, ['action' => $blocked_action, 'params' => []], 1);
-    if (!is_wp_error($blocked) || $blocked->get_error_code() !== 'takka_bridge_read_batch_blocked_action') {
+    if (!is_wp_error($blocked) || $blocked->get_error_code() !== 'wpab_read_batch_blocked_action') {
         fail_test('Mutating, generic, or non-approved action was accepted: ' . $blocked_action);
     }
 }
@@ -97,7 +97,7 @@ $oversized = $validate->invoke(null, [
     'action' => 'workspace.file.search',
     'params' => ['query' => str_repeat('x', 262200)],
 ], 2);
-if (!is_wp_error($oversized) || $oversized->get_error_code() !== 'takka_bridge_read_batch_params') {
+if (!is_wp_error($oversized) || $oversized->get_error_code() !== 'wpab_read_batch_params') {
     fail_test('Oversized operation params were not rejected.');
 }
 

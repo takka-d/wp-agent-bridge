@@ -9,7 +9,7 @@
 - テスター本人のGitHub、ChatGPT、WordPressを使う。
 - HTTPSのWordPress REST APIへGitHub Webhookから到達できること。
 - GitHub上にprivate repositoryを1個作れること。
-- 既存のWP Agent Bridge / TakKa WordPress Bridgeが入っている場合はfresh installテストを中止する。
+- 既存のWP Agent Bridge / WP Agent Bridge WordPress Bridgeが入っている場合はfresh installテストを中止する。
 - token、private key、Webhook secret、Cookie、nonce等を第三者へ共有しない。
 
 ## 1. WordPressへプラグインを入れる

@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 define('ABSPATH', __DIR__ . '/');
 
-require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v099-operations.php';
-require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-runtime-capabilities.php';
+require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-v099-operations.php';
+require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-runtime-capabilities.php';
 
 function fail_test(string $message): void
 {
@@ -13,7 +13,7 @@ function fail_test(string $message): void
     exit(1);
 }
 
-$catalog = TakKa_WordPress_Bridge_Runtime_Capabilities::catalog(
+$catalog = WP_Agent_Bridge_Runtime_Capabilities::catalog(
     '1.1.16',
     'owner/runtime-repo',
     'wp-agent-bridge-runtime',
@@ -70,7 +70,7 @@ if (empty($catalog['features']['workspace'])
     fail_test('Expected feature flags are missing.');
 }
 $operations = $catalog['routes']['operations'] ?? [];
-if (($operations['route'] ?? null) !== '/takka-v099/v1/operate'
+if (($operations['route'] ?? null) !== '/wpab-v099/v1/operate'
     || !in_array('post.get', $operations['operations'] ?? [], true)
     || !in_array('post.content.read_range', $operations['operations'] ?? [], true)
     || !in_array('media.upload.inline', $operations['operations'] ?? [], true)
@@ -81,7 +81,7 @@ if (($operations['route'] ?? null) !== '/takka-v099/v1/operate'
     fail_test('Deterministic operation router metadata mismatch.');
 }
 $post_content = $catalog['routes']['post_content'] ?? [];
-if (($post_content['route'] ?? null) !== '/takka-v084/v1/manage'
+if (($post_content['route'] ?? null) !== '/wpab-v084/v1/manage'
     || !in_array('post.content.inspect', $post_content['read_actions'] ?? [], true)
     || !in_array('post.content.search', $post_content['read_actions'] ?? [], true)
     || !in_array('post.content.read.range', $post_content['read_actions'] ?? [], true)
@@ -90,14 +90,14 @@ if (($post_content['route'] ?? null) !== '/takka-v084/v1/manage'
     fail_test('Post-content routing metadata mismatch.');
 }
 $workspace = $catalog['routes']['workspace'] ?? [];
-if (($workspace['route'] ?? null) !== '/takka-v097/v1/manage'
+if (($workspace['route'] ?? null) !== '/wpab-v097/v1/manage'
     || !in_array('workspace.file.read.range', $workspace['actions'] ?? [], true)
     || !in_array('workspace.file.patch', $workspace['actions'] ?? [], true)
     || ($workspace['limits']['max_file_bytes'] ?? null) !== 2097152) {
     fail_test('Workspace capability metadata mismatch.');
 }
 $batch = $catalog['routes']['readonly_batch'] ?? [];
-if (($batch['route'] ?? null) !== '/takka-v098/v1/manage'
+if (($batch['route'] ?? null) !== '/wpab-v098/v1/manage'
     || ($batch['action'] ?? null) !== 'readonly.batch'
     || ($batch['limits']['max_operations'] ?? null) !== 12
     || !in_array('post.content.read.range', $batch['rest_actions'] ?? [], true)
@@ -108,7 +108,7 @@ if (($batch['route'] ?? null) !== '/takka-v098/v1/manage'
     fail_test('Read-only batch capability metadata mismatch.');
 }
 $contract = $catalog['command_contract'] ?? [];
-if (($contract['preferred_common_task_route'] ?? null) !== '/takka-v099/v1/operate'
+if (($contract['preferred_common_task_route'] ?? null) !== '/wpab-v099/v1/operate'
     || (($contract['preferred_common_task_command']['type'] ?? null) !== 'rest')
     || (($contract['templates']['post_get_edit_context']['params']['query']['context'] ?? null) !== 'edit')
     || (($contract['templates']['media_chunk_upload']['route'] ?? null) !== '/wp-agent-bridge-media/v1/upload-chunk')) {
@@ -157,7 +157,7 @@ if (strpos((string) ($catalog['fast_path']['runtime_resolution'] ?? ''), 'explic
     || strpos((string) ($catalog['fast_path']['runtime_resolution'] ?? ''), 'bootstrap aliases only') === false) {
     fail_test('Classic-safe runtime resolution guidance is missing.');
 }
-if (strpos((string) ($catalog['fast_path']['operation_router'] ?? ''), '/takka-v099/v1/operate') === false) {
+if (strpos((string) ($catalog['fast_path']['operation_router'] ?? ''), '/wpab-v099/v1/operate') === false) {
     fail_test('Operation-router fast path guidance is missing.');
 }
 $post_read_guidance = (string) ($catalog['fast_path']['post_content_read'] ?? '');
@@ -187,5 +187,5 @@ if (!is_string($json)
 echo "runtime-capabilities-test: ok\n";
 
 require_once __DIR__ . '/runtime-sync-fixture.php';
-verify_runtime_sync('TakKa_WordPress_Bridge_Runtime_Capabilities', 'takka_bridge_runtime_capabilities_synced_version', ['wordpress-bridge/RUNTIME_CAPABILITIES.json']);
+verify_runtime_sync('WP_Agent_Bridge_Runtime_Capabilities', 'wpab_runtime_capabilities_synced_version', ['wordpress-bridge/RUNTIME_CAPABILITIES.json']);
 echo "same-version runtime sync: ok\n";

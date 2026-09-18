@@ -17,7 +17,7 @@ class WP_Error {
 }
 function is_wp_error($value) { return $value instanceof WP_Error; }
 
-final class TakKa_WordPress_Bridge_Direct_GitHub
+final class WP_Agent_Bridge_Direct_GitHub
 {
     public static string $branch = 'wp-agent-bridge-runtime';
     public static string $ref;
@@ -155,16 +155,16 @@ function assert_true($condition, string $message): void {
     }
 }
 
-require __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-runtime.php';
+require __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-direct-runtime.php';
 
 $pendingPath = 'wordpress-bridge/commands/pending/atomic-test.json';
 $resultPath = 'wordpress-bridge/results/atomic-test.json';
 $completedPath = 'wordpress-bridge/commands/completed/atomic-test.json';
 $commandRaw = "{\"id\":\"atomic-test\"}\n";
 $resultJson = "{\"id\":\"atomic-test\",\"result\":{\"ok\":true}}\n";
-$pendingSha = TakKa_WordPress_Bridge_Direct_GitHub::reset($pendingPath, $commandRaw);
+$pendingSha = WP_Agent_Bridge_Direct_GitHub::reset($pendingPath, $commandRaw);
 
-$method = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'finalize_command_atomic');
+$method = new ReflectionMethod(WP_Agent_Bridge_Direct_Runtime::class, 'finalize_command_atomic');
 $method->setAccessible(true);
 $result = $method->invoke(
     null,
@@ -181,35 +181,35 @@ $result = $method->invoke(
 
 assert_true(is_array($result), 'atomic finalization must succeed after a branch race');
 assert_true(($result['attempts'] ?? null) === 2, 'branch conflict must be retried against the new head');
-assert_true(TakKa_WordPress_Bridge_Direct_GitHub::$ref_updates === 2, 'test must exercise one failed and one successful ref update');
-assert_true(TakKa_WordPress_Bridge_Direct_GitHub::$successful_ref_updates === 1, 'bookkeeping itself must move the runtime branch only once');
-assert_true(TakKa_WordPress_Bridge_Direct_GitHub::$blob_creates === 0, 'bookkeeping must not issue separate blob creation requests');
+assert_true(WP_Agent_Bridge_Direct_GitHub::$ref_updates === 2, 'test must exercise one failed and one successful ref update');
+assert_true(WP_Agent_Bridge_Direct_GitHub::$successful_ref_updates === 1, 'bookkeeping itself must move the runtime branch only once');
+assert_true(WP_Agent_Bridge_Direct_GitHub::$blob_creates === 0, 'bookkeeping must not issue separate blob creation requests');
 
-$finalCommit = TakKa_WordPress_Bridge_Direct_GitHub::$commits[TakKa_WordPress_Bridge_Direct_GitHub::$ref];
-$finalTree = TakKa_WordPress_Bridge_Direct_GitHub::$trees[$finalCommit['tree']];
+$finalCommit = WP_Agent_Bridge_Direct_GitHub::$commits[WP_Agent_Bridge_Direct_GitHub::$ref];
+$finalTree = WP_Agent_Bridge_Direct_GitHub::$trees[$finalCommit['tree']];
 assert_true(!isset($finalTree[$pendingPath]), 'pending command must be removed in the same final tree');
 assert_true(isset($finalTree[$resultPath]), 'result must exist in the final tree');
 assert_true(isset($finalTree[$completedPath]), 'completed command must exist in the final tree');
 assert_true($finalTree[$completedPath] === $pendingSha, 'completed must reuse the exact verified pending blob');
 assert_true(isset($finalTree['wordpress-bridge/workspace/external.txt']), 'retry must preserve the concurrent unrelated branch change');
-assert_true(TakKa_WordPress_Bridge_Direct_GitHub::$blobs[$finalTree[$resultPath]] === $resultJson, 'result content must be exact');
-assert_true(TakKa_WordPress_Bridge_Direct_GitHub::$blobs[$finalTree[$completedPath]] === $commandRaw, 'completed command content must be exact');
+assert_true(WP_Agent_Bridge_Direct_GitHub::$blobs[$finalTree[$resultPath]] === $resultJson, 'result content must be exact');
+assert_true(WP_Agent_Bridge_Direct_GitHub::$blobs[$finalTree[$completedPath]] === $commandRaw, 'completed command content must be exact');
 
-$verify = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'verify_atomic_finalization');
+$verify = new ReflectionMethod(WP_Agent_Bridge_Direct_Runtime::class, 'verify_atomic_finalization');
 $verify->setAccessible(true);
 assert_true($verify->invoke(null, 'token', 'owner/runtime', $resultPath, $resultJson, $completedPath, $commandRaw, $pendingPath) === true,
     'durable atomic bookkeeping must verify as one coherent state');
 
 // A changed pending file must never be deleted or archived as the old command.
-$pendingSha = TakKa_WordPress_Bridge_Direct_GitHub::reset($pendingPath, $commandRaw);
+$pendingSha = WP_Agent_Bridge_Direct_GitHub::reset($pendingPath, $commandRaw);
 $changedBlob = str_repeat('9', 40);
-TakKa_WordPress_Bridge_Direct_GitHub::$blobs[$changedBlob] = '{"id":"replacement"}';
-TakKa_WordPress_Bridge_Direct_GitHub::$trees[str_repeat('b', 40)][$pendingPath] = $changedBlob;
+WP_Agent_Bridge_Direct_GitHub::$blobs[$changedBlob] = '{"id":"replacement"}';
+WP_Agent_Bridge_Direct_GitHub::$trees[str_repeat('b', 40)][$pendingPath] = $changedBlob;
 $conflict = $method->invoke(null, 'token', 'owner/runtime', $pendingPath, $pendingSha,
     $resultPath, $resultJson, $completedPath, $commandRaw, 'atomic-test');
-assert_true(is_wp_error($conflict) && $conflict->get_error_code() === 'takka_direct_bookkeeping_pending_conflict',
+assert_true(is_wp_error($conflict) && $conflict->get_error_code() === 'wpab_direct_bookkeeping_pending_conflict',
     'a changed pending command must be rejected before publication');
-assert_true(TakKa_WordPress_Bridge_Direct_GitHub::$ref_updates === 0,
+assert_true(WP_Agent_Bridge_Direct_GitHub::$ref_updates === 0,
     'pending mismatch must not update the branch');
 
 echo "direct atomic bookkeeping: OK\n";

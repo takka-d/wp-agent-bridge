@@ -6,7 +6,7 @@ ChatGPTからWordPressの記事・ページ・設定などを更新するため�
 
 ## 現在の配布状態
 
-- 開発版の正確なバージョンは `plugin/wp-agent-bridge/takka-wordpress-bridge.php`、更新対象のソースと照合値は `UPDATE_MANIFEST.json` を参照してください。
+- 開発版の正確なバージョンは `plugin/wp-agent-bridge/wp-agent-bridge.php`、更新対象のソースと照合値は `UPDATE_MANIFEST.json` を参照してください。
 - 公開安定版は `plugin/wp-agent-bridge/readme.txt` の Stable tag と公開リリースを参照してください。mainへのマージや本番検証だけでは公開安定版を更新しません。
 - 実行する操作は、接続先が生成した `wordpress-bridge/RUNTIME_CAPABILITIES.json` を優先します。
 
@@ -53,7 +53,7 @@ GitHub Appは利用者自身のGitHubアカウントに作成し、対象のpriv
 - 通常運用で運営者所有のGitHub Organization、private repository、WordPress、relay serverの資源を使用しない。
 - runtime command/result、記事本文、WordPress設定等を運営者側へ送信・保存しない。
 - GitHub Appのprivate keyとWebhook secretは、接続先WordPress内へAES-256-GCMで暗号化して保存する。
-- 通常のWordPress操作にGitHub Actions、旧Bridge Key、`takka-d/chatgpt-data`、WPVibeを使用しない。
+- 通常のWordPress操作にGitHub Actions、旧Bridge Key、`legacy operator-owned runtime repository`、WPVibeを使用しない。
 
 ## 導入
 

@@ -11,4 +11,4 @@ Import or upload `wp-agent-bridge-codex-helper-0.1.0.zip` as a plugin in a suppo
 After installation, the WordPress site still needs WP Agent Bridge configured separately, and Codex still needs access to the user's intended GitHub connection.
 
 Source: https://github.com/takka-d/wp-agent-bridge
-Guide: https://takka-note.com/wp-agent-bridge/
+Guide: https://github.com/takka-d/wp-agent-bridge

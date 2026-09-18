@@ -3,13 +3,13 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
-$bootstrap = file_get_contents($root . '/plugin/wp-agent-bridge/takka-wordpress-bridge.php');
-$compat = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v095-compat.php');
-$outline = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v095-outline.php');
-$html = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v095-html.php');
-$classic = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v095-classic.php');
-$capabilities = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-runtime-capabilities.php');
-$guidance = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-runtime-guidance.php');
+$bootstrap = file_get_contents($root . '/plugin/wp-agent-bridge/wp-agent-bridge.php');
+$compat = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-wp-agent-bridge-v095-compat.php');
+$outline = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-wp-agent-bridge-v095-outline.php');
+$html = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-wp-agent-bridge-v095-html.php');
+$classic = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-wp-agent-bridge-v095-classic.php');
+$capabilities = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-wp-agent-bridge-runtime-capabilities.php');
+$guidance = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-wp-agent-bridge-runtime-guidance.php');
 
 foreach (compact('bootstrap', 'compat', 'outline', 'html', 'classic', 'capabilities', 'guidance') as $name => $value) {
     if (!is_string($value) || $value === '') {
@@ -19,11 +19,11 @@ foreach (compact('bootstrap', 'compat', 'outline', 'html', 'classic', 'capabilit
 }
 
 $must_boot = [
-    'class-takka-wordpress-bridge-v095-outline.php',
-    'class-takka-wordpress-bridge-v095-html.php',
-    'class-takka-wordpress-bridge-v095-classic.php',
-    'class-takka-wordpress-bridge-v095-compat.php',
-    'TakKa_WordPress_Bridge_V095_Compat::init()',
+    'class-wp-agent-bridge-v095-outline.php',
+    'class-wp-agent-bridge-v095-html.php',
+    'class-wp-agent-bridge-v095-classic.php',
+    'class-wp-agent-bridge-v095-compat.php',
+    'WP_Agent_Bridge_V095_Compat::init()',
 ];
 foreach ($must_boot as $needle) {
     if (strpos($bootstrap, $needle) === false) {
@@ -62,12 +62,12 @@ foreach (['wp_safe_remote_get', 'same_origin', "'cookies' => []", 'DOMDocument',
         exit(1);
     }
 }
-if (strpos($html, 'takka_bridge_v095_cross_origin') === false) {
+if (strpos($html, 'wpab_v095_cross_origin') === false) {
     fwrite(STDERR, "cross-origin guard missing\n");
     exit(1);
 }
 
-foreach (['takka_bridge_v095_classic_drafts', 'wpab_classic_preview', 'switch_theme', 'previous_theme', 'Cannot discard a currently active classic theme'] as $needle) {
+foreach (['wpab_v095_classic_drafts', 'wpab_classic_preview', 'switch_theme', 'previous_theme', 'Cannot discard a currently active classic theme'] as $needle) {
     if (strpos($classic, $needle) === false) {
         fwrite(STDERR, "classic theme surface missing {$needle}\n");
         exit(1);

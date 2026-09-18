@@ -15,18 +15,18 @@ function op_integration_fail(string $message): void
 }
 
 $secret = str_repeat('a', 64);
-update_option('takka_bridge_secret', $secret, false);
-update_option('takka_bridge_user_id', 1, false);
+update_option('wpab_secret', $secret, false);
+update_option('wpab_user_id', 1, false);
 
 function op_integration_call(string $operation, array $params = []): array
 {
-    $secret = (string) get_option('takka_bridge_secret');
+    $secret = (string) get_option('wpab_secret');
     $inner = [
         'request_id' => 'integration-' . substr(hash('sha256', $operation . '|' . wp_json_encode($params)), 0, 32),
         'action' => 'rest.call',
         'params' => [
             'method' => 'POST',
-            'route' => '/takka-v099/v1/operate',
+            'route' => '/wpab-v099/v1/operate',
             'query' => [],
             'body' => ['operation' => $operation, 'params' => $params],
         ],
@@ -37,13 +37,13 @@ function op_integration_call(string $operation, array $params = []): array
     ];
     $body = wp_json_encode($transport, JSON_UNESCAPED_SLASHES);
     $timestamp = (string) time();
-    $outer = '/takka-bridge/v1/execute';
+    $outer = '/wp-agent-bridge/v1/execute';
     $signature = hash_hmac('sha256', $timestamp . "\nPOST\n" . $outer . "\n" . hash('sha256', $body), $secret);
 
     $request = new WP_REST_Request('POST', $outer);
     $request->set_header('content-type', 'application/json');
-    $request->set_header('X-TakKa-Timestamp', $timestamp);
-    $request->set_header('X-TakKa-Signature', $signature);
+    $request->set_header('X-WPAB-Timestamp', $timestamp);
+    $request->set_header('X-WPAB-Signature', $signature);
     $request->set_body($body);
     $response = rest_do_request($request);
     if (is_wp_error($response)) {
@@ -97,7 +97,7 @@ $created_test_posts = [];
 try {
     // Exercise the real Direct Runtime command adapter, not just a hand-built
     // signed envelope. One operation command must cause one outer dispatch.
-    $runtime_execute = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'execute_command');
+    $runtime_execute = new ReflectionMethod(WP_Agent_Bridge_Direct_Runtime::class, 'execute_command');
     $runtime_execute->setAccessible(true);
     $unexpected_dispatches = 0;
     $observe_dispatch = static function ($response) use (&$unexpected_dispatches) {
@@ -105,7 +105,7 @@ try {
         return $response;
     };
     add_filter('rest_pre_dispatch', $observe_dispatch, -999, 1);
-    foreach (['/takka-bridge/v1/execute', '/wp/v2/posts/1?context=edit', '/wp/v2/posts/1#fragment'] as $bad_route) {
+    foreach (['/wp-agent-bridge/v1/execute', '/wp/v2/posts/1?context=edit', '/wp/v2/posts/1#fragment'] as $bad_route) {
         $bad = $runtime_execute->invoke(null, ['type' => 'rest', 'method' => 'POST', 'route' => $bad_route], 'invalid-route');
         if (!empty($bad['ok']) || ($bad['status'] ?? null) !== 400) {
             op_integration_fail('Invalid/recursive route did not fail before dispatch.');
@@ -285,7 +285,7 @@ try {
     // versioned routes the caller must rediscover.
     $catalog_outer = op_integration_call('catalog');
     $catalog = op_integration_v099_payload($catalog_outer);
-    if (($catalog['route'] ?? null) !== '/takka-v099/v1/operate'
+    if (($catalog['route'] ?? null) !== '/wpab-v099/v1/operate'
         || empty($catalog['query_must_be_object'])
         || ($catalog['arbitrary_route_allowed'] ?? null) !== false
         || ($catalog['arbitrary_action_allowed'] ?? null) !== false
@@ -506,7 +506,7 @@ try {
     ]));
     if (empty($restored['verified']) || file_get_contents($json_file) !== $json_before) op_integration_fail('Guarded JSON restoration failed.');
     wp_set_current_user(0);
-    $unauthorized = TakKa_WordPress_Bridge_Uploads_JSON::execute('uploads.json.read', ['path' => $json_relative]);
+    $unauthorized = WP_Agent_Bridge_Uploads_JSON::execute('uploads.json.read', ['path' => $json_relative]);
     wp_set_current_user(1);
     if (!is_wp_error($unauthorized) || $unauthorized->get_error_data()['status'] !== 403) op_integration_fail('JSON permission check failed.');
     unlink($json_file);

@@ -13,7 +13,7 @@ TARGET_VERSION = "1.1.7"
 TARGET_COMMIT = "9a034f443441112d862762eb13898071d7016c6f"
 TARGET_MANIFEST = "293223ed5597062fcf7e4ac8635d632b22a615d9d49092ff4e5c618bb0900d13"
 TARGET_FILE_COUNT = 72
-MAIN = "takka-wordpress-bridge.php"
+MAIN = "wp-agent-bridge.php"
 
 
 def sha256(data: bytes) -> str:

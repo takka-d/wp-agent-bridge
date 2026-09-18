@@ -16,14 +16,14 @@ function home_url($path = '/') { return 'https://' . $GLOBALS['sync_host'] . $pa
 function wp_parse_url($url, $component = -1) { return parse_url($url, $component); }
 function wp_json_encode($value, $flags = 0) { return json_encode($value, $flags); }
 function is_wp_error($value) { return false; }
-final class TakKa_WordPress_Bridge_Direct_Runtime {
+final class WP_Agent_Bridge_Direct_Runtime {
     public const RUNTIME_BRANCH = 'wp-agent-bridge-runtime';
     public static function connection() {
         return ['installation_id' => 1, 'repository_id' => 2,
             'repository' => 'owner/runtime-repo', 'runtime_branch' => self::RUNTIME_BRANCH];
     }
 }
-final class TakKa_WordPress_Bridge_Direct_GitHub {
+final class WP_Agent_Bridge_Direct_GitHub {
     public static function installation_token($installation, $repository) { return 'test'; }
     public static function get_text_file($token, $repo, $branch, $path) {
         $GLOBALS['sync_reads']++;

@@ -42,7 +42,7 @@ final class WP_REST_Request
     public function set_header(string $name, string $value): void { $this->headers[strtolower($name)] = $value; }
 }
 
-require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v099-policy.php';
+require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-v099-policy.php';
 
 function fail_test(string $message): void
 {
@@ -52,13 +52,13 @@ function fail_test(string $message): void
 
 function request_for(string $operation, array $params = []): WP_REST_Request
 {
-    $request = new WP_REST_Request('POST', '/takka-v099/v1/operate');
+    $request = new WP_REST_Request('POST', '/wpab-v099/v1/operate');
     $request->set_body(json_encode(['operation' => $operation, 'params' => $params], JSON_UNESCAPED_SLASHES));
     return $request;
 }
 
 $post_get = request_for('post.get', ['post_id' => 719]);
-$result = TakKa_WordPress_Bridge_V099_Policy::apply(null, [], $post_get);
+$result = WP_Agent_Bridge_V099_Policy::apply(null, [], $post_get);
 if ($result !== null) fail_test('post.get normalization unexpectedly returned a response.');
 $post_get_json = json_decode($post_get->get_body(), true);
 $fields = $post_get_json['params']['query']['_fields'] ?? '';
@@ -70,13 +70,13 @@ $post_get_content = request_for('post.get', [
     'post_id' => 719,
     'query' => ['_fields' => 'id,title,content'],
 ]);
-$blocked = TakKa_WordPress_Bridge_V099_Policy::apply(null, [], $post_get_content);
+$blocked = WP_Agent_Bridge_V099_Policy::apply(null, [], $post_get_content);
 if (!is_wp_error($blocked) || $blocked->get_error_code() !== 'wpab_v099_post_get_content_blocked') {
     fail_test('post.get content request was not blocked.');
 }
 
 foreach (['content.raw', 'id,content.rendered', 'id content', ['id', 'content.raw']] as $selector) {
-    $blocked = TakKa_WordPress_Bridge_V099_Policy::apply(null, [], request_for('post.get', [
+    $blocked = WP_Agent_Bridge_V099_Policy::apply(null, [], request_for('post.get', [
         'post_id' => 719, 'query' => ['_fields' => $selector],
     ]));
     if (!is_wp_error($blocked) || $blocked->get_error_code() !== 'wpab_v099_post_get_content_blocked') {
@@ -85,21 +85,21 @@ foreach (['content.raw', 'id,content.rendered', 'id content', ['id', 'content.ra
 }
 foreach (['', ' , ', []] as $selector) {
     $request = request_for('post.get', ['post_id' => 719, 'query' => ['_fields' => $selector]]);
-    $result = TakKa_WordPress_Bridge_V099_Policy::apply(null, [], $request);
+    $result = WP_Agent_Bridge_V099_Policy::apply(null, [], $request);
     $normalized = json_decode($request->get_body(), true);
     if ($result !== null || empty($normalized['params']['query']['_fields'])) {
         fail_test('Empty _fields disabled metadata filtering.');
     }
 }
 foreach ([false, 42, ['id', 42]] as $selector) {
-    $result = TakKa_WordPress_Bridge_V099_Policy::apply(null, [], request_for('post.get', [
+    $result = WP_Agent_Bridge_V099_Policy::apply(null, [], request_for('post.get', [
         'post_id' => 719, 'query' => ['_fields' => $selector],
     ]));
     if (!is_wp_error($result)) fail_test('Malformed _fields was not rejected.');
 }
 
 $post_update = request_for('post.update', ['post_id' => 719, 'fields' => ['content' => '<p>unsafe rewrite</p>']]);
-$blocked = TakKa_WordPress_Bridge_V099_Policy::apply(null, [], $post_update);
+$blocked = WP_Agent_Bridge_V099_Policy::apply(null, [], $post_update);
 if (!is_wp_error($blocked) || $blocked->get_error_code() !== 'wpab_v099_content_requires_guarded_patch') {
     fail_test('post.update content rewrite was not blocked.');
 }
@@ -111,7 +111,7 @@ $inline = request_for('media.upload.inline', [
     'expected_bytes' => strlen($binary),
     'expected_sha256' => hash('sha256', $binary),
 ]);
-$ok = TakKa_WordPress_Bridge_V099_Policy::apply(null, [], $inline);
+$ok = WP_Agent_Bridge_V099_Policy::apply(null, [], $inline);
 if ($ok !== null) fail_test('Valid inline media was blocked.');
 
 $bad_sha = request_for('media.upload.inline', [
@@ -119,7 +119,7 @@ $bad_sha = request_for('media.upload.inline', [
     'data_b64' => base64_encode($binary),
     'expected_sha256' => str_repeat('0', 64),
 ]);
-$blocked = TakKa_WordPress_Bridge_V099_Policy::apply(null, [], $bad_sha);
+$blocked = WP_Agent_Bridge_V099_Policy::apply(null, [], $bad_sha);
 if (!is_wp_error($blocked) || $blocked->get_error_code() !== 'wpab_v099_inline_media_sha_mismatch') {
     fail_test('Inline media SHA mismatch was not blocked.');
 }
@@ -128,7 +128,7 @@ $large = request_for('media.upload.inline', [
     'filename' => 'large.png',
     'data_b64' => base64_encode(str_repeat('A', 1048577)),
 ]);
-$blocked = TakKa_WordPress_Bridge_V099_Policy::apply(null, [], $large);
+$blocked = WP_Agent_Bridge_V099_Policy::apply(null, [], $large);
 if (!is_wp_error($blocked) || $blocked->get_error_code() !== 'wpab_v099_inline_media_use_staged') {
     fail_test('Oversized inline media was not routed away from inline transport.');
 }
@@ -140,7 +140,7 @@ $batch = request_for('readonly.batch', [
         ['action' => 'site.icon.get', 'params' => []],
     ],
 ]);
-$result = TakKa_WordPress_Bridge_V099_Policy::apply(null, [], $batch);
+$result = WP_Agent_Bridge_V099_Policy::apply(null, [], $batch);
 if ($result !== null) fail_test('readonly.batch alias normalization unexpectedly returned a response.');
 $batch_json = json_decode($batch->get_body(), true);
 $actions = array_map(static function ($item) { return $item['action'] ?? ''; }, $batch_json['params']['operations'] ?? []);
@@ -151,7 +151,7 @@ if ($actions !== ['post.content.read.range', 'workspace.file.read.range', 'site.
 $unsupported = request_for('readonly.batch', [
     'operations' => [['operation' => 'post.update', 'params' => []]],
 ]);
-$blocked = TakKa_WordPress_Bridge_V099_Policy::apply(null, [], $unsupported);
+$blocked = WP_Agent_Bridge_V099_Policy::apply(null, [], $unsupported);
 if (!is_wp_error($blocked) || $blocked->get_error_code() !== 'wpab_v099_batch_unsupported') {
     fail_test('Mutation slipped into deterministic readonly.batch mapping.');
 }

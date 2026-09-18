@@ -20,7 +20,7 @@ The current normal transport is self-contained:
 
 `ChatGPT -> user-owned private runtime repository -> site-specific GitHub App signed Webhook -> user's WordPress -> same runtime repository -> ChatGPT`
 
-Normal runtime traffic does not pass through an operator-owned relay, operator-owned runtime repository, per-command GitHub Actions worker, WPVibe, or `takka-d/chatgpt-data`.
+Normal runtime traffic does not pass through an operator-owned relay, operator-owned runtime repository, per-command GitHub Actions worker, WPVibe, or `legacy operator-owned runtime repository`.
 
 ### Direct GitHub Webhook authentication
 

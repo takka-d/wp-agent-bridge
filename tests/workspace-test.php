@@ -21,7 +21,7 @@ final class WP_Error
 }
 function is_wp_error($value): bool { return $value instanceof WP_Error; }
 
-require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v097-workspace.php';
+require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-v097-workspace.php';
 
 function fail_test(string $message): void
 {
@@ -31,7 +31,7 @@ function fail_test(string $message): void
 
 function workspace_private_method(string $name): ReflectionMethod
 {
-    $method = new ReflectionMethod('TakKa_WordPress_Bridge_V097_Workspace', $name);
+    $method = new ReflectionMethod('WP_Agent_Bridge_V097_Workspace', $name);
     $method->setAccessible(true);
     return $method;
 }

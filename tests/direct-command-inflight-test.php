@@ -59,41 +59,41 @@ function assert_true($condition, string $message): void {
     }
 }
 
-require __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-runtime.php';
+require __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-direct-runtime.php';
 
-$acquire = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'acquire_command_inflight');
+$acquire = new ReflectionMethod(WP_Agent_Bridge_Direct_Runtime::class, 'acquire_command_inflight');
 $acquire->setAccessible(true);
-$release = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'release_command_inflight');
+$release = new ReflectionMethod(WP_Agent_Bridge_Direct_Runtime::class, 'release_command_inflight');
 $release->setAccessible(true);
-$option = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'command_inflight_option');
+$option = new ReflectionMethod(WP_Agent_Bridge_Direct_Runtime::class, 'command_inflight_option');
 $option->setAccessible(true);
 
 $request_id = 'media-race-test';
 $token = $acquire->invoke(null, $request_id);
 assert_true(is_string($token) && $token !== '', 'first owner must acquire the request lock');
-assert_true(TakKa_WordPress_Bridge_Direct_Runtime::command_inflight($request_id), 'active request must report in-flight');
+assert_true(WP_Agent_Bridge_Direct_Runtime::command_inflight($request_id), 'active request must report in-flight');
 assert_true($acquire->invoke(null, $request_id) === null, 'concurrent owner must not acquire the same request lock');
 
 $release->invoke(null, $request_id, 'wrong-token');
-assert_true(TakKa_WordPress_Bridge_Direct_Runtime::command_inflight($request_id), 'non-owner release must not clear the request lock');
+assert_true(WP_Agent_Bridge_Direct_Runtime::command_inflight($request_id), 'non-owner release must not clear the request lock');
 $release->invoke(null, $request_id, $token);
-assert_true(!TakKa_WordPress_Bridge_Direct_Runtime::command_inflight($request_id), 'owner release must clear the request lock');
+assert_true(!WP_Agent_Bridge_Direct_Runtime::command_inflight($request_id), 'owner release must clear the request lock');
 
 $option_name = $option->invoke(null, $request_id);
 $GLOBALS['wpab_test_options'][$option_name] = ['token' => 'stale-owner', 'created_at' => time() - 601];
-assert_true(!TakKa_WordPress_Bridge_Direct_Runtime::command_inflight($request_id), 'stale ownership must not block recovery');
+assert_true(!WP_Agent_Bridge_Direct_Runtime::command_inflight($request_id), 'stale ownership must not block recovery');
 $replacement = $acquire->invoke(null, $request_id);
 assert_true(is_string($replacement) && $replacement !== '', 'a stale owner must be replaceable');
-assert_true(TakKa_WordPress_Bridge_Direct_Runtime::command_inflight($request_id), 'replacement owner must become active');
+assert_true(WP_Agent_Bridge_Direct_Runtime::command_inflight($request_id), 'replacement owner must become active');
 $release->invoke(null, $request_id, $replacement);
 
-$store_journal = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'store_command_journal');
+$store_journal = new ReflectionMethod(WP_Agent_Bridge_Direct_Runtime::class, 'store_command_journal');
 $store_journal->setAccessible(true);
-$load_journal = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'load_command_journal');
+$load_journal = new ReflectionMethod(WP_Agent_Bridge_Direct_Runtime::class, 'load_command_journal');
 $load_journal->setAccessible(true);
-$clear_journal = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'clear_command_journal');
+$clear_journal = new ReflectionMethod(WP_Agent_Bridge_Direct_Runtime::class, 'clear_command_journal');
 $clear_journal->setAccessible(true);
-$journal_option = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'command_journal_option');
+$journal_option = new ReflectionMethod(WP_Agent_Bridge_Direct_Runtime::class, 'command_journal_option');
 $journal_option->setAccessible(true);
 
 $journal_request = 'media-bookkeeping-race';
@@ -113,7 +113,7 @@ assert_true(($loaded['output']['result']['data']['attachment_id'] ?? null) === 1
 assert_true(($loaded['result_json'] ?? '') === $result_json, 'journal replay must preserve the exact result JSON for GitHub');
 
 $conflict = $load_journal->invoke(null, $journal_request, $journal_id, hash('sha256', '{"changed":"command"}'));
-assert_true($conflict instanceof WP_Error && $conflict->get_error_code() === 'takka_direct_command_journal_conflict', 'same request_id with changed command content must be rejected');
+assert_true($conflict instanceof WP_Error && $conflict->get_error_code() === 'wpab_direct_command_journal_conflict', 'same request_id with changed command content must be rejected');
 
 $clear_journal->invoke(null, $journal_request);
 assert_true($load_journal->invoke(null, $journal_request, $journal_id, $command_sha) === null, 'journal must be cleared once the GitHub result is durable');
@@ -127,7 +127,7 @@ $GLOBALS['wpab_test_options'][$journal_option_name] = [
 ];
 assert_true($load_journal->invoke(null, $journal_request, $journal_id, $command_sha) === null, 'stale journals must expire rather than block future recovery forever');
 
-$v2 = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-runtime-v2.php');
+$v2 = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-direct-runtime-v2.php');
 assert_true(is_string($v2) && strpos($v2, 'command_inflight($request_id)') !== false, 'V2 recovery must consult Direct Runtime in-flight ownership');
 assert_true(strpos($v2, "'reason' => 'command-in-flight'") !== false, 'V2 recovery must expose the in-flight skip reason');
 assert_true(strpos($v2, 'MAX_RECOVERY_AGE_SECONDS = 86400') !== false, 'V2 recovery must bound automatic pending-command recovery age');
@@ -135,7 +135,7 @@ assert_true(strpos($v2, "'reason' => 'age-unavailable'") !== false, 'V2 recovery
 assert_true(strpos($v2, 'path_last_modified_timestamp') !== false, 'V2 recovery must use exact pending-file GitHub history when metadata age is absent');
 assert_true(strpos($v2, 'github_path_commit_history') !== false, 'V2 recovery must record the age evidence source');
 assert_true(strpos($v2, 'commands/expired/') !== false, 'V2 recovery must quarantine expired pending commands');
-assert_true(strpos($v2, 'takka_bridge_pending_expired') !== false, 'V2 recovery must record an explicit expired-command result');
+assert_true(strpos($v2, 'wpab_pending_expired') !== false, 'V2 recovery must record an explicit expired-command result');
 assert_true(strpos($v2, 'put_if_absent_or_identical') !== false && strpos($v2, 'delete_if_matches') !== false, 'V2 quarantine must preserve conflict-safe bookkeeping');
 
 echo "direct command in-flight ownership and local journal: OK\n";

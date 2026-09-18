@@ -38,7 +38,7 @@ function wp_json_encode($value, $flags = 0) { return json_encode($value, $flags)
 function wp_check_invalid_utf8($value, $strip = false) { return (string) $value; }
 function parse_blocks($content): array { return []; }
 
-require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v084-post-content.php';
+require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-v084-post-content.php';
 
 function fail_test(string $message): void
 {
@@ -47,7 +47,7 @@ function fail_test(string $message): void
 }
 
 $GLOBALS['test_post']->post_content = "alpha\nbeta\ngamma\ndelta\nepsilon";
-$result = TakKa_WordPress_Bridge_V084_Post_Content::read_range([
+$result = WP_Agent_Bridge_V084_Post_Content::read_range([
     'post_id' => 719,
     'start_line' => 2,
     'max_lines' => 2,
@@ -63,7 +63,7 @@ if (is_wp_error($result)
     fail_test('Bounded post content range read returned unexpected data.');
 }
 
-$tail = TakKa_WordPress_Bridge_V084_Post_Content::read_range([
+$tail = WP_Agent_Bridge_V084_Post_Content::read_range([
     'post_id' => 719,
     'start_line' => 5,
     'max_lines' => 10000,
@@ -79,24 +79,24 @@ if (is_wp_error($tail)
     fail_test('Post content range limits or EOF metadata are incorrect.');
 }
 
-$beyond = TakKa_WordPress_Bridge_V084_Post_Content::read_range([
+$beyond = WP_Agent_Bridge_V084_Post_Content::read_range([
     'post_id' => 719,
     'start_line' => 6,
 ]);
 if (!is_wp_error($beyond)
-    || $beyond->get_error_code() !== 'takka_bridge_post_content_range'
+    || $beyond->get_error_code() !== 'wpab_post_content_range'
     || (($beyond->get_error_data()['status'] ?? null) !== 416)) {
     fail_test('Out-of-range post content read was not rejected with 416.');
 }
 
 $GLOBALS['test_post']->post_content = str_repeat('x', 262145) . "\nnext";
-$too_large_line = TakKa_WordPress_Bridge_V084_Post_Content::read_range([
+$too_large_line = WP_Agent_Bridge_V084_Post_Content::read_range([
     'post_id' => 719,
     'start_line' => 1,
     'max_lines' => 1,
 ]);
 if (!is_wp_error($too_large_line)
-    || $too_large_line->get_error_code() !== 'takka_bridge_post_content_range_line_too_large'
+    || $too_large_line->get_error_code() !== 'wpab_post_content_range_line_too_large'
     || (($too_large_line->get_error_data()['status'] ?? null) !== 413)) {
     fail_test('Single-line read larger than the range byte limit was not rejected.');
 }

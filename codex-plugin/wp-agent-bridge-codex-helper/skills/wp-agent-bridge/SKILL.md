@@ -41,4 +41,4 @@ For a local or conversation attachment, use the runtime's `wordpress-bridge/prep
 
 ## Do not fall back to retired paths
 
-Do not use the old operator relay, old Bridge Key, `takka-d/chatgpt-data`, or a per-command GitHub Actions worker. Do not switch to browser-side WordPress tooling unless the task explicitly requires browser DOM/event behavior that the server-side Bridge cannot perform.
+Do not use the old operator relay, old Bridge Key, `legacy operator-owned runtime repository`, or a per-command GitHub Actions worker. Do not switch to browser-side WordPress tooling unless the task explicitly requires browser DOM/event behavior that the server-side Bridge cannot perform.

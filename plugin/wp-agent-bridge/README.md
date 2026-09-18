@@ -8,7 +8,7 @@ ChatGPTからWordPressを更新するためのWordPressプラグインです。
 
 `ChatGPT → user-owned private runtime repository → site-specific GitHub App signed Webhook → WordPress → same runtime repository → ChatGPT`
 
-通常処理に運営者所有のruntime repository / relay server、GitHub Actions worker、旧Bridge Key、`takka-d/chatgpt-data`、WPVibeは使用しません。
+通常処理に運営者所有のruntime repository / relay server、GitHub Actions worker、旧Bridge Key、`legacy operator-owned runtime repository`、WPVibeは使用しません。
 
 ## 導入
 

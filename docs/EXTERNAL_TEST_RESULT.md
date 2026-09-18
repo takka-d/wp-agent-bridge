@@ -12,7 +12,7 @@
 
 - [ ] テスト対象ZIPを新規インストールできた
 - [ ] 有効化できた
-- [ ] 既存のWP Agent Bridge / TakKa WordPress Bridgeは入っていなかった
+- [ ] 既存のWP Agent Bridge / WP Agent Bridge WordPress Bridgeは入っていなかった
 
 補足:
 

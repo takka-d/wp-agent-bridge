@@ -1,9 +1,9 @@
 <?php
 
-$helperPath = __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-integrity.php';
-$bootstrapPath = __DIR__ . '/../plugin/wp-agent-bridge/takka-wordpress-bridge.php';
-$identityPath = __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-runtime-identity.php';
-$guidancePath = __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-runtime-guidance.php';
+$helperPath = __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-integrity.php';
+$bootstrapPath = __DIR__ . '/../plugin/wp-agent-bridge/wp-agent-bridge.php';
+$identityPath = __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-direct-runtime-identity.php';
+$guidancePath = __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-runtime-guidance.php';
 
 $helper = file_get_contents($helperPath);
 $bootstrap = file_get_contents($bootstrapPath);
@@ -50,8 +50,8 @@ foreach ($requiredHelperMarkers as $marker) {
     }
 }
 
-if (strpos($bootstrap, "require_once __DIR__ . '/includes/class-takka-wordpress-bridge-integrity.php';") === false
-    || strpos($bootstrap, 'TakKa_WordPress_Bridge_Integrity::init();') === false) {
+if (strpos($bootstrap, "require_once __DIR__ . '/includes/class-wp-agent-bridge-integrity.php';") === false
+    || strpos($bootstrap, 'WP_Agent_Bridge_Integrity::init();') === false) {
     fwrite(STDERR, "Integrity helper is not registered by the plugin bootstrap.\n");
     exit(1);
 }
@@ -72,7 +72,7 @@ foreach ([
         exit(1);
     }
 }
-if (strpos($identity, "'guidance_owned_by' => TakKa_WordPress_Bridge_Runtime_Guidance::class") === false) {
+if (strpos($identity, "'guidance_owned_by' => WP_Agent_Bridge_Runtime_Guidance::class") === false) {
     fwrite(STDERR, "Runtime identity does not declare Runtime_Guidance ownership.\n");
     exit(1);
 }

@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 define('ABSPATH', __DIR__ . '/');
-require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-post-concurrency-runtime-guidance.php';
+require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-post-concurrency-runtime-guidance.php';
 
 function pcrg_fail(string $message): void
 {
@@ -13,7 +13,7 @@ function pcrg_fail(string $message): void
 
 $base = [
     'features' => ['deterministic_operation_router' => true],
-    'routes' => ['operations' => ['route' => '/takka-v099/v1/operate']],
+    'routes' => ['operations' => ['route' => '/wpab-v099/v1/operate']],
     'command_contract' => [
         'rules' => ['existing rule'],
         'templates' => [
@@ -34,7 +34,7 @@ $base = [
     'fast_path' => [],
 ];
 
-$catalog = TakKa_WordPress_Bridge_Post_Concurrency_Runtime_Guidance::enrich_capabilities($base);
+$catalog = WP_Agent_Bridge_Post_Concurrency_Runtime_Guidance::enrich_capabilities($base);
 $contract = $catalog['command_contract']['post_update_concurrency'] ?? null;
 if (!is_array($contract)
     || ($contract['preferred_guard'] ?? null) !== 'expected_field_hashes'
@@ -77,8 +77,8 @@ if (strpos((string) ($catalog['failure_policy']['post_update_concurrency_409'] ?
 }
 
 $agents = "# WP Agent Bridge\n\nExisting guidance.\n";
-$once = TakKa_WordPress_Bridge_Post_Concurrency_Runtime_Guidance::enrich_agents($agents);
-$twice = TakKa_WordPress_Bridge_Post_Concurrency_Runtime_Guidance::enrich_agents($once);
+$once = WP_Agent_Bridge_Post_Concurrency_Runtime_Guidance::enrich_agents($agents);
+$twice = WP_Agent_Bridge_Post_Concurrency_Runtime_Guidance::enrich_agents($once);
 if ($once !== $twice
     || substr_count($once, '<!-- WPAB_POST_UPDATE_CONCURRENCY_START -->') !== 1
     || strpos($once, 'Legacy unguarded `post.update` remains compatibility-only') === false

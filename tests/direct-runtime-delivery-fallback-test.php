@@ -3,11 +3,11 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
-$hardeningPath = $root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-hardening.php';
-$invalidPath = $root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-invalid-pending.php';
-$reconcilerPath = $root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-pending-reconciler.php';
-$identityPath = $root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-runtime-identity.php';
-$bootstrapPath = $root . '/plugin/wp-agent-bridge/takka-wordpress-bridge.php';
+$hardeningPath = $root . '/plugin/wp-agent-bridge/includes/class-wp-agent-bridge-direct-hardening.php';
+$invalidPath = $root . '/plugin/wp-agent-bridge/includes/class-wp-agent-bridge-direct-invalid-pending.php';
+$reconcilerPath = $root . '/plugin/wp-agent-bridge/includes/class-wp-agent-bridge-direct-pending-reconciler.php';
+$identityPath = $root . '/plugin/wp-agent-bridge/includes/class-wp-agent-bridge-direct-runtime-identity.php';
+$bootstrapPath = $root . '/plugin/wp-agent-bridge/wp-agent-bridge.php';
 
 $hardening = file_get_contents($hardeningPath);
 $invalid = file_get_contents($invalidPath);
@@ -23,7 +23,7 @@ foreach (compact('hardening', 'invalid', 'reconciler', 'identity', 'bootstrap') 
 }
 
 foreach ([
-    "private const RECONCILE_CRON_HOOK = 'takka_bridge_direct_reconcile_cron_v4'",
+    "private const RECONCILE_CRON_HOOK = 'wpab_direct_reconcile_cron_v4'",
     'private const RECONCILE_CRON_INTERVAL = 120',
     "add_filter('cron_schedules'",
     "add_action('init', [self::class, 'ensure_reconcile_schedule'], 45)",
@@ -32,7 +32,7 @@ foreach ([
     'wp_schedule_event(',
     "'/repos/' . \$repository",
     "'private'",
-    'TakKa_WordPress_Bridge_Direct_GitHub_Recovery::branch_sha(',
+    'WP_Agent_Bridge_Direct_GitHub_Recovery::branch_sha(',
     "'commits' => []",
     'self::serialized_webhook($request)',
     "'scheduled_pending_recovery'",
@@ -46,10 +46,10 @@ foreach ([
 }
 
 foreach ([
-    "private const CRON_HOOK = 'takka_bridge_direct_reconcile_cron_v4'",
+    "private const CRON_HOOK = 'wpab_direct_reconcile_cron_v4'",
     "add_action(self::CRON_HOOK, [self::class, 'run'], 1)",
     "'wordpress-bridge/commands/invalid/'",
-    "'takka_bridge_pending_invalid_json'",
+    "'wpab_pending_invalid_json'",
     "'command_execution_finished' => false",
     "'side_effects' => false",
     'put_if_absent_or_identical(',
@@ -63,7 +63,7 @@ foreach ([
 }
 
 foreach ([
-    "private const CRON_HOOK = 'takka_bridge_direct_reconcile_cron_v4'",
+    "private const CRON_HOOK = 'wpab_direct_reconcile_cron_v4'",
     "add_action(self::CRON_HOOK, [self::class, 'run'], 20)",
     "'pending_recovery_detail'",
     "'executor-command-failed'",
@@ -72,8 +72,8 @@ foreach ([
     "'result-visible-pending-not-finalized'",
     "'pending_recovery_terminal_observation'",
     "'recovery_required' => true",
-    'TakKa_WordPress_Bridge_Direct_Runtime::command_inflight(',
-    'TakKa_WordPress_Bridge_Direct_Runtime::webhook($request)',
+    'WP_Agent_Bridge_Direct_Runtime::command_inflight(',
+    'WP_Agent_Bridge_Direct_Runtime::webhook($request)',
 ] as $needle) {
     if (strpos($reconciler, $needle) === false) {
         fwrite(STDERR, "Detailed pending reconciler is missing: {$needle}\n");
@@ -102,10 +102,10 @@ if (!preg_match('/^ \* Version: ([0-9]+\.[0-9]+\.[0-9]+)$/m', $bootstrap, $versi
 }
 
 foreach ([
-    "class-takka-wordpress-bridge-direct-invalid-pending.php",
-    'TakKa_WordPress_Bridge_Direct_Invalid_Pending::init()',
-    "class-takka-wordpress-bridge-direct-pending-reconciler.php",
-    'TakKa_WordPress_Bridge_Direct_Pending_Reconciler::init()',
+    "class-wp-agent-bridge-direct-invalid-pending.php",
+    'WP_Agent_Bridge_Direct_Invalid_Pending::init()',
+    "class-wp-agent-bridge-direct-pending-reconciler.php",
+    'WP_Agent_Bridge_Direct_Pending_Reconciler::init()',
 ] as $needle) {
     if (strpos($bootstrap, $needle) === false) {
         fwrite(STDERR, "Plugin bootstrap is missing pending recovery marker: {$needle}\n");

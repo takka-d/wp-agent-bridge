@@ -4,10 +4,10 @@
   "version": "0.1.0",
   "description": "Use a user's canonical WP Agent Bridge GitHub Direct Runtime safely and consistently from Codex.",
   "author": {
-    "name": "TakKa",
-    "url": "https://takka-note.com/wp-agent-bridge/"
+    "name": "WP Agent Bridge",
+    "url": "https://github.com/takka-d/wp-agent-bridge"
   },
-  "homepage": "https://takka-note.com/wp-agent-bridge/",
+  "homepage": "https://github.com/takka-d/wp-agent-bridge",
   "repository": "https://github.com/takka-d/wp-agent-bridge",
   "keywords": ["wordpress", "codex", "github", "wp-agent-bridge"]
 }

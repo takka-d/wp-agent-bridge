@@ -39,11 +39,11 @@ if (count($payloads) !== 7) {
     exit(1);
 }
 
-$identity = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-runtime-identity.php');
+$identity = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-direct-runtime-identity.php');
 if (!is_string($identity)
     || strpos($identity, "'wordpress-bridge/RUNTIME_CONNECTION.json' => \$marker") === false
     || strpos($identity, "'wordpress-bridge/media/pending/.gitkeep' => ''") === false
-    || strpos($identity, "'guidance_owned_by' => TakKa_WordPress_Bridge_Runtime_Guidance::class") === false) {
+    || strpos($identity, "'guidance_owned_by' => WP_Agent_Bridge_Runtime_Guidance::class") === false) {
     fwrite(STDERR, "Runtime identity no longer has the expected canonical-marker-only ownership boundary.\n");
     exit(1);
 }
@@ -59,7 +59,7 @@ foreach ([
     }
 }
 
-$guidance = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-runtime-guidance.php');
+$guidance = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-runtime-guidance.php');
 if (!is_string($guidance)) {
     fwrite(STDERR, "Runtime guidance generator is unavailable.\n");
     exit(1);
@@ -82,7 +82,7 @@ foreach ([
     }
 }
 
-$auto = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-media-auto-path.php');
+$auto = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-direct-media-auto-path.php');
 if (!is_string($auto)
     || strpos($auto, "\$upload['automatic_for_staged_data_paths'] = true") === false
     || strpos($auto, "\$upload['data_blob_shas_optional'] = true") === false
@@ -103,7 +103,7 @@ if (strpos($auto, "'sha' => null") === false
     exit(1);
 }
 
-$chunkRuntime = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-runtime-media-chunks.php');
+$chunkRuntime = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-runtime-media-chunks.php');
 if (!is_string($chunkRuntime)
     || strpos($chunkRuntime, 'private const MAX_CHUNKS = 768;') === false
     || strpos($chunkRuntime, 'private const RECOMMENDED_CHUNK_BYTES = 8192;') === false
@@ -112,31 +112,31 @@ if (!is_string($chunkRuntime)
     exit(1);
 }
 
-$bootstrap = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/takka-wordpress-bridge.php');
+$bootstrap = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/wp-agent-bridge.php');
 if (!is_string($bootstrap)
-    || strpos($bootstrap, 'class-takka-wordpress-bridge-direct-media.php') === false
-    || strpos($bootstrap, 'TakKa_WordPress_Bridge_Direct_Media::init()') === false
-    || strpos($bootstrap, 'class-takka-wordpress-bridge-direct-media-auto-path.php') === false
-    || strpos($bootstrap, 'TakKa_WordPress_Bridge_Direct_Media_Auto_Path::init()') === false) {
+    || strpos($bootstrap, 'class-wp-agent-bridge-direct-media.php') === false
+    || strpos($bootstrap, 'WP_Agent_Bridge_Direct_Media::init()') === false
+    || strpos($bootstrap, 'class-wp-agent-bridge-direct-media-auto-path.php') === false
+    || strpos($bootstrap, 'WP_Agent_Bridge_Direct_Media_Auto_Path::init()') === false) {
     fwrite(STDERR, "Automatic staged-media fast path or legacy fallback is not loaded by the plugin bootstrap.\n");
     exit(1);
 }
-if (strpos($bootstrap, 'class-takka-wordpress-bridge-direct-media-fast-path.php') !== false
-    || strpos($bootstrap, 'TakKa_WordPress_Bridge_Direct_Media_Fast_Path::init()') !== false
-    || file_exists(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-media-fast-path.php')) {
+if (strpos($bootstrap, 'class-wp-agent-bridge-direct-media-fast-path.php') !== false
+    || strpos($bootstrap, 'WP_Agent_Bridge_Direct_Media_Fast_Path::init()') !== false
+    || file_exists(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-direct-media-fast-path.php')) {
     fwrite(STDERR, "Redundant caller-pinned media fast path must not remain registered or packaged.\n");
     exit(1);
 }
 
-$guard = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-onboarding-guard.php');
+$guard = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-direct-onboarding-guard.php');
 if (!is_string($guard)
     || strpos($guard, 'sync_identity_guidance_if_needed') === false
     || strpos($guard, 'IDENTITY_SYNC_VERSION_OPTION') === false
     || strpos($guard, 'IDENTITY_SYNC_RETRY') === false
     || strpos($guard, 'private const IDENTITY_SYNC_VERSION = 3;') === false
     || strpos($guard, 'sync_identity_and_guidance()') === false
-    || strpos($guard, 'TakKa_WordPress_Bridge_Direct_Runtime_Identity::sync()') === false
-    || strpos($guard, 'TakKa_WordPress_Bridge_Runtime_Guidance::sync()') === false
+    || strpos($guard, 'WP_Agent_Bridge_Direct_Runtime_Identity::sync()') === false
+    || strpos($guard, 'WP_Agent_Bridge_Runtime_Guidance::sync()') === false
     || strpos($guard, '10 * MINUTE_IN_SECONDS') === false) {
     fwrite(STDERR, "Existing-runtime identity/guidance refresh guard is incomplete.\n");
     exit(1);
@@ -146,12 +146,12 @@ if (strpos($guard, 'sync_resolution_guidance') !== false || strpos($guard, 'put_
     exit(1);
 }
 
-$hardening = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-hardening.php');
+$hardening = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-direct-hardening.php');
 if (!is_string($hardening)
     || strpos($hardening, 'replace_runtime_webhook') === false
     || strpos($hardening, 'serialized_webhook') === false
     || strpos($hardening, 'PRIMARY_LOCK_OPTION') === false
-    || strpos($hardening, 'TakKa_WordPress_Bridge_Direct_Runtime_V2::webhook($request)') === false
+    || strpos($hardening, 'WP_Agent_Bridge_Direct_Runtime_V2::webhook($request)') === false
     || strpos($hardening, "'retryable' => true") === false) {
     fwrite(STDERR, "Direct Runtime primary webhook serialization hardening is missing.\n");
     exit(1);

@@ -1,10 +1,10 @@
 <?php
 declare(strict_types=1);
 define('ABSPATH', __DIR__ . '/');
-require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-runtime.php';
-$summary = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'summarize_command');
+require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-direct-runtime.php';
+$summary = new ReflectionMethod(WP_Agent_Bridge_Direct_Runtime::class, 'summarize_command');
 $summary->setAccessible(true);
-$sanitize = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'sanitize_result');
+$sanitize = new ReflectionMethod(WP_Agent_Bridge_Direct_Runtime::class, 'sanitize_result');
 $sanitize->setAccessible(true);
 $binary = str_repeat('a', 157088);
 $encoded = base64_encode($binary);
@@ -31,14 +31,14 @@ $output = ['data_b64' => $encoded];
 if ($sanitize->invoke(null, $output) !== $output) {
     fwrite(STDERR, "Requested result data was incorrectly omitted.\n"); exit(1);
 }
-$outcome = new ReflectionMethod(TakKa_WordPress_Bridge_Direct_Runtime::class, 'summarize_outcome');
+$outcome = new ReflectionMethod(WP_Agent_Bridge_Direct_Runtime::class, 'summarize_outcome');
 foreach ([[true, 200, 'succeeded'], [false, 409, 'failed'], [false, 207, 'partial']] as [$ok, $status, $state]) {
     $summary = $outcome->invoke(null, ['ok' => $ok, 'status' => $status, 'data' => ['user_content' => ['ok' => false]]]);
     if ($summary['state'] !== $state || $summary['status'] !== $status || $summary['operation_ok'] !== $ok) {
         fwrite(STDERR, "Outcome must preserve success / failure / partial status independently of user data.\n"); exit(1);
     }
 }
-$source = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-runtime.php');
+$source = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-direct-runtime.php');
 if (strpos($source, "'outcome' => self::summarize_outcome") > strpos($source, "'command' => self::summarize_command")) {
     fwrite(STDERR, "Outcome must precede potentially large echoed command and result.\n"); exit(1);
 }

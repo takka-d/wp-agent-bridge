@@ -3,10 +3,10 @@
 declare(strict_types=1);
 
 define('ABSPATH', __DIR__ . '/');
-require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v099-response-contract.php';
-require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-post-content-diagnostics.php';
-require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-post-revisions.php';
-require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-post-reliability-runtime-guidance.php';
+require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-v099-response-contract.php';
+require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-post-content-diagnostics.php';
+require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-post-revisions.php';
+require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-post-reliability-runtime-guidance.php';
 
 function prrg_fail(string $message): void
 {
@@ -20,7 +20,7 @@ $base = [
     'features' => ['deterministic_operation_router' => true],
     'routes' => [
         'operations' => [
-            'route' => '/takka-v099/v1/operate',
+            'route' => '/wpab-v099/v1/operate',
             'operations' => ['post.get', 'post.update', 'post.content.patch_preview', 'post.content.patch_apply'],
         ],
     ],
@@ -30,7 +30,7 @@ $base = [
     'fast_path' => [],
 ];
 
-$catalog = TakKa_WordPress_Bridge_Post_Reliability_Runtime_Guidance::enrich_capabilities($base);
+$catalog = WP_Agent_Bridge_Post_Reliability_Runtime_Guidance::enrich_capabilities($base);
 foreach ([
     'post_revision_rollback',
     'post_content_patch_match_diagnostics',
@@ -90,8 +90,8 @@ if (!isset($catalog['failure_policy']['post_content_match_409'], $catalog['failu
 }
 
 $agents = "# WP Agent Bridge\n\nExisting guidance.\n";
-$once = TakKa_WordPress_Bridge_Post_Reliability_Runtime_Guidance::enrich_agents($agents);
-$twice = TakKa_WordPress_Bridge_Post_Reliability_Runtime_Guidance::enrich_agents($once);
+$once = WP_Agent_Bridge_Post_Reliability_Runtime_Guidance::enrich_agents($agents);
+$twice = WP_Agent_Bridge_Post_Reliability_Runtime_Guidance::enrich_agents($once);
 if ($once !== $twice
     || substr_count($once, '<!-- WPAB_POST_RELIABILITY_START -->') !== 1
     || strpos($once, 'approximate candidates') === false

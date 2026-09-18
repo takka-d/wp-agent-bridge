@@ -1,0 +1,647 @@
+<?php
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+/**
+ * v0.9.9 deterministic high-level operation router.
+ *
+ * ChatGPT only needs one fixed internal route for the common WP Agent Bridge
+ * workflows. Operation names are allowlisted and translated here into the
+ * existing guarded actions/core REST routes, so callers do not have to guess
+ * versioned routes or embed query strings in route paths.
+ */
+final class WP_Agent_Bridge_V099_Operations
+{
+    private const VERSION = '0.9.9';
+    private const NS = 'wpab-v099/v1';
+    private const ROUTE = '/wpab-v099/v1/operate';
+    private const OUTER = '/wp-agent-bridge/v1/execute';
+    private const SECRET = 'wpab_secret';
+    private const USER = 'wpab_user_id';
+    private const SKEW = 300;
+
+    private static $allowed = false;
+    private static $request_id = '';
+
+    private const DIRECT_ACTIONS = [
+        'plugin.list' => ['/wp-agent-bridge/v1/manage', 'plugin.list'],
+        'theme.file.patch' => ['/wp-agent-bridge/v1/manage', 'theme.file.patch'],
+        'media.upload.inline' => ['/wp-agent-bridge/v1/manage', 'media.upload_base64'],
+        'self_update.status' => ['/wp-agent-bridge/v1/v06', 'bridge.self_update.status'],
+        'self_update.apply' => ['/wp-agent-bridge/v1/v06', 'bridge.self_update.apply'],
+        'self_update.rollback' => ['/wp-agent-bridge/v1/v06', 'bridge.self_update.rollback'],
+    ];
+
+    private const REST_ACTIONS = [
+        'post.content.inspect' => ['/wpab-v084/v1/manage', 'post.content.inspect'],
+        'post.content.search' => ['/wpab-v084/v1/manage', 'post.content.search'],
+        'post.content.read_range' => ['/wpab-v084/v1/manage', 'post.content.read.range'],
+        'post.content.patch_preview' => ['/wpab-v084/v1/manage', 'post.content.patch.preview'],
+        'post.content.patch_apply' => ['/wpab-v084/v1/manage', 'post.content.patch.apply'],
+
+        'diagnostics.http_probe' => ['/wpab-v094/v1/manage', 'http.probe'],
+        'diagnostics.http_probe_batch' => ['/wpab-v094/v1/manage', 'http.probe.batch'],
+        'media.inspect' => ['/wpab-v094/v1/manage', 'media.file.inspect'],
+
+        'theme.file.outline' => ['/wpab-v095/v1/manage', 'theme.file.outline'],
+        'theme.file.read_range' => ['/wpab-v095/v1/manage', 'theme.file.read.range'],
+        'page.html.inspect' => ['/wpab-v095/v1/manage', 'page.html.inspect'],
+
+        'theme.files.list' => ['/wpab-v096/v1/theme-files', 'theme.files.list'],
+        'theme.files.search' => ['/wpab-v096/v1/theme-files', 'theme.files.search'],
+        'theme.file.read_many' => ['/wpab-v096/v1/theme-files', 'theme.file.read.many'],
+        'site.icon.get' => ['/wpab-v096/v1/manage', 'site.icon.get'],
+        'site.icon.set' => ['/wpab-v096/v1/manage', 'site.icon.set'],
+        'site.icon.clear' => ['/wpab-v096/v1/manage', 'site.icon.clear'],
+        'media.upload.capabilities' => ['/wpab-v096/v1/manage', 'media.upload.capabilities'],
+
+        'workspace.list' => ['/wpab-v097/v1/manage', 'workspace.list'],
+        'workspace.file.get' => ['/wpab-v097/v1/manage', 'workspace.file.get'],
+        'workspace.file.read_range' => ['/wpab-v097/v1/manage', 'workspace.file.read.range'],
+        'workspace.file.search' => ['/wpab-v097/v1/manage', 'workspace.file.search'],
+        'workspace.file.write' => ['/wpab-v097/v1/manage', 'workspace.file.write'],
+        'workspace.file.patch' => ['/wpab-v097/v1/manage', 'workspace.file.patch'],
+        'workspace.file.delete' => ['/wpab-v097/v1/manage', 'workspace.file.delete'],
+        'workspace.file.diff' => ['/wpab-v097/v1/manage', 'workspace.file.diff'],
+        'workspace.snapshot.create' => ['/wpab-v097/v1/manage', 'workspace.snapshot.create'],
+        'workspace.snapshot.list' => ['/wpab-v097/v1/manage', 'workspace.snapshot.list'],
+        'workspace.snapshot.rollback' => ['/wpab-v097/v1/manage', 'workspace.snapshot.rollback'],
+
+        'readonly.batch' => ['/wpab-v098/v1/manage', 'readonly.batch'],
+    ];
+
+    public static function init(): void
+    {
+        add_action('rest_api_init', [self::class, 'register']);
+        add_filter('rest_pre_dispatch', [self::class, 'prepare'], 70, 3);
+    }
+
+    public static function register(): void
+    {
+        register_rest_route(self::NS, '/operate', [
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => [self::class, 'dispatch'],
+            'permission_callback' => [self::class, 'permission'],
+        ]);
+    }
+
+    public static function prepare($result, WP_REST_Server $server, WP_REST_Request $request)
+    {
+        if ($result !== null
+            || $request->get_route() !== self::OUTER
+            || strtoupper($request->get_method()) !== 'POST'
+            || !self::valid_hmac($request)) {
+            return $result;
+        }
+        $inner = self::inner($request);
+        if (!is_array($inner) || ($inner['action'] ?? '') !== 'rest.call') {
+            return $result;
+        }
+        $params = isset($inner['params']) && is_array($inner['params']) ? $inner['params'] : [];
+        if (strtoupper((string) ($params['method'] ?? 'GET')) !== 'POST'
+            || (string) ($params['route'] ?? '') !== self::ROUTE) {
+            return $result;
+        }
+        self::$request_id = isset($inner['request_id']) && is_string($inner['request_id'])
+            ? trim($inner['request_id'])
+            : '';
+        self::$allowed = true;
+        return $result;
+    }
+
+    public static function permission()
+    {
+        if (!self::$allowed || !current_user_can('manage_options')) {
+            return new WP_Error(
+                'wpab_v099_internal_only',
+                'This route is only callable through the signed Bridge REST proxy.',
+                ['status' => 403]
+            );
+        }
+        self::$allowed = false;
+        return true;
+    }
+
+    public static function dispatch(WP_REST_Request $request)
+    {
+        $json = $request->get_json_params();
+        if (!is_array($json)) {
+            return new WP_Error('wpab_v099_json', 'JSON body is required.', ['status' => 400]);
+        }
+        $operation = is_string($json['operation'] ?? null) ? trim($json['operation']) : '';
+        $params = isset($json['params']) && is_array($json['params']) ? $json['params'] : [];
+        if ($operation === 'catalog') {
+            return rest_ensure_response(self::catalog());
+        }
+        if ($operation === '') {
+            return new WP_Error('wpab_v099_operation', 'operation is required.', ['status' => 400]);
+        }
+
+        try {
+            $result = self::execute_operation($operation, $params);
+        } catch (Throwable $e) {
+            return new WP_Error('wpab_v099_exception', $e->getMessage(), [
+                'status' => 500,
+                'type' => get_class($e),
+                'operation' => $operation,
+            ]);
+        }
+        if (is_wp_error($result)) {
+            return $result;
+        }
+        return rest_ensure_response([
+            'ok' => !empty($result['ok']),
+            'operation' => $operation,
+            'status' => isset($result['status']) ? (int) $result['status'] : null,
+            'result' => $result,
+        ]);
+    }
+
+    public static function catalog(): array
+    {
+        return [
+            'version' => self::VERSION,
+            'route' => self::ROUTE,
+            'preferred_command_shape' => ['type' => 'operation', 'operation' => '<operation>', 'params' => '<object>'],
+            'command_shape' => [
+                'type' => 'rest',
+                'method' => 'POST',
+                'route' => self::ROUTE,
+                'body' => [
+                    'operation' => '<operation>',
+                    'params' => '<object>',
+                ],
+            ],
+            'operations' => array_values(array_merge(
+                ['health', 'post.find', 'post.create', 'post.get', 'post.update', 'media.delete', 'uploads.json.read', 'uploads.json.write_preview', 'uploads.json.write_apply'],
+                array_keys(self::DIRECT_ACTIONS),
+                array_keys(self::REST_ACTIONS)
+            )),
+            'theme_file_patch' => [
+                'operation' => 'theme.file.patch',
+                'max_file_bytes' => 2097152,
+                'max_patches' => 32,
+                'single_patch' => ['find', 'replace', 'replace_all', 'expected_replacements'],
+                'atomic_multi_patch' => [
+                    'params' => ['path', 'patches', 'dry_run', 'expected_sha256', 'expected_plan_hash', 'expected_after_sha256', 'confirm_active', 'draft_id'],
+                    'preview' => 'dry_run=true returns before_sha256, after_sha256 and plan_hash without writing',
+                    'apply' => 'send identical patches with expected_sha256 and expected_plan_hash from preview; active-theme writes also require confirm_active=true',
+                    'all_or_nothing' => true,
+                ],
+                'recommended_flow' => ['theme.files.search or theme.file.read_range', 'theme.file.patch dry_run', 'theme.file.patch guarded apply'],
+                'temporary_php_required' => false,
+                'full_file_rewrite_required' => false,
+                'bounded_diff' => true,
+            ],
+            'uploads_json' => ['path' => 'existing uploads-relative .json; no symlinks or traversal', 'max_bytes' => 1048576,
+                'write' => 'content is a JSON source string; preview then apply with expected_before_sha256, expected_plan_hash, confirm=true',
+                'previous_version' => 'read with version=previous; restore through the same guarded write flow'],
+            'arbitrary_route_allowed' => false,
+            'arbitrary_action_allowed' => false,
+            'query_must_be_object' => true,
+            'post_update_fields_must_be_object' => true,
+            'post_target_title' => ['exact' => true, 'unique_required' => true, 'ambiguity_status' => 409],
+            'post_types' => ['post', 'page'],
+            'post_find' => ['params' => ['search', 'post_type', 'limit'], 'default_limit' => 10, 'max_limit' => 20, 'returns' => 'bounded candidates; never auto-select a search result'],
+            'post_create' => ['params' => ['post_type', 'fields', 'confirm_live'], 'default_status' => 'draft'],
+            'post_target_url' => ['optional' => true, 'resolves_post_id' => true, 'id_mismatch_status' => 409, 'same_site_only' => true],
+        ];
+    }
+
+    private static function execute_operation(string $operation, array $params)
+    {
+        if (array_key_exists('target_url', $params) || array_key_exists('target_title', $params)) {
+            $params = self::resolve_post_target($operation, $params);
+            if (is_wp_error($params)) return $params;
+        }
+        if ($operation === 'readonly.batch' && isset($params['operations']) && is_array($params['operations'])) {
+            foreach ($params['operations'] as &$item) {
+                if (!isset($item['params']) || !is_array($item['params']) || (!array_key_exists('target_url', $item['params']) && !array_key_exists('target_title', $item['params']))) continue;
+                $name = '';
+                foreach (self::REST_ACTIONS as $candidate => $spec) {
+                    if (($item['action'] ?? '') === $spec[1]) {
+                        $name = $candidate;
+                        break;
+                    }
+                }
+                $resolved_params = self::resolve_post_target($name, $item['params']);
+                if (is_wp_error($resolved_params)) return $resolved_params;
+                $item['params'] = $resolved_params;
+            }
+            unset($item);
+        }
+        if (in_array($operation, ['uploads.json.read', 'uploads.json.write_preview', 'uploads.json.write_apply'], true)) {
+            return WP_Agent_Bridge_Uploads_JSON::execute($operation, $params);
+        }
+        if ($operation === 'health') {
+            return self::signed_local_request('GET', '/wp-agent-bridge/v1/health', null, false);
+        }
+        if ($operation === 'post.find') return self::find_posts($params);
+        if ($operation === 'post.create') return self::create_post($params);
+        if ($operation === 'post.get') {
+            $post_id = self::positive_id($params, 'post_id');
+            if (is_wp_error($post_id)) return $post_id;
+            $query = self::query_params($params);
+            if (is_wp_error($query)) return $query;
+            $route = self::post_route($post_id, $params);
+            if (is_wp_error($route)) return $route;
+            return self::core_rest('GET', $route, $query, null);
+        }
+        if ($operation === 'post.update') {
+            $post_id = self::positive_id($params, 'post_id');
+            if (is_wp_error($post_id)) return $post_id;
+            $fields = isset($params['fields']) && is_array($params['fields']) ? $params['fields'] : null;
+            if ($fields === null || !$fields) {
+                return new WP_Error('wpab_v099_fields', 'post.update requires a non-empty fields object.', ['status' => 400]);
+            }
+            // A title/featured-image edit must not echo the entire post body.
+            $response_fields = array_unique(array_merge(['id', 'status', 'modified', 'modified_gmt'], array_keys($fields)));
+            $route = self::post_route($post_id, $params);
+            if (is_wp_error($route)) return $route;
+            return self::core_rest('POST', $route, ['_fields' => implode(',', $response_fields)], $fields);
+        }
+        if ($operation === 'media.delete') {
+            $attachment_id = self::positive_id($params, 'attachment_id');
+            if (is_wp_error($attachment_id)) return $attachment_id;
+            $force = !array_key_exists('force', $params) || !empty($params['force']);
+            return self::core_rest('DELETE', '/wp/v2/media/' . $attachment_id, ['force' => $force ? 'true' : 'false'], null);
+        }
+        if (isset(self::DIRECT_ACTIONS[$operation])) {
+            [$route, $action] = self::DIRECT_ACTIONS[$operation];
+            return self::action_request($route, $action, $params);
+        }
+        if (isset(self::REST_ACTIONS[$operation])) {
+            [$route, $action] = self::REST_ACTIONS[$operation];
+            $result = self::rest_action_request($route, $action, $params);
+            if ($operation === 'readonly.batch' && empty($result['data']['data']['ok'])) {
+                $result['ok'] = false;
+            }
+            return $result;
+        }
+        return new WP_Error('wpab_v099_unknown_operation', 'Unknown or blocked operation.', [
+            'status' => 400,
+            'operation' => $operation,
+        ]);
+    }
+
+    /**
+     * Bind a supplied URL to the local object before any mutation. Clients may
+     * omit post_id; supplying both is an assertion, never permission to retarget.
+     */
+    private static function resolve_post_target(string $operation, array $params)
+    {
+        if (!in_array($operation, ['post.get', 'post.update'], true)
+            && !(strpos($operation, 'post.content.') === 0 && isset(self::REST_ACTIONS[$operation]))) {
+            return new WP_Error('wpab_v099_target_operation', 'target_url is supported only for post metadata and content operations.', ['status' => 400]);
+        }
+        $title_id = null;
+        if (array_key_exists('target_title', $params)) {
+            $title = $params['target_title'];
+            if (!is_string($title) || trim($title) === '' || strlen($title) > 1000) {
+                return new WP_Error('wpab_v099_target_title', 'target_title must be a non-empty exact title of at most 1000 bytes.', ['status' => 400]);
+            }
+            $types = self::post_types($params);
+            if (is_wp_error($types)) return $types;
+            $matches = get_posts([
+                'post_type' => $types, 'post_status' => ['publish', 'private', 'draft', 'pending', 'future'],
+                'title' => $title, 'posts_per_page' => 2, 'orderby' => 'ID', 'order' => 'ASC',
+            ]);
+            if (!$matches) return new WP_Error('wpab_v099_target_missing', 'No exact title matched. Use post.find; do not guess an ID.', ['status' => 404]);
+            if (count($matches) !== 1 || $matches[0]->post_title !== $title) {
+                return new WP_Error('wpab_v099_target_ambiguous', 'Title is not unique and exact. Choose a URL from post.find before changing anything.', ['status' => 409]);
+            }
+            $title_id = (int) $matches[0]->ID;
+        }
+        $url = array_key_exists('target_url', $params) ? $params['target_url'] : home_url('/?p=' . $title_id);
+        $parts = is_string($url) ? wp_parse_url($url) : false;
+        $home = wp_parse_url(home_url('/'));
+        if (!is_array($parts) || !is_array($home)
+            || !in_array(strtolower((string) ($parts['scheme'] ?? '')), ['http', 'https'], true)
+            || empty($parts['host']) || isset($parts['user']) || isset($parts['pass'])) {
+            return new WP_Error('wpab_v099_target_url', 'target_url must be an absolute HTTP(S) URL without credentials.', ['status' => 400]);
+        }
+        $port = (int) ($parts['port'] ?? (strtolower($parts['scheme']) === 'https' ? 443 : 80));
+        $home_port = (int) ($home['port'] ?? (strtolower((string) ($home['scheme'] ?? '')) === 'https' ? 443 : 80));
+        if (strtolower($parts['host']) !== strtolower((string) ($home['host'] ?? '')) || $port !== $home_port) {
+            return new WP_Error('wpab_v099_target_site', 'target_url does not belong to this site. Do not substitute another target.', ['status' => 409]);
+        }
+        $resolved = (int) url_to_postid($url);
+        $post = $resolved > 0 ? get_post($resolved) : null;
+        if (!$post || $post->post_status === 'trash') {
+            return new WP_Error('wpab_v099_target_missing', 'target_url did not resolve to an existing local post or page. Do not guess an ID.', ['status' => 404]);
+        }
+        if ($title_id !== null && $title_id !== $resolved) {
+            return new WP_Error('wpab_v099_target_mismatch', 'target_title and target_url identify different objects. No change was applied.', ['status' => 409]);
+        }
+        if (array_key_exists('post_id', $params)) {
+            $expected = self::positive_id($params, 'post_id');
+            if (is_wp_error($expected)) return $expected;
+            if ($expected !== $resolved) {
+                return new WP_Error('wpab_v099_target_mismatch', 'post_id and target_url identify different objects. No change was applied.', ['status' => 409, 'post_id' => $expected, 'resolved_post_id' => $resolved]);
+            }
+        }
+        if (!in_array($post->post_type, ['post', 'page'], true)) {
+            return new WP_Error('wpab_v099_target_type', 'This target operation supports posts and pages only.', ['status' => 400, 'post_type' => $post->post_type]);
+        }
+        $types = self::post_types($params);
+        if (is_wp_error($types)) return $types;
+        if (!in_array($post->post_type, $types, true)) return new WP_Error('wpab_v099_target_type', 'post_type does not match the resolved target.', ['status' => 409]);
+        $params['post_id'] = $resolved;
+        unset($params['target_url'], $params['target_title']);
+        return $params;
+    }
+
+    private static function post_types(array $params)
+    {
+        if (!array_key_exists('post_type', $params)) return ['post', 'page'];
+        if (!is_string($params['post_type']) || !in_array($params['post_type'], ['post', 'page'], true)) {
+            return new WP_Error('wpab_v099_post_type', 'post_type must be post or page.', ['status' => 400]);
+        }
+        return [$params['post_type']];
+    }
+
+    private static function post_route(int $id, array $params)
+    {
+        $post = get_post($id);
+        if (!$post) return new WP_Error('wpab_v099_post_missing', 'Post or page does not exist.', ['status' => 404]);
+        if (!in_array($post->post_type, ['post', 'page'], true)) {
+            return new WP_Error('wpab_v099_post_type', 'Metadata operations support posts and pages only.', ['status' => 400]);
+        }
+        $types = self::post_types($params);
+        if (is_wp_error($types)) return $types;
+        if (!in_array($post->post_type, $types, true)) {
+            return new WP_Error('wpab_v099_target_type', 'post_type does not match the selected target.', ['status' => 409]);
+        }
+        return '/wp/v2/' . ($post->post_type === 'page' ? 'pages/' : 'posts/') . $id;
+    }
+
+    private static function find_posts(array $params)
+    {
+        $search = $params['search'] ?? null;
+        if (!is_string($search) || trim($search) === '' || strlen($search) > 500) {
+            return new WP_Error('wpab_v099_search', 'post.find requires a non-empty search string of at most 500 bytes.', ['status' => 400]);
+        }
+        $types = self::post_types($params);
+        if (is_wp_error($types)) return $types;
+        $limit = $params['limit'] ?? 10;
+        if (!is_int($limit) || $limit < 1 || $limit > 20) {
+            return new WP_Error('wpab_v099_search_limit', 'limit must be an integer from 1 to 20.', ['status' => 400]);
+        }
+        $posts = get_posts([
+            's' => $search, 'post_type' => $types,
+            'post_status' => ['publish', 'private', 'draft', 'pending', 'future'],
+            'posts_per_page' => $limit + 1, 'orderby' => 'ID', 'order' => 'DESC',
+        ]);
+        $candidates = [];
+        foreach (array_slice($posts, 0, $limit) as $post) {
+            $candidates[] = [
+                'id' => (int) $post->ID, 'post_type' => $post->post_type,
+                'title' => $post->post_title, 'status' => $post->post_status,
+                'url' => get_permalink($post), 'modified_gmt' => $post->post_modified_gmt,
+            ];
+        }
+        return ['ok' => true, 'status' => 200, 'data' => [
+            'candidates' => $candidates, 'truncated' => count($posts) > $limit,
+            'selection_required' => true, 'returned_count' => count($candidates),
+        ]];
+    }
+
+    private static function create_post(array $params)
+    {
+        $types = self::post_types($params);
+        if (is_wp_error($types)) return $types;
+        $type = $params['post_type'] ?? 'post';
+        $fields = $params['fields'] ?? null;
+        if (!is_array($fields) || !is_string($fields['title'] ?? null) || trim($fields['title']) === ''
+            || isset($fields['id']) || isset($fields['ID'])) {
+            return new WP_Error('wpab_v099_create_fields', 'post.create requires fields with a non-empty title and no existing ID.', ['status' => 400]);
+        }
+        $fields['status'] = $fields['status'] ?? 'draft';
+        if (in_array($fields['status'], ['publish', 'future'], true) && empty($params['confirm_live'])) {
+            return new WP_Error('wpab_v099_create_live', 'Publishing or scheduling creation requires confirm_live=true.', ['status' => 400]);
+        }
+        return self::core_rest('POST', '/wp/v2/' . ($type === 'page' ? 'pages' : 'posts'), [
+            '_fields' => 'id,type,status,link,title,modified,modified_gmt,featured_media',
+        ], $fields);
+    }
+
+    private static function core_rest(string $method, string $route, array $query, $body)
+    {
+        $params = [
+            'method' => $method,
+            'route' => $route,
+            'query' => $query,
+        ];
+        if ($body !== null) {
+            $params['body'] = $body;
+        }
+        $inner = [
+            'action' => 'rest.call',
+            'params' => $params,
+        ];
+        $result = self::signed_local_request(
+            'POST',
+            self::OUTER,
+            $inner,
+            true,
+            self::child_request_id('rest:' . strtoupper($method) . ':' . $route, $params)
+        );
+        // /execute may return HTTP 200 while its REST result is a 4xx/5xx.
+        // Preserve the payload but report the actual operation outcome.
+        if (isset($result['data']['status']) && is_numeric($result['data']['status'])) {
+            $status = (int) $result['data']['status'];
+            $result['ok'] = !empty($result['ok']) && $status >= 200 && $status < 300;
+            $result['status'] = $status;
+            $result['statusText'] = self::status_text($status);
+        }
+        return $result;
+    }
+
+    private static function action_request(string $route, string $action, array $params)
+    {
+        $json = wp_json_encode([
+            'request_id' => self::child_request_id('action:' . $route . ':' . $action, $params),
+            'action' => $action,
+            'params' => $params,
+        ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if (!is_string($json)) {
+            return new WP_Error('wpab_v099_encode', 'Could not encode action payload.', ['status' => 500]);
+        }
+        return self::signed_local_request('POST', $route, ['payload_b64' => base64_encode($json)], false);
+    }
+
+    private static function rest_action_request(string $route, string $action, array $params)
+    {
+        return self::core_rest('POST', $route, [], [
+            'action' => $action,
+            'params' => $params,
+        ]);
+    }
+
+    private static function query_params(array $params)
+    {
+        if (!array_key_exists('query', $params)) {
+            return [];
+        }
+        if (!is_array($params['query'])) {
+            return new WP_Error('wpab_v099_query', 'query must be an object.', ['status' => 400]);
+        }
+        return $params['query'];
+    }
+
+    private static function positive_id(array $params, string $key)
+    {
+        $raw = $params[$key] ?? null;
+        $value = (is_int($raw) || (is_string($raw) && preg_match('/^[1-9][0-9]*$/D', $raw)))
+            ? filter_var($raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]])
+            : false;
+        if ($value === false) {
+            return new WP_Error('wpab_v099_id', $key . ' must be a positive integer.', ['status' => 400, 'key' => $key]);
+        }
+        return $value;
+    }
+
+    /**
+     * Nested Bridge calls must not reuse the parent request_id while that parent
+     * is still locked by the idempotency layer. Derive a stable child id so a
+     * retry of the same high-level operation remains deterministic without
+     * colliding with the in-flight parent payload.
+     */
+    private static function child_request_id(string $scope, array $payload): string
+    {
+        if (self::$request_id === '') {
+            return '';
+        }
+        $encoded = wp_json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if (!is_string($encoded)) {
+            $encoded = '';
+        }
+        $prefix = substr(self::$request_id, 0, 72);
+        return $prefix . ':v099:' . substr(hash('sha256', self::$request_id . "\n" . $scope . "\n" . $encoded), 0, 32);
+    }
+
+    private static function signed_local_request(
+        string $method,
+        string $route,
+        ?array $body,
+        bool $execute_envelope,
+        ?string $request_id = null
+    ): array {
+        $secret = (string) get_option(self::SECRET, '');
+        if (strlen($secret) < 32 || !self::valid_local_route($route)) {
+            return self::error_result(500, 'Local Bridge credentials or route are invalid.');
+        }
+
+        $transport = $body;
+        if ($execute_envelope && $body !== null) {
+            $payload = ['request_id' => $request_id === null ? self::$request_id : $request_id];
+            foreach ($body as $key => $value) {
+                $payload[$key] = $value;
+            }
+            $payload_json = wp_json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            if (!is_string($payload_json)) {
+                return self::error_result(500, 'Could not encode nested Bridge envelope.');
+            }
+            $transport = [
+                'action' => 'envelope',
+                'params' => ['payload_b64' => base64_encode($payload_json)],
+            ];
+        }
+        $body_text = $transport === null ? '' : wp_json_encode($transport, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if (!is_string($body_text)) {
+            return self::error_result(500, 'Could not encode local Bridge request.');
+        }
+
+        $timestamp = (string) time();
+        $signature_payload = $timestamp . "\n" . strtoupper($method) . "\n" . $route . "\n" . hash('sha256', $body_text);
+        $signature = hash_hmac('sha256', $signature_payload, $secret);
+        $request = new WP_REST_Request(strtoupper($method), $route);
+        $request->set_header('Accept', 'application/json');
+        $request->set_header('X-WPAB-Timestamp', $timestamp);
+        $request->set_header('X-WPAB-Signature', $signature);
+        if ($transport !== null && !in_array(strtoupper($method), ['GET', 'HEAD'], true)) {
+            $request->set_header('Content-Type', 'application/json');
+            $request->set_body($body_text);
+        }
+        $response = rest_do_request($request);
+        if (is_wp_error($response)) {
+            return self::error_result(500, $response->get_error_message());
+        }
+        $status = (int) $response->get_status();
+        return [
+            'ok' => $status >= 200 && $status < 300,
+            'status' => $status,
+            'statusText' => self::status_text($status),
+            'url' => home_url('/wp-json' . $route),
+            'data' => $response->get_data(),
+        ];
+    }
+
+    private static function error_result(int $status, string $message): array
+    {
+        return [
+            'ok' => false,
+            'status' => $status,
+            'statusText' => $message,
+            'data' => ['error' => $message],
+        ];
+    }
+
+    private static function valid_local_route(string $route): bool
+    {
+        return $route !== ''
+            && $route[0] === '/'
+            && strpos($route, '://') === false
+            && strpos($route, '?') === false
+            && strpos($route, '#') === false
+            && strpos($route, '..') === false
+            && strlen($route) <= 300;
+    }
+
+    private static function status_text(int $status): string
+    {
+        $texts = [
+            200 => 'OK', 201 => 'Created', 202 => 'Accepted', 204 => 'No Content', 207 => 'Multi-Status',
+            400 => 'Bad Request', 401 => 'Unauthorized', 403 => 'Forbidden', 404 => 'Not Found',
+            409 => 'Conflict', 410 => 'Gone', 413 => 'Payload Too Large', 416 => 'Range Not Satisfiable',
+            422 => 'Unprocessable Entity', 429 => 'Too Many Requests', 500 => 'Internal Server Error',
+            503 => 'Service Unavailable',
+        ];
+        return $texts[$status] ?? ('HTTP ' . $status);
+    }
+
+    private static function valid_hmac(WP_REST_Request $request): bool
+    {
+        $secret = (string) get_option(self::SECRET, '');
+        $user_id = (int) get_option(self::USER, 0);
+        if ($secret === '' || $user_id < 1 || !user_can($user_id, 'manage_options')) {
+            return false;
+        }
+        $timestamp = trim((string) $request->get_header('x-wpab-timestamp'));
+        $signature = strtolower(trim((string) $request->get_header('x-wpab-signature')));
+        if ($timestamp === '' || $signature === '' || !ctype_digit($timestamp)
+            || abs(time() - (int) $timestamp) > self::SKEW) {
+            return false;
+        }
+        $payload = $timestamp . "\nPOST\n" . self::OUTER . "\n" . hash('sha256', (string) $request->get_body());
+        return hash_equals(hash_hmac('sha256', $payload, $secret), $signature);
+    }
+
+    private static function inner(WP_REST_Request $request)
+    {
+        $outer = json_decode((string) $request->get_body(), true);
+        if (!is_array($outer)
+            || ($outer['action'] ?? '') !== 'envelope'
+            || !isset($outer['params']['payload_b64'])) {
+            return null;
+        }
+        $decoded = base64_decode((string) $outer['params']['payload_b64'], true);
+        if (!is_string($decoded)) {
+            return null;
+        }
+        $inner = json_decode($decoded, true);
+        return is_array($inner) ? $inner : null;
+    }
+}

@@ -1,5 +1,5 @@
 === WP Agent Bridge ===
-Contributors: takka-d
+Contributors:
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
@@ -15,7 +15,7 @@ WP Agent Bridge exposes a deliberately bounded WordPress management surface for 
 
 Normal command execution is self-contained: the user owns the private GitHub runtime repository and the site-specific GitHub App. GitHub sends the signed push Webhook directly to the user's WordPress, and WordPress writes the result back to that same user-owned repository.
 
-Normal operation does not use an operator-owned runtime repository, operator-owned relay server, per-command GitHub Actions worker, old Bridge Key, `takka-d/chatgpt-data`, or WPVibe.
+Normal operation does not use an operator-owned runtime repository, operator-owned relay server, per-command GitHub Actions worker, old Bridge Key, `legacy operator-owned runtime repository`, or WPVibe.
 
 The project is designed around these principles:
 
@@ -53,7 +53,7 @@ PATs, manual Webhook secrets, private keys, Bridge Keys, and GitHub Actions work
 
 == Deterministic operation routing ==
 
-Common workflows use the internal `/takka-v099/v1/operate` route with one allowlisted high-level operation name and params object. This keeps query parameters separate from route paths and removes the need for model clients to guess which versioned Bridge route implements a common task.
+Common workflows use the internal `/wpab-v099/v1/operate` route with one allowlisted high-level operation name and params object. This keeps query parameters separate from route paths and removes the need for model clients to guess which versioned Bridge route implements a common task.
 
 `post.get` is metadata-oriented and bounded by default; post source content is read through `post.content.search` or `post.content.read_range`. Generic `post.update` cannot replace post content, so content changes use the guarded preview/apply path. `readonly.batch` accepts the same documented high-level read operation names and normalizes them to the strict read-only action map.
 
@@ -75,13 +75,13 @@ The fast path resolves all ordered staged paths from one current Git tree snapsh
 
 WP Agent Bridge can keep persistent development artifacts under `wordpress-bridge/workspace/` in the user's private canonical runtime repository. This is intended for iterative work such as a large HTML/JavaScript tool that would otherwise need to be rediscovered from ChatGPT File Library and re-read in full on every continuation.
 
-The internal `/takka-v097/v1/manage` surface provides `workspace.list`, full or ranged reads, bounded literal search, guarded full writes, exact-fragment patching, deletion, compact line diffing, snapshot creation/listing, and snapshot rollback. Existing files require `expected_current_sha256`; new files require `expected_current_absent=true`; mutating operations require explicit confirmation. Workspace paths are restricted to an allowlist of text-oriented development extensions, and no arbitrary filesystem, shell, PHP, or executable upload surface is added.
+The internal `/wpab-v097/v1/manage` surface provides `workspace.list`, full or ranged reads, bounded literal search, guarded full writes, exact-fragment patching, deletion, compact line diffing, snapshot creation/listing, and snapshot rollback. Existing files require `expected_current_sha256`; new files require `expected_current_absent=true`; mutating operations require explicit confirmation. Workspace paths are restricted to an allowlist of text-oriented development extensions, and no arbitrary filesystem, shell, PHP, or executable upload surface is added.
 
 Snapshots store the source Git blob identity rather than duplicating the whole file. Git history remains the underlying version store while the snapshot manifest gives ChatGPT a stable rollback handle.
 
 == Read-only batching ==
 
-The internal `/takka-v098/v1/manage` surface can execute multiple independent allowlisted read/search/inspect/status operations behind one pending command and one signed webhook. A batch is preflighted in full before any operation runs; unknown or mutating actions reject the entire batch. The batch does not expose generic arbitrary REST calls, writes, uploads, preview creation, publishing, deletion, snapshot creation, or rollback.
+The internal `/wpab-v098/v1/manage` surface can execute multiple independent allowlisted read/search/inspect/status operations behind one pending command and one signed webhook. A batch is preflighted in full before any operation runs; unknown or mutating actions reject the entire batch. The batch does not expose generic arbitrary REST calls, writes, uploads, preview creation, publishing, deletion, snapshot creation, or rollback.
 
 Batches are bounded to 12 operations, 256 KiB of params per operation, a 1 MiB aggregate result, and a 20 second total execution budget. Individual operation failures are returned in a structured result array and can either stop the batch or allow remaining read-only operations to continue.
 
@@ -141,7 +141,7 @@ High-impact writes remain subject to the Bridge's preview, confirmation, state-h
 * Summarize uploaded binary input in runtime results instead of echoing Base64; preserve byte counts and SHA-256 for verification.
 
 = 1.1.16 =
-* Adds `/takka-v099/v1/operate`, a deterministic high-level operation router for common post, media, diagnostics, Workspace, read-only batch, and self-update workflows.
+* Adds `/wpab-v099/v1/operate`, a deterministic high-level operation router for common post, media, diagnostics, Workspace, read-only batch, and self-update workflows.
 * Adds bounded post-content source range reads and exposes them through the deterministic router and read-only batch path.
 * Generates concise canonical `AGENTS.md` and `WEBHOOK_RUNTIME.md` routing guidance so existing runtime repositories stop reintroducing stale route/media instructions.
 * Keeps `post.get` metadata-oriented by default and blocks full post-content retrieval through that operation; source content uses dedicated search/range operations.
@@ -161,7 +161,7 @@ High-impact writes remain subject to the Bridge's preview, confirmation, state-h
 * Treats a visible matching result as the command-bookkeeping completion barrier, removing the former post-result branch-movement window that could make the next connector `create_file` hit 409.
 
 = 1.1.13 =
-* Adds strict read-only batching under `/takka-v098/v1/manage` so multiple independent search/read/inspect/status operations can share one pending command, webhook, and result.
+* Adds strict read-only batching under `/wpab-v098/v1/manage` so multiple independent search/read/inspect/status operations can share one pending command, webhook, and result.
 * Preflights the full batch against explicit read-only action maps; generic REST calls and all known mutation actions are blocked.
 * Bounds batches to 12 operations, 256 KiB params per operation, 1 MiB aggregate result, and a 20 second total budget with structured per-operation status and timing.
 * Advertises the batch route, allowlist, limits, and preferred two-or-more-read fast path in `RUNTIME_CAPABILITIES.json`.

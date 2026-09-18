@@ -1,6 +1,6 @@
 # WP Agent Bridge License 1.0
 
-Copyright (c) 2026 takka-d. All rights reserved except as expressly granted below.
+Copyright (c) 2026 WP Agent Bridge. All rights reserved except as expressly granted below.
 
 ## Permission
 

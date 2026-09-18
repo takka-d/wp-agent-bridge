@@ -15,18 +15,18 @@ function pr_fail(string $message): void
 }
 
 $secret = str_repeat('d', 64);
-update_option('takka_bridge_secret', $secret, false);
-update_option('takka_bridge_user_id', 1, false);
+update_option('wpab_secret', $secret, false);
+update_option('wpab_user_id', 1, false);
 
 function pr_operation(string $operation, array $params = []): array
 {
-    $secret = (string) get_option('takka_bridge_secret');
+    $secret = (string) get_option('wpab_secret');
     $inner = [
         'request_id' => 'post-reliability-' . substr(hash('sha256', $operation . '|' . wp_json_encode($params) . '|' . wp_generate_uuid4()), 0, 32),
         'action' => 'rest.call',
         'params' => [
             'method' => 'POST',
-            'route' => '/takka-v099/v1/operate',
+            'route' => '/wpab-v099/v1/operate',
             'query' => [],
             'body' => ['operation' => $operation, 'params' => $params],
         ],
@@ -37,13 +37,13 @@ function pr_operation(string $operation, array $params = []): array
     ];
     $body = wp_json_encode($transport, JSON_UNESCAPED_SLASHES);
     $timestamp = (string) time();
-    $outer = '/takka-bridge/v1/execute';
+    $outer = '/wp-agent-bridge/v1/execute';
     $signature = hash_hmac('sha256', $timestamp . "\nPOST\n" . $outer . "\n" . hash('sha256', $body), $secret);
 
     $request = new WP_REST_Request('POST', $outer);
     $request->set_header('content-type', 'application/json');
-    $request->set_header('X-TakKa-Timestamp', $timestamp);
-    $request->set_header('X-TakKa-Signature', $signature);
+    $request->set_header('X-WPAB-Timestamp', $timestamp);
+    $request->set_header('X-WPAB-Signature', $signature);
     $request->set_body($body);
     $response = rest_do_request($request);
     if (is_wp_error($response)) {
@@ -83,7 +83,7 @@ function pr_revision_fields_hash(WP_Post $post): string
 $unknown = pr_v099(pr_operation('post.reliability.nonexistent'));
 if (!empty($unknown['ok'])
     || (int) ($unknown['status'] ?? 0) !== 400
-    || ($unknown['code'] ?? '') !== 'takka_bridge_v099_unknown_operation'
+    || ($unknown['code'] ?? '') !== 'wpab_v099_unknown_operation'
     || !is_string($unknown['message'] ?? null)
     || !array_key_exists('side_effects', $unknown)
     || (int) ($unknown['response_contract_version'] ?? 0) !== 1) {
@@ -115,7 +115,7 @@ try {
     $diag = $mismatch['data']['diagnostics'] ?? null;
     if (!empty($mismatch['ok'])
         || (int) ($mismatch['status'] ?? 0) !== 409
-        || ($mismatch['code'] ?? '') !== 'takka_bridge_post_content_match_count'
+        || ($mismatch['code'] ?? '') !== 'wpab_post_content_match_count'
         || !is_array($diag)
         || empty($diag['read_only'])
         || (int) ($diag['exact_match_count'] ?? -1) !== 0
@@ -224,7 +224,7 @@ try {
     $health_v099 = pr_v099(pr_operation('health'));
     $health_data = $health_v099['result']['data'] ?? null;
     $plugin_data = get_file_data(
-        __DIR__ . '/../plugin/wp-agent-bridge/takka-wordpress-bridge.php',
+        __DIR__ . '/../plugin/wp-agent-bridge/wp-agent-bridge.php',
         ['Version' => 'Version'],
         'plugin'
     );

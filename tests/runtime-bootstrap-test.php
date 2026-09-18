@@ -51,7 +51,7 @@ function wp_json_encode($value, $flags = 0) { return json_encode($value, $flags)
 function get_file_data($file, $headers, $context): array { return ['Version' => '1.1.37']; }
 function add_action($hook, $callback, $priority = 10): void {}
 
-final class TakKa_WordPress_Bridge_Direct_Runtime
+final class WP_Agent_Bridge_Direct_Runtime
 {
     public const RUNTIME_BRANCH = 'wp-agent-bridge-runtime';
 
@@ -66,7 +66,7 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
     }
 }
 
-final class TakKa_WordPress_Bridge_Runtime_Guidance
+final class WP_Agent_Bridge_Runtime_Guidance
 {
     public static function agents(string $repository, string $branch, string $host, string $version): string
     {
@@ -76,7 +76,7 @@ final class TakKa_WordPress_Bridge_Runtime_Guidance
     }
 }
 
-final class TakKa_WordPress_Bridge_Runtime_Capabilities
+final class WP_Agent_Bridge_Runtime_Capabilities
 {
     public static function catalog(string $version, string $repository, string $branch, string $host): array
     {
@@ -94,7 +94,7 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
     }
 }
 
-final class TakKa_WordPress_Bridge_Post_Concurrency_Runtime_Guidance
+final class WP_Agent_Bridge_Post_Concurrency_Runtime_Guidance
 {
     public static function enrich_agents(string $agents): string
     {
@@ -108,7 +108,7 @@ final class TakKa_WordPress_Bridge_Post_Concurrency_Runtime_Guidance
     }
 }
 
-final class TakKa_WordPress_Bridge_Post_Reliability_Runtime_Guidance
+final class WP_Agent_Bridge_Post_Reliability_Runtime_Guidance
 {
     public static function enrich_agents(string $agents): string
     {
@@ -122,7 +122,7 @@ final class TakKa_WordPress_Bridge_Post_Reliability_Runtime_Guidance
     }
 }
 
-final class TakKa_WordPress_Bridge_Direct_GitHub
+final class WP_Agent_Bridge_Direct_GitHub
 {
     public static function installation_token($installation, $repository): string
     {
@@ -155,7 +155,7 @@ final class TakKa_WordPress_Bridge_Direct_GitHub
     }
 }
 
-final class TakKa_WordPress_Bridge_Direct_GitHub_Recovery
+final class WP_Agent_Bridge_Direct_GitHub_Recovery
 {
     public static function error_status($error): int
     {
@@ -165,7 +165,7 @@ final class TakKa_WordPress_Bridge_Direct_GitHub_Recovery
     }
 }
 
-require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-runtime-bootstrap.php';
+require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-runtime-bootstrap.php';
 
 function fail_bootstrap(string $message): void
 {
@@ -173,7 +173,7 @@ function fail_bootstrap(string $message): void
     exit(1);
 }
 
-$result = TakKa_WordPress_Bridge_Runtime_Bootstrap::sync();
+$result = WP_Agent_Bridge_Runtime_Bootstrap::sync();
 if (is_wp_error($result) || empty($result['ok'])) {
     fail_bootstrap('Runtime bootstrap sync failed.');
 }
@@ -240,7 +240,7 @@ foreach (array_keys($GLOBALS['bootstrap_files']) as $key) {
 }
 
 $write_count = count($GLOBALS['bootstrap_writes']);
-$result2 = TakKa_WordPress_Bridge_Runtime_Bootstrap::sync();
+$result2 = WP_Agent_Bridge_Runtime_Bootstrap::sync();
 if (is_wp_error($result2) || count($GLOBALS['bootstrap_writes']) !== $write_count) {
     fail_bootstrap('Unchanged final composition should not rewrite files.');
 }

@@ -3,14 +3,14 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__);
-$bootstrap = file_get_contents($root . '/plugin/wp-agent-bridge/takka-wordpress-bridge.php');
-$site = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v096-site.php');
-$hook = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v096-media-hook.php');
-$themeFiles = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v096-theme-files.php');
-$health = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v096-health.php');
-$capabilities = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-runtime-capabilities.php');
-$guidance = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-runtime-guidance.php');
-$options = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-v08-options.php');
+$bootstrap = file_get_contents($root . '/plugin/wp-agent-bridge/wp-agent-bridge.php');
+$site = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-wp-agent-bridge-v096-site.php');
+$hook = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-wp-agent-bridge-v096-media-hook.php');
+$themeFiles = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-wp-agent-bridge-v096-theme-files.php');
+$health = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-wp-agent-bridge-v096-health.php');
+$capabilities = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-wp-agent-bridge-runtime-capabilities.php');
+$guidance = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-wp-agent-bridge-runtime-guidance.php');
+$options = file_get_contents($root . '/plugin/wp-agent-bridge/includes/class-wp-agent-bridge-v08-options.php');
 
 foreach (compact('bootstrap', 'site', 'hook', 'themeFiles', 'health', 'capabilities', 'guidance', 'options') as $name => $value) {
     if (!is_string($value) || $value === '') {
@@ -20,14 +20,14 @@ foreach (compact('bootstrap', 'site', 'hook', 'themeFiles', 'health', 'capabilit
 }
 
 foreach ([
-    'class-takka-wordpress-bridge-v096-site.php',
-    'class-takka-wordpress-bridge-v096-media-hook.php',
-    'class-takka-wordpress-bridge-v096-theme-files.php',
-    'class-takka-wordpress-bridge-v096-health.php',
-    'TakKa_WordPress_Bridge_V096_Site::init()',
-    'TakKa_WordPress_Bridge_V096_Media_Hook::init()',
-    'TakKa_WordPress_Bridge_V096_Theme_Files::init()',
-    'TakKa_WordPress_Bridge_V096_Health::init()',
+    'class-wp-agent-bridge-v096-site.php',
+    'class-wp-agent-bridge-v096-media-hook.php',
+    'class-wp-agent-bridge-v096-theme-files.php',
+    'class-wp-agent-bridge-v096-health.php',
+    'WP_Agent_Bridge_V096_Site::init()',
+    'WP_Agent_Bridge_V096_Media_Hook::init()',
+    'WP_Agent_Bridge_V096_Theme_Files::init()',
+    'WP_Agent_Bridge_V096_Health::init()',
 ] as $needle) {
     if (strpos($bootstrap, $needle) === false) {
         fwrite(STDERR, "bootstrap missing {$needle}\n");
@@ -75,7 +75,7 @@ foreach ([
     'RecursiveDirectoryIterator',
     'MAX_SCAN_BYTES',
     'MAX_READ_ITEMS',
-    'TakKa_WordPress_Bridge_V095_Outline::read_range',
+    'WP_Agent_Bridge_V095_Outline::read_range',
 ] as $needle) {
     if (strpos($themeFiles, $needle) === false) {
         fwrite(STDERR, "theme files surface missing {$needle}\n");

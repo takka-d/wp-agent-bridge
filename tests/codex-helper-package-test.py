@@ -34,7 +34,7 @@ for marker in [
     "wordpress-bridge/RUNTIME_CAPABILITIES.json",
     "wordpress-bridge/results/<id>.json",
     "wordpress-bridge/prepare-media.py",
-    "takka-d/chatgpt-data",
+    "legacy operator-owned runtime repository",
 ]:
     if marker not in skill:
         raise SystemExit(f"Codex helper skill missing marker: {marker}")

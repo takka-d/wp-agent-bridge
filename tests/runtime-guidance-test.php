@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 define('ABSPATH', __DIR__ . '/');
 
-require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-runtime-guidance.php';
+require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-runtime-guidance.php';
 
 function guidance_fail(string $message): void
 {
@@ -12,13 +12,13 @@ function guidance_fail(string $message): void
     exit(1);
 }
 
-$agents = TakKa_WordPress_Bridge_Runtime_Guidance::agents(
+$agents = WP_Agent_Bridge_Runtime_Guidance::agents(
     'owner/runtime-repo',
     'wp-agent-bridge-runtime',
     'example.test',
     '1.1.16'
 );
-$runtime = TakKa_WordPress_Bridge_Runtime_Guidance::runtime(
+$runtime = WP_Agent_Bridge_Runtime_Guidance::runtime(
     'owner/runtime-repo',
     'wp-agent-bridge-runtime',
     'example.test',
@@ -34,7 +34,7 @@ foreach ([
     'Preferred pending JSON',
     'Keep one command ID and identical payload',
     '207 read batch is incomplete',
-    '/takka-v099/v1/operate',
+    '/wpab-v099/v1/operate',
     'RUNTIME_CAPABILITIES.json',
     'connector-safe chunk commands',
     '8192-byte decoded chunks',
@@ -49,7 +49,7 @@ foreach ([
     'GitHub Actions is for source CI/package/release',
     'Never put `?query=...` in a REST `route` field',
     'Do not ask the user',
-    'Do not switch normal WordPress work to WPVibe, `takka-d/chatgpt-data`',
+    'Do not switch normal WordPress work to WPVibe, `legacy operator-owned runtime repository`',
     'A visible matching result is the completion barrier',
     'Client tool availability',
     'If absent, use an available tool/plugin discovery facility once',
@@ -84,7 +84,7 @@ foreach ([
     }
 }
 
-if (strpos($runtime, '/takka-v099/v1/operate') === false
+if (strpos($runtime, '/wpab-v099/v1/operate') === false
     || strpos($runtime, 'GitHub Actions is not a command worker') === false
     || strpos($runtime, 'policy layer bounds post reads') === false
     || strpos($runtime, 'Installed Bridge: `1.1.16`') === false) {
@@ -93,8 +93,8 @@ if (strpos($runtime, '/takka-v099/v1/operate') === false
 
 echo "runtime-guidance-test: ok\n";
 
-$prompt = TakKa_WordPress_Bridge_Runtime_Guidance::client_prompt('alice/site-runtime', 'wp-agent-bridge-runtime', 'site.example');
-$other_prompt = TakKa_WordPress_Bridge_Runtime_Guidance::client_prompt('bob/other-runtime', 'wp-agent-bridge-runtime', 'other.example');
+$prompt = WP_Agent_Bridge_Runtime_Guidance::client_prompt('alice/site-runtime', 'wp-agent-bridge-runtime', 'site.example');
+$other_prompt = WP_Agent_Bridge_Runtime_Guidance::client_prompt('bob/other-runtime', 'wp-agent-bridge-runtime', 'other.example');
 foreach (['alice/site-runtime', 'site.example', 'RUNTIME_CONNECTION.json', 'RUNTIME_CAPABILITIES.json', 'branch/ref=wp-agent-bridge-runtime', 'default branch', 'commands/pending/<id>.json', '事前readを開始条件にしない', 'read失敗とwrite可否は別', '接続確認だけで止まらず'] as $required) {
     if (strpos($prompt, $required) === false) guidance_fail('Client start prompt is missing: ' . $required);
 }
@@ -108,7 +108,7 @@ if (strpos($other_prompt, 'bob/other-runtime') === false || strpos($other_prompt
 echo "client-start-prompt: ok\n";
 
 require_once __DIR__ . '/runtime-sync-fixture.php';
-verify_runtime_sync('TakKa_WordPress_Bridge_Runtime_Guidance', 'takka_bridge_runtime_guidance_synced_version', ['AGENTS.md', 'wordpress-bridge/WEBHOOK_RUNTIME.md', 'wordpress-bridge/prepare-media.py']);
+verify_runtime_sync('WP_Agent_Bridge_Runtime_Guidance', 'wpab_runtime_guidance_synced_version', ['AGENTS.md', 'wordpress-bridge/WEBHOOK_RUNTIME.md', 'wordpress-bridge/prepare-media.py']);
 
 $synced_preparer = $GLOBALS['sync_files']['wordpress-bridge/prepare-media.py'];
 $bundled_preparer = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/client/prepare-media.py.txt');

@@ -38,7 +38,7 @@ function is_wp_error($value): bool
     return $value instanceof WP_Error;
 }
 
-final class TakKa_WordPress_Bridge_Direct_GitHub
+final class WP_Agent_Bridge_Direct_GitHub
 {
     public static $calls = [];
     public static $treeEntries = [];
@@ -78,7 +78,7 @@ final class TakKa_WordPress_Bridge_Direct_GitHub
     }
 }
 
-require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-direct-media-auto-path.php';
+require_once __DIR__ . '/../plugin/wp-agent-bridge/includes/class-wp-agent-bridge-direct-media-auto-path.php';
 
 function fail_test(string $message): void
 {
@@ -88,7 +88,7 @@ function fail_test(string $message): void
 
 function private_method(string $name): ReflectionMethod
 {
-    $method = new ReflectionMethod('TakKa_WordPress_Bridge_Direct_Media_Auto_Path', $name);
+    $method = new ReflectionMethod('WP_Agent_Bridge_Direct_Media_Auto_Path', $name);
     $method->setAccessible(true);
     return $method;
 }
@@ -99,14 +99,14 @@ $paths = [
 ];
 $sha0 = str_repeat('b', 40);
 $sha1 = str_repeat('c', 40);
-TakKa_WordPress_Bridge_Direct_GitHub::$treeEntries = [
+WP_Agent_Bridge_Direct_GitHub::$treeEntries = [
     ['path' => 'README.md', 'type' => 'blob', 'sha' => str_repeat('d', 40)],
     ['path' => $paths[1], 'type' => 'blob', 'sha' => $sha1],
     ['path' => $paths[0], 'type' => 'blob', 'sha' => $sha0],
 ];
 
 $snapshotMethod = private_method('snapshot_sources');
-TakKa_WordPress_Bridge_Direct_GitHub::$calls = [];
+WP_Agent_Bridge_Direct_GitHub::$calls = [];
 $snapshot = $snapshotMethod->invoke(null, 'token', 'test-user/runtime-repo', 'wp-agent-bridge-runtime', $paths, null, false);
 if (is_wp_error($snapshot)) {
     fail_test('Automatic path resolution returned an unexpected error: ' . $snapshot->get_error_code());
@@ -117,8 +117,8 @@ if (($snapshot['head'] ?? '') !== str_repeat('a', 40)
     || ($snapshot['sources'][1]['sha'] ?? '') !== $sha1) {
     fail_test('Automatic path resolution did not preserve data_paths ordering or snapshot identity.');
 }
-if (count(TakKa_WordPress_Bridge_Direct_GitHub::$calls) !== 3
-    || strpos(TakKa_WordPress_Bridge_Direct_GitHub::$calls[2][1], '?recursive=1') === false) {
+if (count(WP_Agent_Bridge_Direct_GitHub::$calls) !== 3
+    || strpos(WP_Agent_Bridge_Direct_GitHub::$calls[2][1], '?recursive=1') === false) {
     fail_test('Automatic path resolution must use one ref + commit + recursive-tree snapshot, independent of chunk count.');
 }
 
@@ -131,7 +131,7 @@ if (!is_wp_error($mismatch) || $mismatch->get_error_code() !== 'wpab_direct_medi
     fail_test('Mismatched optional data_blob_shas pins were not rejected.');
 }
 
-TakKa_WordPress_Bridge_Direct_GitHub::$treeEntries = [
+WP_Agent_Bridge_Direct_GitHub::$treeEntries = [
     ['path' => $paths[0], 'type' => 'blob', 'sha' => $sha0],
 ];
 $missing = $snapshotMethod->invoke(null, 'token', 'test-user/runtime-repo', 'wp-agent-bridge-runtime', $paths, null, false);
@@ -139,13 +139,13 @@ if (!is_wp_error($missing) || $missing->get_error_code() !== 'wpab_direct_media_
     fail_test('Missing staged source was not rejected before side effects.');
 }
 
-TakKa_WordPress_Bridge_Direct_GitHub::$treeEntries = [
+WP_Agent_Bridge_Direct_GitHub::$treeEntries = [
     ['path' => $paths[0], 'type' => 'blob', 'sha' => $sha0],
     ['path' => $paths[1], 'type' => 'blob', 'sha' => $sha1],
 ];
-TakKa_WordPress_Bridge_Direct_GitHub::$truncated = true;
+WP_Agent_Bridge_Direct_GitHub::$truncated = true;
 $truncated = $snapshotMethod->invoke(null, 'token', 'test-user/runtime-repo', 'wp-agent-bridge-runtime', $paths, null, false);
-TakKa_WordPress_Bridge_Direct_GitHub::$truncated = false;
+WP_Agent_Bridge_Direct_GitHub::$truncated = false;
 if (!is_wp_error($truncated) || $truncated->get_error_code() !== 'wpab_direct_media_auto_tree') {
     fail_test('Truncated recursive tree snapshot was not rejected.');
 }
@@ -157,7 +157,7 @@ if (!is_string($decoded) || $decoded !== $raw) {
     fail_test('Strict staged Base64 decoding failed.');
 }
 
-TakKa_WordPress_Bridge_Direct_GitHub::$calls = [];
+WP_Agent_Bridge_Direct_GitHub::$calls = [];
 $sources = [
     ['path' => $paths[0], 'sha' => $sha0],
     ['path' => $paths[1], 'sha' => $sha1],
@@ -173,12 +173,12 @@ $cleanup = private_method('cleanup_sources_atomic')->invoke(
 if (is_wp_error($cleanup) || empty($cleanup['ok']) || ($cleanup['attempts'] ?? 0) !== 1) {
     fail_test('Common-path atomic cleanup did not reuse the upload snapshot successfully.');
 }
-if (count(TakKa_WordPress_Bridge_Direct_GitHub::$calls) !== 3) {
+if (count(WP_Agent_Bridge_Direct_GitHub::$calls) !== 3) {
     fail_test('Common-path cleanup should need only tree creation, commit creation, and non-force ref update.');
 }
-$treeBody = TakKa_WordPress_Bridge_Direct_GitHub::$calls[0][2] ?? null;
-$commitBody = TakKa_WordPress_Bridge_Direct_GitHub::$calls[1][2] ?? null;
-$patchBody = TakKa_WordPress_Bridge_Direct_GitHub::$calls[2][2] ?? null;
+$treeBody = WP_Agent_Bridge_Direct_GitHub::$calls[0][2] ?? null;
+$commitBody = WP_Agent_Bridge_Direct_GitHub::$calls[1][2] ?? null;
+$patchBody = WP_Agent_Bridge_Direct_GitHub::$calls[2][2] ?? null;
 $firstDelete = is_array($treeBody) && isset($treeBody['tree'][0]) && is_array($treeBody['tree'][0])
     ? $treeBody['tree'][0]
     : [];
@@ -195,7 +195,7 @@ if (!is_array($treeBody)
 }
 
 $fallback = private_method('legacy_fallback_allowed');
-if ($fallback->invoke(null, new WP_Error('takka_direct_github_http_404', 'mock', ['status' => 404])) !== true
+if ($fallback->invoke(null, new WP_Error('wpab_direct_github_http_404', 'mock', ['status' => 404])) !== true
     || $fallback->invoke(null, new WP_Error('wpab_direct_media_auto_source_missing', 'mock', ['status' => 409])) !== false) {
     fail_test('Legacy fallback is not restricted to unsupported Git API endpoint failures.');
 }
