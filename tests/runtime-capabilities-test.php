@@ -97,7 +97,7 @@ $contract = $catalog['command_contract'] ?? [];
 if (($contract['preferred_common_task_route'] ?? null) !== '/takka-v099/v1/operate'
     || (($contract['preferred_common_task_command']['type'] ?? null) !== 'rest')
     || (($contract['templates']['post_get_edit_context']['params']['query']['context'] ?? null) !== 'edit')
-    || (($contract['templates']['small_media_upload']['operation'] ?? null) !== 'media.upload.inline')) {
+    || (($contract['templates']['media_chunk_upload']['route'] ?? null) !== '/wp-agent-bridge-media/v1/upload-chunk')) {
     fail_test('Deterministic command contract/templates are missing.');
 }
 $rules = implode("\n", is_array($contract['rules'] ?? null) ? $contract['rules'] : []);
@@ -107,19 +107,21 @@ if (strpos($rules, 'Never append a query string') === false
     fail_test('Command anti-regression rules are incomplete.');
 }
 $recipes = $catalog['task_recipes'] ?? [];
-if (($recipes['featured_image_small_file']['steps'][0] ?? null) !== 'media.upload.inline'
+if (($recipes['featured_image_small_file']['steps'][0] ?? null) !== 'prepare connector-safe 8192-byte chunks'
     || ($recipes['multiple_independent_reads']['steps'][0] ?? null) !== 'readonly.batch') {
     fail_test('Task recipes are incomplete.');
 }
 $failure = $catalog['failure_policy'] ?? [];
-if (!isset($failure['rest_no_route'], $failure['media_integrity_409'], $failure['runtime_branch_race_409_422'])) {
+if (!isset($failure['rest_no_route'], $failure['media_integrity_409'], $failure['media_base64_truncation'], $failure['runtime_branch_race_409_422'])) {
     fail_test('Failure policy is incomplete.');
 }
 $media = $catalog['media_routing'] ?? [];
-if (($media['inline_action'] ?? null) !== 'media.upload_base64'
-    || ($media['inline_preferred_max_decoded_bytes'] ?? null) !== 1048576
-    || ($media['staged_upload_route'] ?? null) !== '/wp-agent-bridge-runtime/v1/media-upload'
-    || empty($media['verify_only_on_failure_or_explicit_request'])) {
+if (($media['conversation_upload_route'] ?? null) !== '/wp-agent-bridge-media/v1/upload-chunk'
+    || ($media['conversation_upload_mode'] ?? null) !== 'connector-safe-chunk-commands'
+    || ($media['recommended_decoded_chunk_bytes'] ?? null) !== 8192
+    || ($media['recommended_command_json_bytes'] ?? null) !== 16384
+    || ($media['max_chunks'] ?? null) !== 768
+    || ($media['max_commands_per_git_push'] ?? null) !== 20) {
     fail_test('Media routing policy mismatch.');
 }
 if (($catalog['connector_policy']['ordinary_command_write'][0] ?? null) !== 'create_file'
@@ -138,8 +140,9 @@ if (strpos($post_read_guidance, 'post.content.read_range') === false
     || strpos($post_read_guidance, 'deterministic operation router') === false) {
     fail_test('Post-content read routing guidance is missing.');
 }
-if (strpos((string) ($catalog['fast_path']['media_upload'] ?? ''), 'media.upload.inline') === false) {
-    fail_test('Small-media inline upload guidance is missing.');
+if (strpos((string) ($catalog['fast_path']['media_upload'] ?? ''), 'prepare-media.py') === false
+    || strpos((string) ($catalog['fast_path']['media_upload'] ?? ''), '8192-byte') === false) {
+    fail_test('Connector-safe media upload guidance is missing.');
 }
 if (strpos((string) ($catalog['fast_path']['command_chaining'] ?? ''), 'next pending command may be submitted immediately') === false) {
     fail_test('Atomic command chaining guidance is missing.');
