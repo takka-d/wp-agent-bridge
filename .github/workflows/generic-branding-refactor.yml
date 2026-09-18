@@ -98,7 +98,7 @@ jobs:
           if helper.is_dir() and archive_path.parent.is_dir():
               with zipfile.ZipFile(archive_path, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
                   for path in sorted(p for p in helper.rglob('*') if p.is_file()):
-                      zf.write(path, path.relative_to(helper.parent).as_posix())
+                      zf.write(path, path.relative_to(helper).as_posix())
 
           # The one-shot workflow must not remain in the distributable source.
           workflow = Path('.github/workflows/generic-branding-refactor.yml')
