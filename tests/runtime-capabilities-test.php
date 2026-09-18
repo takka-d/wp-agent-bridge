@@ -35,7 +35,9 @@ if (empty($bootstrap['explicit_ref_required_for_runtime_io'])
     || empty($bootstrap['mutations_require_runtime_branch'])
     || ($bootstrap['canonical_connection_path'] ?? null) !== 'wordpress-bridge/RUNTIME_CONNECTION.json'
     || ($bootstrap['connection_alias_path'] ?? null) !== 'RUNTIME_CONNECTION.json'
-    || ($bootstrap['wrong_branch_404_is_access_denial'] ?? true) !== false) {
+    || ($bootstrap['wrong_branch_404_is_access_denial'] ?? true) !== false
+    || ($bootstrap['connection_read_required_before_commands'] ?? true) !== false
+    || ($bootstrap['known_binding_can_publish_without_marker_read'] ?? false) !== true) {
     fail_test('Classic-safe runtime bootstrap metadata mismatch.');
 }
 $bookkeeping = $catalog['runtime']['bookkeeping'] ?? [];
@@ -124,7 +126,9 @@ if (($recipes['featured_image_small_file']['steps'][0] ?? null) !== 'prepare con
     fail_test('Task recipes are incomplete.');
 }
 $failure = $catalog['failure_policy'] ?? [];
-if (!isset($failure['rest_no_route'], $failure['media_integrity_409'], $failure['media_base64_truncation'], $failure['runtime_branch_race_409_422'], $failure['bootstrap_404'])) {
+if (!isset($failure['rest_no_route'], $failure['media_integrity_409'], $failure['media_base64_truncation'], $failure['runtime_branch_race_409_422'], $failure['bootstrap_404'])
+    || strpos((string) $failure['bootstrap_404'], 'not a startup blocker') === false
+    || strpos((string) $failure['bootstrap_404'], 'pending command') === false) {
     fail_test('Failure policy is incomplete.');
 }
 $media = $catalog['media_routing'] ?? [];
@@ -140,13 +144,16 @@ if (($catalog['connector_policy']['ordinary_command_write'][0] ?? null) !== 'cre
     || !in_array('update_ref', $catalog['connector_policy']['preferred_atomic_git_data'] ?? [], true)
     || strpos((string) ($catalog['connector_policy']['question_rule'] ?? ''), 'Do not ask the user') === false
     || strpos((string) ($catalog['connector_policy']['branch_rule'] ?? ''), 'explicitly') === false
-    || strpos((string) ($catalog['connector_policy']['branch_rule'] ?? ''), 'default branch') === false) {
+    || strpos((string) ($catalog['connector_policy']['branch_rule'] ?? ''), 'default branch') === false
+    || strpos((string) ($catalog['connector_policy']['startup_rule'] ?? ''), 'do not gate') === false
+    || strpos((string) ($catalog['connector_policy']['startup_rule'] ?? ''), 'pending command directly') === false) {
     fail_test('Connector fast-path metadata mismatch.');
 }
 if (strpos((string) ($catalog['fast_path']['readonly_batch'] ?? ''), 'two or more') === false) {
     fail_test('Read-only batch fast-path guidance is missing.');
 }
 if (strpos((string) ($catalog['fast_path']['runtime_resolution'] ?? ''), 'explicit runtime branch/ref') === false
+    || strpos((string) ($catalog['fast_path']['runtime_resolution'] ?? ''), 'do not make wordpress-bridge/RUNTIME_CONNECTION.json a preflight gate') === false
     || strpos((string) ($catalog['fast_path']['runtime_resolution'] ?? ''), 'bootstrap aliases only') === false) {
     fail_test('Classic-safe runtime resolution guidance is missing.');
 }
