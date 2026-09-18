@@ -36,7 +36,9 @@ foreach ([
     '207 read batch is incomplete',
     '/takka-v099/v1/operate',
     'RUNTIME_CAPABILITIES.json',
-    'media.upload.inline',
+    'connector-safe chunk commands',
+    '8192-byte decoded chunks',
+    'at most 20 chunk commands in one Git push',
     'post.content.read_range',
     'post.get` is metadata-oriented',
     'post.update` must not replace `content`',
@@ -67,7 +69,8 @@ foreach ([
 foreach ([
     'Choose the batched staged-media route by default',
     'Pending command shape: `type=rest`',
-    'unless inline upload actually fails',
+    'Small local/conversation media up to 1 MiB decoded',
+    'Larger media: staged Media Fast Path',
     'Media default: batched staged upload',
     'Save this value in the GitHub Actions repository secret',
 ] as $forbidden) {

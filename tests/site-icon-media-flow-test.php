@@ -107,8 +107,8 @@ foreach ([
     'site.icon.set',
     'site.icon.clear',
     'media.upload.capabilities',
-    'media.upload.inline',
-    '/wp-agent-bridge-runtime/v1/media-upload',
+    '/wp-agent-bridge-media/v1/upload-chunk',
+    'connector-safe-chunk-commands',
 ] as $needle) {
     if (strpos($capabilities, $needle) === false) {
         fwrite(STDERR, "runtime capability catalog missing {$needle}\n");
@@ -117,8 +117,8 @@ foreach ([
 }
 foreach ([
     'RUNTIME_CAPABILITIES.json',
-    'Small local/conversation media up to 1 MiB decoded',
-    'Larger media: staged Media Fast Path',
+    'Local/conversation media: always use `wordpress-bridge/prepare-media.py` connector-safe chunk commands',
+    'Media transport is size-independent up to the 6 MiB Bridge limit',
 ] as $needle) {
     if (strpos($guidance, $needle) === false) {
         fwrite(STDERR, "runtime guidance missing {$needle}\n");

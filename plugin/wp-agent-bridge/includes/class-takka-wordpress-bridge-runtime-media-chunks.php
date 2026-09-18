@@ -5,10 +5,11 @@ if (!defined('ABSPATH')) {
 }
 
 /**
- * Chunked media transport for runtimes whose command JSON is limited to 2 MiB.
+ * Chunked media transport for runtimes whose client/tool payload can truncate long Base64 arguments.
  *
- * The runtime sends Base64 in bounded chunks through the existing authenticated
- * Bridge `rest.call` action. Chunks are staged outside the public uploads tree,
+ * The runtime sends Base64 in small bounded chunks through the existing authenticated
+ * Bridge `rest.call` action. The recommended 8 KiB decoded chunk keeps each
+ * pending-command JSON below the observed chat/GitHub tool truncation range. Chunks are staged outside the public uploads tree,
  * verified individually, reassembled, verified against the original byte count
  * and SHA-256, then sideloaded into the WordPress media library.
  */
@@ -18,7 +19,9 @@ final class TakKa_WordPress_Bridge_Runtime_Media_Chunks
     private const ROUTE = '/upload-chunk';
     private const MAX_MEDIA_BYTES = 6291456; // 6 MiB decoded.
     private const MAX_CHUNK_BYTES = 1200000; // Base64 + JSON remains comfortably below 2 MiB.
-    private const MAX_CHUNKS = 32;
+    private const MAX_CHUNKS = 768;
+    private const RECOMMENDED_CHUNK_BYTES = 8192;
+    private const RECOMMENDED_COMMAND_JSON_BYTES = 16384;
     private const STALE_SECONDS = 86400;
     private const COMPLETED_PREFIX = 'wpab_media_chunk_done_';
 
@@ -66,6 +69,9 @@ final class TakKa_WordPress_Bridge_Runtime_Media_Chunks
             'max_decoded_bytes' => self::MAX_MEDIA_BYTES,
             'max_chunk_decoded_bytes' => self::MAX_CHUNK_BYTES,
             'max_chunks' => self::MAX_CHUNKS,
+            'recommended_decoded_chunk_bytes' => self::RECOMMENDED_CHUNK_BYTES,
+            'recommended_command_json_bytes' => self::RECOMMENDED_COMMAND_JSON_BYTES,
+            'connector_safe_chunk_commands' => true,
             'integrity' => [
                 'expected_bytes',
                 'expected_sha256',
