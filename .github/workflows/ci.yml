@@ -156,7 +156,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          plugin_version="$(sed -n 's/^ \* Version: //p' plugin/wp-agent-bridge/takka-wordpress-bridge.php | head -n1 | tr -d '\r')"
+          plugin_version="$(sed -n 's/^ \* Version: //p' plugin/wp-agent-bridge/wp-agent-bridge.php | head -n1 | tr -d '\r')"
           stable_tag="$(sed -n 's/^Stable tag: //p' plugin/wp-agent-bridge/readme.txt | head -n1 | tr -d '\r')"
           test -n "$plugin_version"
           test -n "$stable_tag"
