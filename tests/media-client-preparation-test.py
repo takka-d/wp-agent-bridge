@@ -1,4 +1,4 @@
-"""Exercise the actual client preparer and independently reconstruct its output."""
+"""Exercise the connector-safe client media preparer."""
 import base64
 import contextlib
 import hashlib
@@ -27,32 +27,45 @@ class MediaPreparationTest(unittest.TestCase):
         original = bytes(range(256)) * (size // 256) + bytes(range(size % 256))
         package = media.prepare_bytes(original, "original.png", "test-media", CONNECTION, {"post_id": 123, "alt_text": "元の画像"})
         entries = package["tree"]
-        command = json.loads(entries[-1]["content"])
-        self.assertEqual(command, package["command"])
-        self.assertEqual(command["id"], command["request_id"])
-        self.assertEqual(entries[-1]["path"], package["manifest"]["command_path"])
-        if size <= 1_048_576:
-            self.assertEqual(len(entries), 1)
-            self.assertEqual(command["operation"], "media.upload.inline")
-            rebuilt = base64.b64decode(command["params"]["data_b64"], validate=True)
-            metadata = command["params"]
-        else:
-            self.assertLessEqual(len(entries) - 1, 32)
-            self.assertEqual(command["route"], "/wp-agent-bridge-runtime/v1/media-upload")
-            metadata = command["body"]
-            self.assertEqual(metadata["data_paths"], [entry["path"] for entry in entries[:-1]])
-            chunks = []
-            for entry, integrity in zip(entries[:-1], metadata["chunk_integrity"]):
-                chunk = base64.b64decode(entry["content"], validate=True)
-                self.assertEqual(set(integrity), {"expected_bytes", "expected_sha256"})
-                self.assertEqual(len(chunk), integrity["expected_bytes"])
-                self.assertEqual(hashlib.sha256(chunk).hexdigest(), integrity["expected_sha256"])
-                chunks.append(chunk)
-            rebuilt = b"".join(chunks)
+        commands = package["commands"]
+        self.assertEqual(len(entries), len(commands))
+        self.assertEqual(len(commands), (size + media.SAFE_CHUNK_BYTES - 1) // media.SAFE_CHUNK_BYTES)
+        self.assertLessEqual(len(commands), media.MAX_CHUNKS)
+        self.assertEqual(package["command"], commands[-1])
+        self.assertEqual(package["manifest"]["final_result_path"],
+                         "wordpress-bridge/results/{}.json".format(commands[-1]["id"]))
+        self.assertEqual(package["manifest"]["publication_order"], "ascending_chunk_index")
+        self.assertEqual(package["manifest"]["max_commands_per_git_push"], 20)
+
+        chunks = []
+        ids = set()
+        for index, (entry, command) in enumerate(zip(entries, commands)):
+            self.assertEqual(json.loads(entry["content"]), command)
+            self.assertEqual(command["id"], command["request_id"])
+            self.assertNotIn(command["id"], ids)
+            ids.add(command["id"])
+            self.assertEqual(command["route"], "/wp-agent-bridge-media/v1/upload-chunk")
+            self.assertEqual(command["method"], "POST")
+            self.assertEqual(command["type"], "rest")
+            body = command["body"]
+            self.assertEqual(body["upload_id"], "test-media")
+            self.assertEqual(body["chunk_index"], index)
+            self.assertEqual(body["chunk_count"], len(commands))
+            self.assertEqual(body["expected_bytes"], len(original))
+            self.assertEqual(body["expected_sha256"], hashlib.sha256(original).hexdigest())
+            chunk = base64.b64decode(body["data_b64"], validate=True)
+            self.assertLessEqual(len(chunk), media.SAFE_CHUNK_BYTES)
+            self.assertEqual(len(chunk), body["chunk_bytes"])
+            self.assertEqual(hashlib.sha256(chunk).hexdigest(), body["chunk_sha256"])
+            self.assertLessEqual(len(entry["content"].encode("utf-8")), media.MAX_COMMAND_JSON_BYTES)
+            chunks.append(chunk)
+
+        rebuilt = b"".join(chunks)
         self.assertEqual(rebuilt, original)
-        self.assertEqual(metadata["expected_bytes"], len(original))
-        self.assertEqual(metadata["expected_sha256"], hashlib.sha256(original).hexdigest())
         self.assertFalse(package["manifest"]["uploaded"])
+        self.assertEqual(package["manifest"]["expected_bytes"], len(original))
+        self.assertEqual(package["manifest"]["expected_sha256"], hashlib.sha256(original).hexdigest())
+        self.assertLessEqual(package["manifest"]["max_command_json_bytes"], media.MAX_COMMAND_JSON_BYTES)
         for entry, expected in zip(entries, package["manifest"]["git_blobs"]):
             raw = entry["content"].encode("utf-8")
             self.assertEqual(expected["path"], entry["path"])
@@ -89,7 +102,6 @@ class MediaPreparationTest(unittest.TestCase):
             self.assertEqual(caught.exception.code, "asset_size")
 
     def test_cli_reads_real_file_and_does_not_print_payload(self):
-        # A real PNG is passed through byte-for-byte; no image processing library.
         png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=")
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -100,9 +112,8 @@ class MediaPreparationTest(unittest.TestCase):
             with contextlib.redirect_stdout(stdout):
                 self.assertEqual(media.main(args), 0)
             self.assertNotIn("data_b64", stdout.getvalue())
-            tree = json.loads((root / "prepared/git-tree.json").read_text(encoding="utf-8"))["tree"]
-            command = json.loads(tree[0]["content"])
-            self.assertEqual(base64.b64decode(command["params"]["data_b64"], validate=True), png)
+            commands = json.loads((root / "prepared/commands.json").read_text(encoding="utf-8"))
+            self.assertEqual(base64.b64decode(commands[0]["body"]["data_b64"], validate=True), png)
             before = (root / "prepared/git-tree.json").read_bytes()
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(media.main(args), 1)
@@ -115,8 +126,8 @@ class MediaPreparationTest(unittest.TestCase):
             self.assertEqual(caught.exception.code, "asset_unavailable")
 
     @unittest.skipUnless(shutil.which("php"), "PHP consumer is checked on the CI runner")
-    def test_actual_php_consumers_accept_generated_packages(self):
-        for size in (1_048_576, 1_048_577, 6_291_456):
+    def test_actual_php_consumer_accepts_generated_packages(self):
+        for size in (1, 13_232, 1_048_576, 6_291_456):
             with self.subTest(size=size):
                 package = self.check_roundtrip(size)
                 result = subprocess.run([shutil.which("php"), str(ROOT / "tests/media-client-contract-test.php")],
