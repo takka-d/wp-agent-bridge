@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="$(sed -n 's/^ \* Version: //p' plugin/wp-agent-bridge/takka-wordpress-bridge.php | head -n1 | tr -d '\r')"
+          version="$(sed -n 's/^ \* Version: //p' plugin/wp-agent-bridge/wp-agent-bridge.php | head -n1 | tr -d '\r')"
           test -n "$version"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           mkdir -p tester-kit
