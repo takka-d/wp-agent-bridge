@@ -238,7 +238,7 @@ final class TakKa_WordPress_Bridge_Runtime_Bootstrap
             . "This repository uses a dedicated runtime branch. The default branch is only a read-only bootstrap landing page.\n\n"
             . "Repository: `{$repository}`  \n"
             . "Canonical runtime branch: `{$runtime_branch}`\n\n"
-            . "For runtime reads and **all writes**, explicitly use branch/ref `{$runtime_branch}`. GitHub file tools often read the default branch when ref is omitted. A 404 from an omitted ref or a wrong path is not proof that this private repository is inaccessible.\n\n"
+            . "For runtime reads and **all writes**, explicitly use branch/ref `{$runtime_branch}`. GitHub file tools often read the default branch when ref is omitted. A 404 from an omitted ref or a wrong path is not proof that this private repository is inaccessible. The repository and runtime branch above are sufficient for normal command publication; do not require a RUNTIME_CONNECTION.json read before creating a user-requested pending command.\n\n"
             . "Canonical marker: `wordpress-bridge/RUNTIME_CONNECTION.json`  \n"
             . "Capabilities: `wordpress-bridge/RUNTIME_CAPABILITIES.json`  \n"
             . "Commands: `wordpress-bridge/commands/pending/<id>.json`  \n"
