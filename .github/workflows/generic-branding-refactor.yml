@@ -50,6 +50,8 @@ jobs:
                   ('takka-wordpress-bridge', 'wp-agent-bridge'),
                   ('takka-bridge', 'wp-agent-bridge'),
                   ('takka-v', 'wpab-v'),
+                  ('TAKKA_', 'WPAB_'),
+                  ('takka_', 'wpab_'),
               ]
               for old, new in pairs:
                   text = text.replace(old, new)
