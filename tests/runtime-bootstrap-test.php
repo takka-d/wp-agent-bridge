@@ -7,9 +7,18 @@ define('ABSPATH', __DIR__ . '/');
 $GLOBALS['bootstrap_options'] = [];
 $GLOBALS['bootstrap_transients'] = [];
 $GLOBALS['bootstrap_files'] = [
-    'wp-agent-bridge-runtime:AGENTS.md' => "# WP Agent Bridge runtime — CANONICAL\nBranch: `wp-agent-bridge-runtime`\n",
-    'wp-agent-bridge-runtime:wordpress-bridge/RUNTIME_CONNECTION.json' => "{\n  \"status\": \"canonical\",\n  \"runtime_branch\": \"wp-agent-bridge-runtime\"\n}\n",
-    'wp-agent-bridge-runtime:wordpress-bridge/RUNTIME_CAPABILITIES.json' => "{\n  \"runtime\": {\"branch\": \"wp-agent-bridge-runtime\"}\n}\n",
+    'wp-agent-bridge-runtime:AGENTS.md' => "# stale agents\nBridge: `1.1.36`\n",
+    'wp-agent-bridge-runtime:wordpress-bridge/RUNTIME_CONNECTION.json' => json_encode([
+        'schema' => 1,
+        'status' => 'canonical',
+        'transport' => 'direct-github-webhook',
+        'repository' => 'owner/runtime-repo',
+        'runtime_branch' => 'wp-agent-bridge-runtime',
+        'site_host' => 'example.test',
+        'ownership' => 'user-owned',
+        'operator_relay' => false,
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n",
+    'wp-agent-bridge-runtime:wordpress-bridge/RUNTIME_CAPABILITIES.json' => "{\n  \"bridge_version\": \"1.1.36\", \"stale\": true\n}\n",
 ];
 $GLOBALS['bootstrap_writes'] = [];
 
@@ -38,7 +47,8 @@ function set_transient($key, $value, $ttl): void { $GLOBALS['bootstrap_transient
 function delete_transient($key): void { unset($GLOBALS['bootstrap_transients'][$key]); }
 function home_url($path = '/'): string { return 'https://example.test' . $path; }
 function wp_parse_url($url, $component = -1) { return parse_url($url, $component); }
-function get_file_data($file, $headers, $context): array { return ['Version' => '1.1.36']; }
+function wp_json_encode($value, $flags = 0) { return json_encode($value, $flags); }
+function get_file_data($file, $headers, $context): array { return ['Version' => '1.1.37']; }
 function add_action($hook, $callback, $priority = 10): void {}
 
 final class TakKa_WordPress_Bridge_Direct_Runtime
@@ -53,6 +63,62 @@ final class TakKa_WordPress_Bridge_Direct_Runtime
             'repository' => 'owner/runtime-repo',
             'runtime_branch' => self::RUNTIME_BRANCH,
         ];
+    }
+}
+
+final class TakKa_WordPress_Bridge_Runtime_Guidance
+{
+    public static function agents(string $repository, string $branch, string $host, string $version): string
+    {
+        return "# WP Agent Bridge runtime — CANONICAL\n\n"
+            . "Site: `{$host}`\nRepository: `{$repository}`\nBranch: `{$branch}`\nBridge: `{$version}`\n\n"
+            . "Every runtime read/write explicitly uses branch/ref `{$branch}`.\n";
+    }
+}
+
+final class TakKa_WordPress_Bridge_Runtime_Capabilities
+{
+    public static function catalog(string $version, string $repository, string $branch, string $host): array
+    {
+        return [
+            'schema' => 2,
+            'bridge_version' => $version,
+            'runtime' => [
+                'repository' => $repository,
+                'branch' => $branch,
+                'site_host' => $host,
+                'bootstrap' => ['explicit_ref_required_for_runtime_io' => true],
+            ],
+            'features' => ['default_branch_bootstrap_mirror' => true],
+        ];
+    }
+}
+
+final class TakKa_WordPress_Bridge_Post_Concurrency_Runtime_Guidance
+{
+    public static function enrich_agents(string $agents): string
+    {
+        return rtrim($agents) . "\n<!-- concurrency-final -->\n";
+    }
+
+    public static function enrich_capabilities(array $catalog): array
+    {
+        $catalog['features']['post_update_field_compare_and_swap'] = true;
+        return $catalog;
+    }
+}
+
+final class TakKa_WordPress_Bridge_Post_Reliability_Runtime_Guidance
+{
+    public static function enrich_agents(string $agents): string
+    {
+        return rtrim($agents) . "\n<!-- reliability-final -->\n";
+    }
+
+    public static function enrich_capabilities(array $catalog): array
+    {
+        $catalog['features']['post_revision_rollback'] = true;
+        return $catalog;
     }
 }
 
@@ -121,6 +187,21 @@ $marker = $GLOBALS['bootstrap_files']['wp-agent-bridge-runtime:wordpress-bridge/
 $caps = $GLOBALS['bootstrap_files']['wp-agent-bridge-runtime:wordpress-bridge/RUNTIME_CAPABILITIES.json'];
 $agents = $GLOBALS['bootstrap_files']['wp-agent-bridge-runtime:AGENTS.md'];
 
+if (strpos($agents, 'Bridge: `1.1.37`') === false
+    || strpos($agents, '<!-- concurrency-final -->') === false
+    || strpos($agents, '<!-- reliability-final -->') === false
+    || strpos($agents, '# stale agents') !== false) {
+    fail_bootstrap('Canonical AGENTS was not recomposed from current code.');
+}
+$decoded_caps = json_decode($caps, true);
+if (!is_array($decoded_caps)
+    || ($decoded_caps['bridge_version'] ?? '') !== '1.1.37'
+    || empty($decoded_caps['features']['post_update_field_compare_and_swap'])
+    || empty($decoded_caps['features']['post_revision_rollback'])
+    || !empty($decoded_caps['stale'])) {
+    fail_bootstrap('Canonical capabilities were not recomposed from current code.');
+}
+
 $expected = [
     'wp-agent-bridge-runtime:RUNTIME_CONNECTION.json' => $marker,
     'wp-agent-bridge-runtime:RUNTIME_CAPABILITIES.json' => $caps,
@@ -160,7 +241,7 @@ foreach (array_keys($GLOBALS['bootstrap_files']) as $key) {
 $write_count = count($GLOBALS['bootstrap_writes']);
 $result2 = TakKa_WordPress_Bridge_Runtime_Bootstrap::sync();
 if (is_wp_error($result2) || count($GLOBALS['bootstrap_writes']) !== $write_count) {
-    fail_bootstrap('Unchanged bootstrap sync should not rewrite files.');
+    fail_bootstrap('Unchanged final composition should not rewrite files.');
 }
 
 echo "runtime-bootstrap-test: ok\n";

@@ -17,11 +17,16 @@ final class TakKa_WordPress_Bridge_Runtime_Bootstrap
 {
     private const OPTION_SYNCED_SIGNATURE = 'takka_bridge_runtime_bootstrap_synced_signature';
     private const TRANSIENT_LOCK = 'takka_bridge_runtime_bootstrap_sync_lock';
+    private const SETTLE_HOOK = 'wpab_runtime_bootstrap_settle_sync';
 
     public static function init(): void
     {
-        // Capabilities and guidance sync at 30/31. Mirror them afterwards.
-        add_action('init', [self::class, 'maybe_sync'], 34);
+        // Base generators run at 30/31, concurrency enrichment at 33 and
+        // reliability enrichment at 34. Compose the final authoritative
+        // contract after all of them so independent sync layers cannot leave
+        // an older/stale AGENTS or capability file behind.
+        add_action('init', [self::class, 'maybe_sync'], 40);
+        add_action(self::SETTLE_HOOK, [self::class, 'settle_sync']);
     }
 
     public static function maybe_sync(): void
@@ -51,6 +56,39 @@ final class TakKa_WordPress_Bridge_Runtime_Bootstrap
         if (!is_wp_error($result)) {
             update_option(self::OPTION_SYNCED_SIGNATURE, $signature, false);
             delete_transient(self::TRANSIENT_LOCK);
+
+            // A PHP request that loaded the previous plugin version before a
+            // self-update can finish later and publish stale generated files.
+            // Run one unconditional settle pass after that request window.
+            if (function_exists('wp_next_scheduled') && function_exists('wp_schedule_single_event')
+                && !wp_next_scheduled(self::SETTLE_HOOK)) {
+                wp_schedule_single_event(time() + 60, self::SETTLE_HOOK);
+            }
+        }
+    }
+
+    public static function settle_sync(): void
+    {
+        if (get_transient(self::TRANSIENT_LOCK)) {
+            return;
+        }
+        set_transient(self::TRANSIENT_LOCK, '1', 300);
+        $result = self::sync();
+        delete_transient(self::TRANSIENT_LOCK);
+        if (is_wp_error($result)) {
+            return;
+        }
+
+        $connection = TakKa_WordPress_Bridge_Direct_Runtime::connection();
+        $version = self::bridge_version();
+        if ($version !== '' && self::valid_connection($connection)) {
+            $signature = hash('sha256', implode("\n", [
+                $version,
+                (string) $connection['repository'],
+                (string) $connection['runtime_branch'],
+                strtolower((string) wp_parse_url(home_url('/'), PHP_URL_HOST)),
+            ]));
+            update_option(self::OPTION_SYNCED_SIGNATURE, $signature, false);
         }
     }
 
@@ -83,31 +121,79 @@ final class TakKa_WordPress_Bridge_Runtime_Bootstrap
             return new WP_Error('wpab_runtime_bootstrap_default_branch', 'GitHub did not return the repository default branch.', ['status' => 502]);
         }
 
-        $source_paths = [
-            'AGENTS.md',
-            'wordpress-bridge/RUNTIME_CONNECTION.json',
-            'wordpress-bridge/RUNTIME_CAPABILITIES.json',
-        ];
-        $sources = [];
-        foreach ($source_paths as $path) {
-            $value = TakKa_WordPress_Bridge_Direct_GitHub::get_text_file(
-                $token,
-                $repository,
-                $runtime_branch,
-                $path
-            );
-            if (is_wp_error($value)) {
-                return $value;
-            }
-            $sources[$path] = $value;
+        $site_host = strtolower((string) wp_parse_url(home_url('/'), PHP_URL_HOST));
+        if ($site_host === '') {
+            $site_host = 'wordpress';
+        }
+        $version = self::bridge_version();
+        if ($version === '') {
+            return new WP_Error('wpab_runtime_bootstrap_version', 'Could not determine the installed Bridge version.', ['status' => 500]);
+        }
+
+        // Do not trust whatever an earlier/older request most recently wrote to
+        // generated files. Recompose them from the currently loaded code.
+        $agents = TakKa_WordPress_Bridge_Runtime_Guidance::agents(
+            $repository,
+            $runtime_branch,
+            $site_host,
+            $version
+        );
+        if (class_exists('TakKa_WordPress_Bridge_Post_Concurrency_Runtime_Guidance')) {
+            $agents = TakKa_WordPress_Bridge_Post_Concurrency_Runtime_Guidance::enrich_agents($agents);
+        }
+        if (class_exists('TakKa_WordPress_Bridge_Post_Reliability_Runtime_Guidance')) {
+            $agents = TakKa_WordPress_Bridge_Post_Reliability_Runtime_Guidance::enrich_agents($agents);
+        }
+
+        $catalog = TakKa_WordPress_Bridge_Runtime_Capabilities::catalog(
+            $version,
+            $repository,
+            $runtime_branch,
+            $site_host
+        );
+        if (class_exists('TakKa_WordPress_Bridge_Post_Concurrency_Runtime_Guidance')) {
+            $catalog = TakKa_WordPress_Bridge_Post_Concurrency_Runtime_Guidance::enrich_capabilities($catalog);
+        }
+        if (class_exists('TakKa_WordPress_Bridge_Post_Reliability_Runtime_Guidance')) {
+            $catalog = TakKa_WordPress_Bridge_Post_Reliability_Runtime_Guidance::enrich_capabilities($catalog);
+        }
+        $capabilities = wp_json_encode($catalog, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if (!is_string($capabilities)) {
+            return new WP_Error('wpab_runtime_bootstrap_capabilities_json', 'Could not encode final runtime capabilities.', ['status' => 500]);
+        }
+        $capabilities .= "\n";
+
+        $marker = TakKa_WordPress_Bridge_Direct_GitHub::get_text_file(
+            $token,
+            $repository,
+            $runtime_branch,
+            'wordpress-bridge/RUNTIME_CONNECTION.json'
+        );
+        if (is_wp_error($marker)) {
+            return $marker;
+        }
+        $marker_data = json_decode($marker, true);
+        if (!is_array($marker_data)
+            || ($marker_data['status'] ?? '') !== 'canonical'
+            || ($marker_data['transport'] ?? '') !== 'direct-github-webhook'
+            || ($marker_data['repository'] ?? '') !== $repository
+            || ($marker_data['runtime_branch'] ?? '') !== $runtime_branch
+            || ($marker_data['site_host'] ?? '') !== $site_host
+            || ($marker_data['ownership'] ?? '') !== 'user-owned'
+            || ($marker_data['operator_relay'] ?? null) !== false) {
+            return new WP_Error('wpab_runtime_bootstrap_marker', 'Canonical runtime marker is invalid or does not match this connection.', ['status' => 409]);
         }
 
         $written = [];
 
-        // Wrong-root reads on the correct runtime branch should also recover.
+        // Repair the canonical generated contract first. This makes the final
+        // composition self-healing even if an old in-flight request published
+        // an earlier generator layer after a self-update.
         foreach ([
-            'RUNTIME_CONNECTION.json' => $sources['wordpress-bridge/RUNTIME_CONNECTION.json'],
-            'RUNTIME_CAPABILITIES.json' => $sources['wordpress-bridge/RUNTIME_CAPABILITIES.json'],
+            'AGENTS.md' => $agents,
+            'wordpress-bridge/RUNTIME_CAPABILITIES.json' => $capabilities,
+            'RUNTIME_CONNECTION.json' => $marker,
+            'RUNTIME_CAPABILITIES.json' => $capabilities,
         ] as $path => $value) {
             $result = self::sync_file($token, $repository, $runtime_branch, $path, $value);
             if (is_wp_error($result)) {
@@ -121,11 +207,11 @@ final class TakKa_WordPress_Bridge_Runtime_Bootstrap
             // read-only bootstrap material there; never command/result data.
             $default_files = [
                 'README.md' => self::bootstrap_readme($repository, $runtime_branch),
-                'AGENTS.md' => $sources['AGENTS.md'],
-                'RUNTIME_CONNECTION.json' => $sources['wordpress-bridge/RUNTIME_CONNECTION.json'],
-                'RUNTIME_CAPABILITIES.json' => $sources['wordpress-bridge/RUNTIME_CAPABILITIES.json'],
-                'wordpress-bridge/RUNTIME_CONNECTION.json' => $sources['wordpress-bridge/RUNTIME_CONNECTION.json'],
-                'wordpress-bridge/RUNTIME_CAPABILITIES.json' => $sources['wordpress-bridge/RUNTIME_CAPABILITIES.json'],
+                'AGENTS.md' => $agents,
+                'RUNTIME_CONNECTION.json' => $marker,
+                'RUNTIME_CAPABILITIES.json' => $capabilities,
+                'wordpress-bridge/RUNTIME_CONNECTION.json' => $marker,
+                'wordpress-bridge/RUNTIME_CAPABILITIES.json' => $capabilities,
             ];
             foreach ($default_files as $path => $value) {
                 $result = self::sync_file($token, $repository, $default_branch, $path, $value);
