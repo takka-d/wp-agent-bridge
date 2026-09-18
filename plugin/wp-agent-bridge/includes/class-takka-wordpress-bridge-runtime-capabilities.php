@@ -134,6 +134,8 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                     'canonical_capabilities_path' => 'wordpress-bridge/RUNTIME_CAPABILITIES.json',
                     'capabilities_alias_path' => 'RUNTIME_CAPABILITIES.json',
                     'wrong_branch_404_is_access_denial' => false,
+                    'connection_read_required_before_commands' => false,
+                    'known_binding_can_publish_without_marker_read' => true,
                 ],
                 'pending_recovery' => [
                     'max_age_seconds' => 86400,
@@ -394,7 +396,7 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'media_integrity_409' => 'Inspect reported chunk/file integrity and replace only the mismatched chunk. Reuse the same upload_id and chunk index.',
                 'media_base64_truncation' => 'Do not repeat the same inline Base64 command. Re-run prepare-media.py and publish connector-safe chunk commands whose JSON stays below 16384 bytes.',
                 'runtime_branch_race_409_422' => 'Check for the matching result first. If absent, retry only the Git publication step against the latest runtime head; do not replay the WordPress side effect.',
-                'bootstrap_404' => 'Check the exact repository, path and branch/ref. A file read with no ref can hit the default branch; correct the tuple once before treating 404 as a runtime bootstrap problem. Do not interpret a wrong-branch 404 as repository access denial.',
+                'bootstrap_404' => 'A marker/bootstrap read 404 is not a startup blocker and does not prove Bridge or write failure. For a concrete requested WordPress operation, publish the requested pending command using the known repository/branch when a write action is available; re-check bootstrap only after an actual command-publication failure or reconnect/migration signal.',
                 'unknown_operation' => 'Read this catalog. Do not enumerate unrelated connectors or fall back to WPVibe.',
             ],
             'media_routing' => [
@@ -423,9 +425,10 @@ final class TakKa_WordPress_Bridge_Runtime_Capabilities
                 'discovery_rule' => 'Do not rediscover connector capabilities when the required write action is already visible in the current task/session.',
                 'question_rule' => 'Do not ask the user to identify or confirm repository/files/routes that the connected tools can inspect directly.',
                 'branch_rule' => 'Pass the canonical runtime branch/ref explicitly on every runtime read and write. Never rely on the repository default branch for command publication.',
+                'startup_rule' => 'When repository/branch are already bound, do not gate normal WordPress work on reading RUNTIME_CONNECTION.json. Use create_file or another available write action to publish the user-requested pending command directly.',
             ],
             'fast_path' => [
-                'runtime_resolution' => 'Use the exact repository plus explicit runtime branch/ref. Read wordpress-bridge/RUNTIME_CONNECTION.json when canonical runtime is not already verified or a migration signal appears. Root RUNTIME_CONNECTION.json and default-branch mirrors are bootstrap aliases only; never publish commands there.',
+                'runtime_resolution' => 'Use the exact repository plus explicit runtime branch/ref. A known binding is sufficient for normal command publication; do not make wordpress-bridge/RUNTIME_CONNECTION.json a preflight gate. Read the marker only after reconnect/migration signals, mapping contradictions, or an actual pending-command publication failure. Root RUNTIME_CONNECTION.json and default-branch mirrors are bootstrap aliases only; never publish commands there.',
                 'capability_resolution' => 'Read this file before issuing capability probe commands or searching source code for known Bridge routes/actions.',
                 'operation_router' => 'For common tasks, use the single /takka-v099/v1/operate route and an allowlisted operation from routes.operations. This is preferred over reconstructing versioned internal routes.',
                 'command_chaining' => 'When atomic_command_bookkeeping=true, a visible matching result means result creation, completed-command storage, and pending deletion are already durable in the same commit. The next pending command may be submitted immediately without waiting for later bookkeeping commits.',
