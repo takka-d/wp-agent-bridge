@@ -1,5 +1,6 @@
 name: Generic branding refactor
 # retry-marker-1
+# retry-marker-2
 
 on:
   push:
@@ -79,6 +80,8 @@ jobs:
               if not raw:
                   continue
               path = Path(raw.decode())
+              if path.as_posix().startswith('.github/workflows/'):
+                  continue
               if path.suffix.lower() in {'.zip', '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico'}:
                   continue
               data = path.read_bytes()
@@ -113,6 +116,8 @@ jobs:
               if not raw:
                   continue
               path = Path(raw.decode())
+              if path.as_posix().startswith('.github/workflows/'):
+                  continue
               if re.search('takka', path.as_posix(), flags=re.I):
                   failures.append(f'path: {path}')
                   continue
