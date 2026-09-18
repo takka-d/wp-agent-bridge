@@ -107,8 +107,8 @@ foreach ([
     'site.icon.set',
     'site.icon.clear',
     'media.upload.capabilities',
-    'media.upload.inline',
-    '/wp-agent-bridge-runtime/v1/media-upload',
+    '/wp-agent-bridge-media/v1/upload-chunk',
+    'connector-safe-chunk-commands',
 ] as $needle) {
     if (strpos($capabilities, $needle) === false) {
         fwrite(STDERR, "runtime capability catalog missing {$needle}\n");
