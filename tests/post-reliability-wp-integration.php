@@ -223,8 +223,15 @@ try {
     // the health endpoint itself is intentionally not an unsigned public read.
     $health_v099 = pr_v099(pr_operation('health'));
     $health_data = $health_v099['result']['data'] ?? null;
+    $plugin_data = get_file_data(
+        __DIR__ . '/../plugin/wp-agent-bridge/takka-wordpress-bridge.php',
+        ['Version' => 'Version'],
+        'plugin'
+    );
+    $expected_plugin_version = trim((string) ($plugin_data['Version'] ?? ''));
     if (!is_array($health_data)
-        || ($health_data['plugin_version'] ?? '') !== '1.1.34'
+        || $expected_plugin_version === ''
+        || ($health_data['plugin_version'] ?? '') !== $expected_plugin_version
         || !is_string($health_data['api_compatibility_version'] ?? null)
         || (int) ($health_data['runtime_schema_version'] ?? 0) !== 2
         || ($health_data['bridge_version_semantics'] ?? '') !== 'legacy_api_compatibility_version'
