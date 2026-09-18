@@ -74,8 +74,8 @@ final class WP_Agent_Bridge_V06_Self_Update_Safe
         }
         ksort($submitted, SORT_STRING);
 
-        if (!isset($submitted['wp-agent-bridge.php']) && !isset($submitted['wp-agent-bridge.php'])) {
-            return new WP_Error('wpab_self_update_bootstrap_missing', 'Manifest must contain a supported WP Agent Bridge bootstrap file.', ['status' => 400]);
+        if (!isset($submitted['wp-agent-bridge.php'])) {
+            return new WP_Error('wpab_self_update_bootstrap_missing', 'Manifest must contain wp-agent-bridge.php.', ['status' => 400]);
         }
 
         $current = self::existing_files();
