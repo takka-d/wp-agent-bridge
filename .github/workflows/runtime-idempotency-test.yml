@@ -51,8 +51,8 @@ jobs:
           cat > /tmp/wpab-idempotency-test.php <<'PHP'
           <?php
           $secret = str_repeat('a', 64);
-          update_option('takka_bridge_secret', $secret, false);
-          update_option('takka_bridge_user_id', 1, false);
+          update_option('wpab_secret', $secret, false);
+          update_option('wpab_user_id', 1, false);
           wp_set_current_user(1);
 
           add_action('rest_api_init', static function (): void {
@@ -88,14 +88,14 @@ jobs:
               ];
               $body = wp_json_encode($outer);
               $timestamp = (string) time();
-              $route = '/takka-bridge/v1/execute';
+              $route = '/wp-agent-bridge/v1/execute';
               $signature_payload = $timestamp . "\nPOST\n" . $route . "\n" . hash('sha256', $body);
               $signature = hash_hmac('sha256', $signature_payload, $secret);
 
               $request = new WP_REST_Request('POST', $route);
               $request->set_header('content-type', 'application/json');
-              $request->set_header('x-takka-timestamp', $timestamp);
-              $request->set_header('x-takka-signature', $signature);
+              $request->set_header('x-wpab-timestamp', $timestamp);
+              $request->set_header('x-wpab-signature', $signature);
               $request->set_body($body);
               $response = rest_do_request($request);
               if (is_wp_error($response)) {
@@ -123,7 +123,7 @@ jobs:
           if ($second->get_status() !== 200) wpab_fail('Replay did not return the original HTTP 200 response.');
           if ((int) get_option('wpab_ci_side_effect_counter', 0) !== 1) wpab_fail('Replay executed the side effect again.');
           $headers = $second->get_headers();
-          if ((string) ($headers['X-TakKa-Idempotent-Replay'] ?? '') !== '1') wpab_fail('Replay response was not marked as idempotent replay.');
+          if ((string) ($headers['X-WPAB-Idempotent-Replay'] ?? '') !== '1') wpab_fail('Replay response was not marked as idempotent replay.');
 
           $conflicting = $inner;
           $conflicting['params']['body']['value'] = 'different-payload';
@@ -131,7 +131,7 @@ jobs:
           if ($third->get_status() !== 409) wpab_fail('Different payload with reused request_id was not rejected with HTTP 409.');
           if ((int) get_option('wpab_ci_side_effect_counter', 0) !== 1) wpab_fail('Conflicting request executed the side effect.');
           $data = $third->get_data();
-          if (!is_array($data) || ($data['code'] ?? '') !== 'takka_bridge_idempotency_payload_conflict') {
+          if (!is_array($data) || ($data['code'] ?? '') !== 'wpab_idempotency_payload_conflict') {
               wpab_fail('Conflicting request returned the wrong error code.');
           }
 
