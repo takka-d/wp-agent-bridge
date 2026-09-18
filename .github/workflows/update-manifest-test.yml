@@ -72,7 +72,7 @@ jobs:
           )
           aggregate = hashlib.sha256(canonical).hexdigest()
 
-          main = subprocess.check_output(['git', 'show', f'{commit}:{prefix}takka-wordpress-bridge.php']).decode('utf-8')
+          main = subprocess.check_output(['git', 'show', f'{commit}:{prefix}wp-agent-bridge.php']).decode('utf-8')
           match = re.search(r'^ \* Version:\s*(.+)$', main, re.MULTILINE)
           version = match.group(1).strip() if match else ''
 
