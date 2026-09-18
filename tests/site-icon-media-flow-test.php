@@ -117,8 +117,8 @@ foreach ([
 }
 foreach ([
     'RUNTIME_CAPABILITIES.json',
-    'Small local/conversation media up to 1 MiB decoded',
-    'Larger media: staged Media Fast Path',
+    'Local/conversation media: always use `wordpress-bridge/prepare-media.py` connector-safe chunk commands',
+    'Media transport is size-independent up to the 6 MiB Bridge limit',
 ] as $needle) {
     if (strpos($guidance, $needle) === false) {
         fwrite(STDERR, "runtime guidance missing {$needle}\n");
