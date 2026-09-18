@@ -66,7 +66,7 @@ if (!is_string($guidance)) {
 }
 foreach ([
     '## Mandatory fast path',
-    'Reuse this repository/branch when already verified in the current task/session',
+    'Do not make `wordpress-bridge/RUNTIME_CONNECTION.json` a startup prerequisite',
     'Read `wordpress-bridge/RUNTIME_CAPABILITIES.json` before probing Bridge capabilities',
     'Do not switch normal WordPress work to WPVibe',
     'Local/conversation media: always use `wordpress-bridge/prepare-media.py` connector-safe chunk commands',
