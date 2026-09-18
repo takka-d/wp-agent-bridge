@@ -42,18 +42,18 @@ jobs:
         run: |
           set -euo pipefail
           plugin='plugin/wp-agent-bridge'
-          ! grep -R -F 'https://takka-note.com/wp-json/takka-wp-bridge-onboarding' "$plugin"
+          ! grep -R -F 'https://wp-agent-bridge-note.com/wp-json/wp-agent-bridge-wp-bridge-onboarding' "$plugin"
           ! grep -R -F 'wp-agent-bridge-runtime/wordpress-bridge-' "$plugin"
-          grep -q 'site-specific GitHub App' "$plugin/includes/class-takka-wordpress-bridge-onboarding.php"
-          grep -q "'contents' => 'write'" "$plugin/includes/class-takka-wordpress-bridge-onboarding.php"
-          grep -q "'metadata' => 'read'" "$plugin/includes/class-takka-wordpress-bridge-onboarding.php"
-          grep -q "'default_events' => \['push'\]" "$plugin/includes/class-takka-wordpress-bridge-onboarding.php"
-          grep -q "'public' => false" "$plugin/includes/class-takka-wordpress-bridge-onboarding.php"
-          grep -q 'No operator-owned relay' "$plugin/includes/class-takka-wordpress-bridge-direct-runtime.php"
-          grep -q 'single-git-tree-commit' "$plugin/includes/class-takka-wordpress-bridge-direct-media.php"
-          grep -q 'one Git tree cleanup commit' "$plugin/includes/class-takka-wordpress-bridge-direct-runtime-identity.php"
-          grep -q 'Direct_Runtime_V2::init' "$plugin/takka-wordpress-bridge.php"
-          grep -q 'Direct_Onboarding_Guard::init' "$plugin/takka-wordpress-bridge.php"
+          grep -q 'site-specific GitHub App' "$plugin/includes/class-wp-agent-bridge-onboarding.php"
+          grep -q "'contents' => 'write'" "$plugin/includes/class-wp-agent-bridge-onboarding.php"
+          grep -q "'metadata' => 'read'" "$plugin/includes/class-wp-agent-bridge-onboarding.php"
+          grep -q "'default_events' => \['push'\]" "$plugin/includes/class-wp-agent-bridge-onboarding.php"
+          grep -q "'public' => false" "$plugin/includes/class-wp-agent-bridge-onboarding.php"
+          grep -q 'No operator-owned relay' "$plugin/includes/class-wp-agent-bridge-direct-runtime.php"
+          grep -q 'single-git-tree-commit' "$plugin/includes/class-wp-agent-bridge-direct-media.php"
+          grep -q 'one Git tree cleanup commit' "$plugin/includes/class-wp-agent-bridge-direct-runtime-identity.php"
+          grep -q 'Direct_Runtime_V2::init' "$plugin/wp-agent-bridge.php"
+          grep -q 'Direct_Onboarding_Guard::init' "$plugin/wp-agent-bridge.php"
 
       - name: PHP syntax
         shell: bash
@@ -357,10 +357,10 @@ jobs:
           if ($key === false) t_fail('Could not generate test RSA key.');
           $pem = '';
           if (!openssl_pkey_export($key, $pem)) t_fail('Could not export test RSA key.');
-          if (!TakKa_WordPress_Bridge_Direct_GitHub::store_app_credentials(123, 'wpab-test-app', $pem, str_repeat('w', 40))) {
+          if (!WP_Agent_Bridge_Direct_GitHub::store_app_credentials(123, 'wpab-test-app', $pem, str_repeat('w', 40))) {
               t_fail('Could not store test GitHub App credentials.');
           }
-          if (!TakKa_WordPress_Bridge_Direct_Runtime::store_connection([
+          if (!WP_Agent_Bridge_Direct_Runtime::store_connection([
               'installation_id' => 42,
               'repository_id' => 99,
               'repository' => 'test-user/runtime-repo',
@@ -368,8 +368,8 @@ jobs:
           ])) {
               t_fail('Could not store test Direct Runtime connection.');
           }
-          update_option('takka_bridge_secret', str_repeat('b', 64), false);
-          update_option('takka_bridge_user_id', 1, false);
+          update_option('wpab_secret', str_repeat('b', 64), false);
+          update_option('wpab_user_id', 1, false);
 
           add_action('rest_api_init', function () {
               register_rest_route('wpab-test/v1', '/mutate', [
