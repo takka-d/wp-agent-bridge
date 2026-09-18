@@ -107,7 +107,7 @@ final class TakKa_WordPress_Bridge_Onboarding
                 <p>上のConnectedは、このWordPressとGitHubの接続状態です。現在のチャットでGitHubツールを利用できるかは別に確認します。</p>
                 <ol>
                     <li>ChatGPTの入力欄で<strong>@GitHub</strong>と入力し、候補に出る<strong>GitHubプラグインを選択</strong>してください。名前を文字として書くだけでは選択になりません。</li>
-                    <li>下の指示をコピーして送信します。サイトと接続先はこの画面の設定から入力済みです。接続確認後は、同じチャットで記事や画像の操作を依頼できます。</li>
+                    <li>下の指示をコピーして送信します。サイトと接続先はこの画面の設定から入力済みです。具体的な操作も同時に書けば、接続確認だけで止まらずその操作まで実行する指示になっています。</li>
                 </ol>
                 <label for="wpab-chat-start"><strong>このサイト用の開始・復旧用指示</strong></label>
                 <textarea id="wpab-chat-start" class="large-text" rows="12" readonly><?php echo esc_textarea(TakKa_WordPress_Bridge_Runtime_Guidance::client_prompt(
