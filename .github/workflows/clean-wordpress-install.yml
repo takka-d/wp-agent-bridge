@@ -74,7 +74,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          version="$(sed -n 's/^ \* Version: //p' plugin/wp-agent-bridge/takka-wordpress-bridge.php | head -n1 | tr -d '\r')"
+          version="$(sed -n 's/^ \* Version: //p' plugin/wp-agent-bridge/wp-agent-bridge.php | head -n1 | tr -d '\r')"
           stable="$(sed -n 's/^Stable tag: //p' plugin/wp-agent-bridge/readme.txt | head -n1 | tr -d '\r')"
           test -n "$version"
           test -n "$stable"
@@ -104,13 +104,13 @@ jobs:
           set -euo pipefail
           /tmp/wp eval '
             foreach ([
-              "TakKa_WordPress_Bridge_Onboarding",
-              "TakKa_WordPress_Bridge_Direct_Runtime",
-              "TakKa_WordPress_Bridge_Direct_Runtime_V2",
-              "TakKa_WordPress_Bridge_Direct_Webhook_Loop_Guard",
-              "TakKa_WordPress_Bridge_Direct_Media",
-              "TakKa_WordPress_Bridge_Runtime_Media_Chunks",
-              "TakKa_WordPress_Bridge_V099_Operations",
+              "WP_Agent_Bridge_Onboarding",
+              "WP_Agent_Bridge_Direct_Runtime",
+              "WP_Agent_Bridge_Direct_Runtime_V2",
+              "WP_Agent_Bridge_Direct_Webhook_Loop_Guard",
+              "WP_Agent_Bridge_Direct_Media",
+              "WP_Agent_Bridge_Runtime_Media_Chunks",
+              "WP_Agent_Bridge_V099_Operations",
             ] as $class) {
               if (!class_exists($class)) { fwrite(STDERR, "Missing class: {$class}\n"); exit(1); }
             }
@@ -121,7 +121,7 @@ jobs:
               "/wp-agent-bridge-runtime/v1/github-webhook",
               "/wp-agent-bridge-runtime/v1/media-upload",
               "/wp-agent-bridge-media/v1/upload-chunk",
-              "/takka-v099/v1/operate",
+              "/wpab-v099/v1/operate",
             ] as $route) {
               if (!isset($routes[$route])) { fwrite(STDERR, "Missing route: {$route}\n"); exit(1); }
             }
@@ -138,17 +138,17 @@ jobs:
           function fail_now(string $m): void { fwrite(STDERR, $m . "\n"); exit(1); }
           $payload = base64_encode(wp_json_encode([
               'action' => 'plugin.delete',
-              'params' => ['file' => 'wp-agent-bridge/takka-wordpress-bridge.php', 'confirm' => true],
+              'params' => ['file' => 'wp-agent-bridge/wp-agent-bridge.php', 'confirm' => true],
           ]));
-          $r = new WP_REST_Request('POST', '/takka-bridge/v1/manage');
+          $r = new WP_REST_Request('POST', '/wp-agent-bridge/v1/manage');
           $r->set_header('content-type', 'application/json');
           $r->set_body(wp_json_encode(['payload_b64' => $payload]));
-          $deleted = TakKa_WordPress_Bridge_V04::manage($r);
-          if (!is_wp_error($deleted) || $deleted->get_error_code() !== 'takka_bridge_plugin_active_delete_blocked') {
+          $deleted = WP_Agent_Bridge_V04::manage($r);
+          if (!is_wp_error($deleted) || $deleted->get_error_code() !== 'wpab_plugin_active_delete_blocked') {
               fail_now('Active plugin deletion was not blocked.');
           }
-          $sensitive = TakKa_WordPress_Bridge_V08_Options::get(['name' => 'takka_bridge_secret']);
-          if (!is_wp_error($sensitive) || $sensitive->get_error_code() !== 'takka_bridge_option_sensitive') {
+          $sensitive = WP_Agent_Bridge_V08_Options::get(['name' => 'wpab_secret']);
+          if (!is_wp_error($sensitive) || $sensitive->get_error_code() !== 'wpab_option_sensitive') {
               fail_now('Sensitive option was not blocked.');
           }
           echo "Packaged basic guards OK.\n";
