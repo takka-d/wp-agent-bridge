@@ -223,6 +223,7 @@ foreach ([
     'Canonical runtime branch: `wp-agent-bridge-runtime`',
     'explicitly use branch/ref `wp-agent-bridge-runtime`',
     'A 404 from an omitted ref or a wrong path is not proof',
+    'do not require a RUNTIME_CONNECTION.json read before creating a user-requested pending command',
     'wordpress-bridge/commands/pending/<id>.json',
     'Do not write commands to the default branch',
 ] as $required) {
