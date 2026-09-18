@@ -240,9 +240,7 @@ final class WP_Agent_Bridge_V06_Self_Update_Source
         }
 
         $plugin_root = $extract_root . '/' . $prefix . '/plugin/wp-agent-bridge';
-        $has_bootstrap = is_file($plugin_root . '/wp-agent-bridge.php')
-            || is_file($plugin_root . '/wp-agent-bridge.php');
-        if (!is_dir($plugin_root) || !$has_bootstrap) {
+        if (!is_dir($plugin_root) || !is_file($plugin_root . '/wp-agent-bridge.php')) {
             self::remove_tree($extract_root);
             return new WP_Error('wpab_self_update_source_plugin_root', 'Extracted archive does not contain the expected plugin tree.', ['status' => 409]);
         }
