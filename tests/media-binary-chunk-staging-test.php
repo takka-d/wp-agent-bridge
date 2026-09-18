@@ -69,12 +69,12 @@ foreach ([
     'Reuse this repository/branch when already verified in the current task/session',
     'Read `wordpress-bridge/RUNTIME_CAPABILITIES.json` before probing Bridge capabilities',
     'Do not switch normal WordPress work to WPVibe',
-    'Small local/conversation media up to 1 MiB decoded: one `media.upload.inline` operation',
-    'Larger media: staged Media Fast Path',
-    'Split original binary before Base64',
-    'publish payloads + pending upload command in one Git commit',
-    'use verify-only only for explicit verification or integrity diagnosis',
-    'media integrity 409: replace only mismatched staging payloads when identifiable',
+    'Local/conversation media: always use `wordpress-bridge/prepare-media.py` connector-safe chunk commands',
+    '8192-byte decoded chunks',
+    'at most 20 chunk commands in one Git push',
+    'Never concatenate Base64 chunks',
+    'Media transport is size-independent up to the 6 MiB Bridge limit',
+    'do not repeat the same inline command',
 ] as $requiredGuidance) {
     if (strpos($guidance, $requiredGuidance) === false) {
         fwrite(STDERR, "Runtime guidance is missing staged-media/canonical fast-path marker: {$requiredGuidance}\n");
@@ -100,6 +100,15 @@ if (!is_string($auto)
 if (strpos($auto, "'sha' => null") === false
     || strpos($auto, "['sha' => \$commit_sha, 'force' => false]") === false) {
     fwrite(STDERR, "Automatic staged-media cleanup guards are incomplete.\n");
+    exit(1);
+}
+
+$chunkRuntime = file_get_contents(__DIR__ . '/../plugin/wp-agent-bridge/includes/class-takka-wordpress-bridge-runtime-media-chunks.php');
+if (!is_string($chunkRuntime)
+    || strpos($chunkRuntime, 'private const MAX_CHUNKS = 768;') === false
+    || strpos($chunkRuntime, 'private const RECOMMENDED_CHUNK_BYTES = 8192;') === false
+    || strpos($chunkRuntime, "'connector_safe_chunk_commands' => true") === false) {
+    fwrite(STDERR, "Connector-safe chunk runtime limits are missing.\n");
     exit(1);
 }
 
