@@ -112,7 +112,7 @@ jobs:
           }
 
           $root = WP_PLUGIN_DIR . '/wp-agent-bridge';
-          $bootstrap = file_get_contents($root . '/takka-wordpress-bridge.php');
+          $bootstrap = file_get_contents($root . '/wp-agent-bridge.php');
           if (!is_string($bootstrap)) su_fail('Could not read bootstrap.');
           if (!preg_match('/^[ \t\/*#@]*Version:\s*(.+)$/mi', $bootstrap, $version_match)) {
               su_fail('Could not read Version header from bootstrap.');
@@ -120,7 +120,7 @@ jobs:
           $target_version = trim((string) $version_match[1]);
           if ($target_version === '') su_fail('Bootstrap Version header was empty.');
 
-          $one = [su_entry('takka-wordpress-bridge.php', $bootstrap)];
+          $one = [su_entry('wp-agent-bridge.php', $bootstrap)];
           $base_params = [
               'confirm' => true,
               'allow_same_version' => true,
@@ -129,25 +129,25 @@ jobs:
               'files' => $one,
           ];
 
-          $missing_flag = TakKa_WordPress_Bridge_V06_Self_Update_Safe::apply($base_params);
-          su_expect_error($missing_flag, 'takka_bridge_self_update_full_manifest_required');
+          $missing_flag = WP_Agent_Bridge_V06_Self_Update_Safe::apply($base_params);
+          su_expect_error($missing_flag, 'wpab_self_update_full_manifest_required');
 
           $partial = $base_params;
           $partial['full_manifest'] = true;
-          $partial_result = TakKa_WordPress_Bridge_V06_Self_Update_Safe::apply($partial);
-          su_expect_error($partial_result, 'takka_bridge_self_update_manifest_incomplete');
+          $partial_result = WP_Agent_Bridge_V06_Self_Update_Safe::apply($partial);
+          su_expect_error($partial_result, 'wpab_self_update_manifest_incomplete');
 
           $all_paths = array_map(
               static fn(array $entry): string => $entry['path'],
               su_package_entries($root)
           );
-          $omitted = array_values(array_diff($all_paths, ['takka-wordpress-bridge.php']));
+          $omitted = array_values(array_diff($all_paths, ['wp-agent-bridge.php']));
           sort($omitted, SORT_STRING);
           $pretend_delete = $partial;
           $pretend_delete['delete_paths'] = $omitted;
           $pretend_delete['confirm_delete_paths'] = true;
-          $dependency_result = TakKa_WordPress_Bridge_V06_Self_Update_Safe::apply($pretend_delete);
-          su_expect_error($dependency_result, 'takka_bridge_self_update_required_file_missing');
+          $dependency_result = WP_Agent_Bridge_V06_Self_Update_Safe::apply($pretend_delete);
+          su_expect_error($dependency_result, 'wpab_self_update_required_file_missing');
 
           $obsolete = $root . '/obsolete-self-update-test.txt';
           if (file_put_contents($obsolete, 'obsolete') === false) su_fail('Could not create obsolete fixture.');
@@ -162,13 +162,13 @@ jobs:
               'manifest_sha256' => su_manifest_sha($entries),
               'files' => $entries,
           ];
-          $result = TakKa_WordPress_Bridge_V06_Self_Update_Safe::apply($params);
+          $result = WP_Agent_Bridge_V06_Self_Update_Safe::apply($params);
           if (is_wp_error($result)) su_fail($result->get_error_code() . ': ' . $result->get_error_message());
           $response = rest_ensure_response($result);
           $data = $response->get_data();
           if (!is_array($data) || empty($data['ok'])) su_fail('Full manifest update did not return ok=true.');
           if (is_file($obsolete)) su_fail('Explicitly deleted obsolete file still exists.');
-          if (!is_file($root . '/includes/class-takka-wordpress-bridge-v06-self-update-safe.php')) {
+          if (!is_file($root . '/includes/class-wp-agent-bridge-v06-self-update-safe.php')) {
               su_fail('Safe self-update class disappeared after complete manifest update.');
           }
 
