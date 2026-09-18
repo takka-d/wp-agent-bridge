@@ -165,12 +165,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for test in tests/*.php; do
-            php "$test"
-          done
-          for test in tests/*.py; do
-            python3 "$test"
-          done
+          php tests/direct-webhook-loop-guard-test.php
+          php tests/direct-command-inflight-test.php
+          php tests/direct-atomic-bookkeeping-test.php
+          php tests/direct-runtime-delivery-fallback-test.php
+          php tests/direct-media-pre-dispatch-test.php
+          php tests/media-binary-chunk-staging-test.php
+          php tests/media-auto-path-resolution-test.php
+          python3 tests/media-client-preparation-test.py
+          python3 tests/codex-helper-package-test.py
+          php tests/workspace-test.php
+          php tests/runtime-capabilities-test.php
+          php tests/runtime-guidance-test.php
+          php tests/runtime-bootstrap-test.php
+          php tests/post-concurrency-runtime-guidance-test.php
+          php tests/post-reliability-runtime-guidance-test.php
+          php tests/operation-policy-test.php
+          php tests/runtime-result-summary-test.php
+          php tests/post-content-range-test.php
+          php tests/read-only-batch-test.php
+          php tests/theme-read-reliability-test.php
+          php tests/integrity-diagnostics-test.php
+          php tests/diagnostics-compat-test.php
+          php tests/wpvibe-server-compat-test.php
+          php tests/site-icon-media-flow-test.php
 
       - name: Commit generic source
         id: generic
