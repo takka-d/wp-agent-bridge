@@ -62,7 +62,8 @@ foreach ([
     '86400 seconds',
     'explicitly set branch/ref',
     'default branch',
-    'Bootstrap/marker 404',
+    'Bootstrap/marker 404 is not a startup blocker',
+    'Do not make `wordpress-bridge/RUNTIME_CONNECTION.json` a startup prerequisite',
     'Never write pending commands to the default branch',
 ] as $required) {
     if (strpos($agents, $required) === false) {
@@ -94,8 +95,11 @@ echo "runtime-guidance-test: ok\n";
 
 $prompt = TakKa_WordPress_Bridge_Runtime_Guidance::client_prompt('alice/site-runtime', 'wp-agent-bridge-runtime', 'site.example');
 $other_prompt = TakKa_WordPress_Bridge_Runtime_Guidance::client_prompt('bob/other-runtime', 'wp-agent-bridge-runtime', 'other.example');
-foreach (['alice/site-runtime', 'site.example', 'RUNTIME_CONNECTION.json', 'RUNTIME_CAPABILITIES.json', 'status=canonical', 'operator_relay=false', 'branch/ref=wp-agent-bridge-runtime', 'default branch', 'commands/pending/<id>.json', '記事の変更やアップロードを実行せず'] as $required) {
+foreach (['alice/site-runtime', 'site.example', 'RUNTIME_CONNECTION.json', 'RUNTIME_CAPABILITIES.json', 'branch/ref=wp-agent-bridge-runtime', 'default branch', 'commands/pending/<id>.json', '事前readを開始条件にしない', 'read失敗とwrite可否は別', '接続確認だけで止まらず'] as $required) {
     if (strpos($prompt, $required) === false) guidance_fail('Client start prompt is missing: ' . $required);
+}
+foreach (['最初に repository=', 'status=canonical、transport=direct-github-webhook', 'この指示だけでは記事の変更やアップロードを実行せず、接続確認を行ってください'] as $forbidden) {
+    if (strpos($prompt, $forbidden) !== false) guidance_fail('Client start prompt still contains blocking preflight text: ' . $forbidden);
 }
 if (strpos($other_prompt, 'bob/other-runtime') === false || strpos($other_prompt, 'other.example') === false
     || strpos($other_prompt, 'alice/site-runtime') !== false || strpos($other_prompt, 'site.example') !== false) {
