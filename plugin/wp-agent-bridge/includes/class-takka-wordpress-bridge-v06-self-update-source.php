@@ -220,7 +220,7 @@ final class TakKa_WordPress_Bridge_V06_Self_Update_Source
             if ($uncompressed > self::MAX_ARCHIVE_UNCOMPRESSED_BYTES) {
                 return new WP_Error('takka_bridge_self_update_source_archive_uncompressed', 'Pinned source archive expands beyond the extraction byte limit.', ['status' => 413]);
             }
-            if (preg_match('#^([^/]+)/plugin/wp-agent-bridge/takka-wordpress-bridge\.php$#', $name, $match)) {
+            if (preg_match('#^([^/]+)/plugin/wp-agent-bridge/(?:takka-wordpress-bridge|wp-agent-bridge)\.php$#', $name, $match)) {
                 $prefixes[$match[1]] = true;
             }
         }
