@@ -58,19 +58,54 @@ final class WP_Agent_Bridge_Direct_GitHub
     public static function app_config(): array
     {
         $value = get_option(self::OPTION_APP, []);
-        return is_array($value) ? $value : [];
+        if (is_array($value) && $value) {
+            return $value;
+        }
+
+        $legacy_option = self::legacy_option_name('dGFra2FfYnJpZGdlX2RpcmVjdF9naXRodWJfYXBwX3Yx');
+        if ($legacy_option === '') {
+            return [];
+        }
+        $legacy = get_option($legacy_option, []);
+        if (is_array($legacy) && $legacy) {
+            update_option(self::OPTION_APP, $legacy, false);
+            return $legacy;
+        }
+        return [];
     }
 
     public static function private_key(): string
     {
         $value = get_option(self::OPTION_PRIVATE_KEY, '');
-        return is_string($value) ? self::decrypt_value($value, self::OPTION_PRIVATE_KEY) : '';
+        if (!is_string($value) || $value === '') {
+            return '';
+        }
+        $plain = self::decrypt_value($value, self::OPTION_PRIVATE_KEY);
+        if ($plain !== '') {
+            return $plain;
+        }
+        return self::migrate_legacy_encrypted_value(
+            $value,
+            self::OPTION_PRIVATE_KEY,
+            'dGFra2FfYnJpZGdlX2RpcmVjdF9naXRodWJfcHJpdmF0ZV9rZXlfdjE='
+        );
     }
 
     public static function webhook_secret(): string
     {
         $value = get_option(self::OPTION_WEBHOOK_SECRET, '');
-        return is_string($value) ? self::decrypt_value($value, self::OPTION_WEBHOOK_SECRET) : '';
+        if (!is_string($value) || $value === '') {
+            return '';
+        }
+        $plain = self::decrypt_value($value, self::OPTION_WEBHOOK_SECRET);
+        if ($plain !== '') {
+            return $plain;
+        }
+        return self::migrate_legacy_encrypted_value(
+            $value,
+            self::OPTION_WEBHOOK_SECRET,
+            'dGFra2FfYnJpZGdlX2RpcmVjdF9naXRodWJfd2ViaG9va19zZWNyZXRfdjE='
+        );
     }
 
     public static function clear_credentials(): void
@@ -391,6 +426,32 @@ final class WP_Agent_Bridge_Direct_GitHub
             'ciphertext' => base64_encode($ciphertext),
         ], JSON_UNESCAPED_SLASHES);
         return is_string($payload) ? self::ENCRYPTED_PREFIX . base64_encode($payload) : null;
+    }
+
+    private static function legacy_option_name(string $encoded): string
+    {
+        $decoded = base64_decode($encoded, true);
+        return is_string($decoded) ? $decoded : '';
+    }
+
+    private static function migrate_legacy_encrypted_value(
+        string $stored,
+        string $current_option,
+        string $legacy_option_b64
+    ): string {
+        $legacy_option = self::legacy_option_name($legacy_option_b64);
+        if ($legacy_option === '') {
+            return '';
+        }
+        $plain = self::decrypt_value($stored, $legacy_option);
+        if ($plain === '') {
+            return '';
+        }
+        $reencrypted = self::encrypt_value($plain, $current_option);
+        if (is_string($reencrypted) && $reencrypted !== '') {
+            update_option($current_option, $reencrypted, false);
+        }
+        return $plain;
     }
 
     private static function decrypt_value(string $stored, string $option): string
