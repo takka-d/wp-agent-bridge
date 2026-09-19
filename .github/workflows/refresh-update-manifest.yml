@@ -2,9 +2,10 @@ name: Refresh update manifest
 
 on:
   push:
-    branches: [main]
+    branches: [main, migration-generic-branding-1.1.39.1]
     paths:
       - 'plugin/wp-agent-bridge/**'
+      - '.github/workflows/refresh-update-manifest.yml'
 
 permissions:
   contents: write
