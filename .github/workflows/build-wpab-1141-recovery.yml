@@ -1,0 +1,39 @@
+name: Build WP Agent Bridge 1.1.41 recovery ZIP
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-wpab-1141-recovery.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Build plugin ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+          root=Path('plugin/wp-agent-bridge')
+          out=Path('downloads/wp-agent-bridge-1.1.41.zip')
+          out.parent.mkdir(parents=True,exist_ok=True)
+          with zipfile.ZipFile(out,'w',compression=zipfile.ZIP_DEFLATED) as z:
+              for p in sorted(x for x in root.rglob('*') if x.is_file()):
+                  z.write(p, 'wp-agent-bridge/' + p.relative_to(root).as_posix())
+          with zipfile.ZipFile(out) as z:
+              if 'wp-agent-bridge/wp-agent-bridge.php' not in z.namelist():
+                  raise SystemExit('generic plugin bootstrap missing from ZIP')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add downloads/wp-agent-bridge-1.1.41.zip
+          git commit -m 'Add WP Agent Bridge 1.1.41 recovery ZIP'
+          git push origin HEAD:main
