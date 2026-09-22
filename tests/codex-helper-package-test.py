@@ -61,7 +61,7 @@ for marker in [
     "GitHub app/tool recovery",
     "client exposure problem",
     "app/plugin/tool discovery mechanism once",
-    "Do not say \"this chat cannot execute WP Agent Bridge\"",
+    "Do not answer with a tool-availability explanation before attempting the required GitHub dependency path.",
     "Non-negotiable execution contract",
     "Do not use the model's apparent/visible tool roster as evidence",
     "actual GitHub dependency/tool call",
