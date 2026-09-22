@@ -1,0 +1,20 @@
+{
+  "name": "wp-agent-bridge",
+  "interface": {
+    "displayName": "WP Agent Bridge"
+  },
+  "plugins": [
+    {
+      "name": "wp-agent-bridge-helper",
+      "source": {
+        "source": "local",
+        "path": "./codex-plugin/wp-agent-bridge-codex-helper"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
