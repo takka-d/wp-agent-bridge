@@ -8,7 +8,7 @@
       "name": "wp-agent-bridge-helper",
       "source": {
         "source": "local",
-        "path": "./codex-plugin/wp-agent-bridge-codex-helper"
+        "path": "./plugins/wp-agent-bridge-helper"
       },
       "policy": {
         "installation": "AVAILABLE",
