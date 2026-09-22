@@ -1,13 +1,41 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-  "name": "wp-agent-bridge-codex-helper",
-  "version": "0.1.0",
-  "description": "Use a user's canonical WP Agent Bridge GitHub Direct Runtime safely and consistently from Codex.",
+  "name": "wp-agent-bridge-helper",
+  "version": "0.2.0",
+  "description": "Keep ChatGPT and Codex using a user's WP Agent Bridge GitHub Direct Runtime consistently, including recovery when GitHub tools temporarily disappear from a turn.",
   "author": {
     "name": "WP Agent Bridge",
     "url": "https://github.com/takka-d/wp-agent-bridge"
   },
   "homepage": "https://github.com/takka-d/wp-agent-bridge",
   "repository": "https://github.com/takka-d/wp-agent-bridge",
-  "keywords": ["wordpress", "codex", "github", "wp-agent-bridge"]
+  "keywords": [
+    "wordpress",
+    "chatgpt",
+    "codex",
+    "github",
+    "wp-agent-bridge"
+  ],
+  "extensions": {
+    "com.openai": {
+      "apps": "./.app.json",
+      "interface": {
+        "displayName": "WP Agent Bridge Helper",
+        "shortDescription": "Keep WordPress work routed through WP Agent Bridge and GitHub.",
+        "longDescription": "Adds WP Agent Bridge workflow guidance for ChatGPT and Codex, including the required GitHub app, direct pending-command routing, result checks, and recovery when GitHub tools temporarily disappear.",
+        "developerName": "WP Agent Bridge",
+        "category": "Developer Tools",
+        "capabilities": [
+          "Interactive",
+          "Read",
+          "Write"
+        ],
+        "websiteURL": "https://github.com/takka-d/wp-agent-bridge",
+        "defaultPrompt": [
+          "Use WP Agent Bridge for this WordPress task.",
+          "Continue this WordPress task through WP Agent Bridge."
+        ]
+      }
+    }
+  }
 }
