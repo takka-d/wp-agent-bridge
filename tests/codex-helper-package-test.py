@@ -5,7 +5,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "codex-plugin" / "wp-agent-bridge-codex-helper"
-ZIP = ROOT / "downloads" / "wp-agent-bridge-helper-0.2.0.zip"
+ZIP = ROOT / "downloads" / "wp-agent-bridge-helper-0.2.1.zip"
 
 required = [
     "plugin.json",
@@ -27,7 +27,7 @@ with zipfile.ZipFile(ZIP) as archive:
 manifest = json.loads((SOURCE / "plugin.json").read_text(encoding="utf-8"))
 if manifest.get("$schema") != "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json":
     raise SystemExit("Portable plugin schema missing")
-if manifest.get("name") != "wp-agent-bridge-helper" or manifest.get("version") != "0.2.0":
+if manifest.get("name") != "wp-agent-bridge-helper" or manifest.get("version") != "0.2.1":
     raise SystemExit("WP Agent Bridge Helper identity mismatch")
 
 openai = ((manifest.get("extensions") or {}).get("com.openai") or {})
@@ -49,7 +49,7 @@ if github.get("required") is not True:
 compat = json.loads((SOURCE / ".codex-plugin" / "plugin.json").read_text(encoding="utf-8"))
 if compat.get("apps") != "./.app.json" or compat.get("skills") != "./skills/":
     raise SystemExit("Compatibility plugin mappings missing")
-if compat.get("name") != "wp-agent-bridge-helper" or compat.get("version") != "0.2.0":
+if compat.get("name") != "wp-agent-bridge-helper" or compat.get("version") != "0.2.1":
     raise SystemExit("Compatibility plugin identity mismatch")
 
 skill = (SOURCE / "skills/wp-agent-bridge/SKILL.md").read_text(encoding="utf-8")
@@ -62,6 +62,10 @@ for marker in [
     "client-side tool-exposure change",
     "discovery facility once",
     "Do not say \"this chat cannot execute WP Agent Bridge\"",
+    "Non-negotiable execution contract",
+    "Do not use the model's apparent/visible tool roster as evidence",
+    "actual GitHub dependency/tool call",
+    "Selecting or invoking WP Agent Bridge Helper should be sufficient",
 ]:
     if marker not in skill:
         raise SystemExit(f"WP Agent Bridge Helper skill missing marker: {marker}")
