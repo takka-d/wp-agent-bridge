@@ -60,7 +60,7 @@ for marker in [
     "wordpress-bridge/prepare-media.py",
     "GitHub app/tool recovery",
     "client exposure problem",
-    "discovery facility once",
+    "app/plugin/tool discovery mechanism once",
     "Do not say \"this chat cannot execute WP Agent Bridge\"",
     "Non-negotiable execution contract",
     "Do not use the model's apparent/visible tool roster as evidence",
