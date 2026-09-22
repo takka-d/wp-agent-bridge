@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "wp-agent-bridge-helper",
-  "version": "0.2.0",
-  "description": "Keep ChatGPT and Codex using a user's WP Agent Bridge GitHub Direct Runtime consistently, including recovery when GitHub tools temporarily disappear from a turn.",
+  "version": "0.2.1",
+  "description": "Keep ChatGPT and Codex using a user's WP Agent Bridge GitHub Direct Runtime consistently, and prevent false tool-unavailable conclusions before an actual GitHub dependency attempt.",
   "author": {
     "name": "WP Agent Bridge",
     "url": "https://github.com/takka-d/wp-agent-bridge"
@@ -21,8 +21,8 @@
       "apps": "./.app.json",
       "interface": {
         "displayName": "WP Agent Bridge Helper",
-        "shortDescription": "Keep WordPress work routed through WP Agent Bridge and GitHub.",
-        "longDescription": "Adds WP Agent Bridge workflow guidance for ChatGPT and Codex, including the required GitHub app, direct pending-command routing, result checks, and recovery when GitHub tools temporarily disappear.",
+        "shortDescription": "Keep WordPress work routed through WP Agent Bridge and its required GitHub app.",
+        "longDescription": "Adds WP Agent Bridge workflow guidance for ChatGPT and Codex, including the required GitHub app, direct pending-command routing, result checks, and strict recovery rules that forbid claiming GitHub/WP Agent Bridge is unavailable before an actual dependency call or discovery attempt fails.",
         "developerName": "WP Agent Bridge",
         "category": "Developer Tools",
         "capabilities": [
@@ -32,8 +32,8 @@
         ],
         "websiteURL": "https://github.com/takka-d/wp-agent-bridge",
         "defaultPrompt": [
-          "Use WP Agent Bridge for this WordPress task.",
-          "Continue this WordPress task through WP Agent Bridge."
+          "Use WP Agent Bridge for this WordPress task. Do not claim the GitHub dependency is unavailable without actually attempting the dependency/tool path.",
+          "Continue this WordPress task through WP Agent Bridge and execute the requested operation rather than stopping at a tool-availability explanation."
         ]
       }
     }
