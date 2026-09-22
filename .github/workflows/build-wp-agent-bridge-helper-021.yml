@@ -1,0 +1,53 @@
+name: Build WP Agent Bridge Helper 0.2.1
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-wp-agent-bridge-helper-021.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build helper ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import zipfile
+
+          source = Path('codex-plugin/wp-agent-bridge-codex-helper')
+          output = Path('downloads/wp-agent-bridge-helper-0.2.1.zip')
+          required = [
+              Path('plugin.json'),
+              Path('.app.json'),
+              Path('.codex-plugin/plugin.json'),
+              Path('skills/wp-agent-bridge/SKILL.md'),
+              Path('README.md'),
+          ]
+          output.parent.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(output, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+              for relative in required:
+                  path = source / relative
+                  if not path.is_file():
+                      raise SystemExit(f'missing helper file: {relative}')
+                  archive.write(path, relative.as_posix())
+          PY
+      - name: Validate helper package
+        run: python3 tests/codex-helper-package-test.py
+      - name: Commit helper ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add downloads/wp-agent-bridge-helper-0.2.1.zip
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Build WP Agent Bridge Helper 0.2.1'
+          git push origin HEAD:main
