@@ -1,0 +1,41 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "wp-agent-bridge-helper",
+  "version": "0.2.2",
+  "description": "Keep ChatGPT and Codex using a user's WP Agent Bridge GitHub Direct Runtime consistently, and prevent false tool-unavailable conclusions before an actual GitHub dependency attempt.",
+  "author": {
+    "name": "WP Agent Bridge",
+    "url": "https://github.com/takka-d/wp-agent-bridge"
+  },
+  "homepage": "https://github.com/takka-d/wp-agent-bridge",
+  "repository": "https://github.com/takka-d/wp-agent-bridge",
+  "keywords": [
+    "wordpress",
+    "chatgpt",
+    "codex",
+    "github",
+    "wp-agent-bridge"
+  ],
+  "extensions": {
+    "com.openai": {
+      "apps": "./.app.json",
+      "interface": {
+        "displayName": "WP Agent Bridge Helper",
+        "shortDescription": "Keep WordPress work routed through WP Agent Bridge and its required GitHub app.",
+        "longDescription": "Adds WP Agent Bridge workflow guidance for ChatGPT and Codex, including the required GitHub app, direct pending-command routing, result checks, and strict recovery rules that forbid claiming GitHub/WP Agent Bridge is unavailable before an actual dependency call or discovery attempt fails.",
+        "developerName": "WP Agent Bridge",
+        "category": "Developer Tools",
+        "capabilities": [
+          "Interactive",
+          "Read",
+          "Write"
+        ],
+        "websiteURL": "https://github.com/takka-d/wp-agent-bridge",
+        "defaultPrompt": [
+          "Use WP Agent Bridge for this WordPress task. Do not claim the GitHub dependency is unavailable without actually attempting the dependency/tool path.",
+          "Continue this WordPress task through WP Agent Bridge and execute the requested operation rather than stopping at a tool-availability explanation."
+        ]
+      }
+    }
+  }
+}
