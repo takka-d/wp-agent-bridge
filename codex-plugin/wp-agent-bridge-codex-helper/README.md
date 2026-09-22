@@ -1,25 +1,26 @@
-# WP Agent Bridge Helper 0.2.0
+# WP Agent Bridge Helper 0.2.1
 
 This optional plugin helps ChatGPT and Codex keep using WP Agent Bridge consistently in long-running WordPress conversations.
 
-It does not replace the WordPress-side WP Agent Bridge plugin, and it does not contain WordPress or GitHub credentials. It declares the standard GitHub app as required and adds a reusable WP Agent Bridge skill.
+It does not replace the WordPress-side WP Agent Bridge plugin and it does not contain WordPress or GitHub credentials. It declares the standard GitHub app as required and adds a reusable WP Agent Bridge skill.
 
-## What 0.2.0 changes
+## What 0.2.1 changes
 
-- Supports both ChatGPT and Codex rather than treating the helper as Codex-only.
-- Declares the standard GitHub app as a required app for the plugin.
-- Reuses a verified WP Agent Bridge runtime instead of repeatedly rediscovering it.
-- Sends concrete WordPress work to `wordpress-bridge/commands/pending/<id>.json` instead of stopping at connection checks.
-- When GitHub tools disappear after they worked earlier in the same conversation, treats that as a client-side tool-exposure change, not as evidence that WP Agent Bridge stopped working.
-- Requires one GitHub app/plugin discovery attempt before claiming that GitHub is unavailable.
-- Separates GitHub tool exposure, GitHub authorization, repository access, Bridge transport, and WordPress operation failures.
+- Keeps the ChatGPT/Codex and required-GitHub-app integration introduced in 0.2.0.
+- Forbids claiming that GitHub or WP Agent Bridge is unavailable merely because the model does not see an expected tool name in its apparent tool roster.
+- Requires an actual GitHub dependency/tool attempt or one app/plugin discovery attempt before any unavailable/not-connected conclusion.
+- If discovery finds GitHub installed/enabled, requires the model to continue the original WordPress task immediately instead of asking the user to repeat it.
+- Treats @GitHub as a last-resort client workaround, not the normal requirement when WP Agent Bridge Helper itself has been invoked.
+- Keeps success verification tied to the matching WP Agent Bridge result file rather than to helper activation or a GitHub write alone.
 
-## Install
+## Install from the GitHub marketplace
 
-Import or upload `wp-agent-bridge-helper-0.2.0.zip` as a plugin in a supported ChatGPT/Codex plugin environment.
+Add the repository marketplace once:
 
-The GitHub app still has to be available to the current ChatGPT/Codex surface and connected to the intended GitHub account. Plugin installation cannot bypass GitHub authorization or workspace restrictions.
+`codex plugin marketplace add takka-d/wp-agent-bridge --ref main`
 
-If a conversation suddenly says it cannot use WP Agent Bridge even though it used it earlier, invoke the installed helper (or select it with `@` / the plugin picker where available). The helper instructs the model to rediscover GitHub once before concluding that the tool is unavailable.
+Then reload ChatGPT/Codex, open Plugins, choose the WP Agent Bridge marketplace/source, and install or refresh WP Agent Bridge Helper.
+
+The GitHub app still has to be available to the current ChatGPT/Codex surface and authorized for the intended account/repositories. Plugin installation cannot bypass provider authorization or workspace restrictions.
 
 Source: https://github.com/takka-d/wp-agent-bridge
