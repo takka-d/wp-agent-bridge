@@ -59,7 +59,7 @@ for marker in [
     "wordpress-bridge/results/<id>.json",
     "wordpress-bridge/prepare-media.py",
     "GitHub app/tool recovery",
-    "client-side tool-exposure change",
+    "client exposure problem",
     "discovery facility once",
     "Do not say \"this chat cannot execute WP Agent Bridge\"",
     "Non-negotiable execution contract",
