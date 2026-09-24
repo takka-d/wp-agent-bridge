@@ -1,38 +1,73 @@
 # WP Agent Bridge Helper 0.2.2
 
-This plugin packages the WP Agent Bridge workflow for ChatGPT and Codex and references the standard GitHub app as a required dependency.
+This plugin packages the WP Agent Bridge workflow for ChatGPT desktop/Codex and references the standard GitHub app as a required dependency.
 
-It does not replace the WordPress-side WP Agent Bridge plugin and it does not contain WordPress or GitHub credentials. It declares the standard GitHub app as required and adds a reusable WP Agent Bridge skill.
+It does not replace the WordPress-side WP Agent Bridge plugin and it does not contain WordPress or GitHub credentials.
 
-## What 0.2.2 changes
+## Install from the distributed ZIP
 
-- Keeps the ChatGPT/Codex and required-GitHub-app integration introduced in 0.2.0.
-- Forbids claiming that GitHub or WP Agent Bridge is unavailable merely because the model does not see an expected tool name in its apparent tool roster.
-- Requires an actual GitHub dependency/tool attempt or one app/plugin discovery attempt before any unavailable/not-connected conclusion.
-- If discovery finds GitHub installed/enabled, requires the model to continue the original WordPress task immediately instead of asking the user to repeat it.
-- Treats @GitHub as a last-resort client workaround, not the normal requirement when WP Agent Bridge Helper itself has been invoked.
-- Keeps success verification tied to the matching WP Agent Bridge result file rather than to helper activation or a GitHub write alone.
+The ZIP distributed with WP Agent Bridge is the primary installation package.
 
-## Install
+1. Extract `wp-agent-bridge-helper-0.2.2.zip`.
+2. Create the personal plugin directory if it does not already exist:
+   - Windows: `%USERPROFILE%\.codex\plugins\wp-agent-bridge-helper\`
+   - macOS/Linux: `~/.codex/plugins/wp-agent-bridge-helper/`
+3. Copy the extracted plugin files into that `wp-agent-bridge-helper` directory. The directory must contain `plugin.json`, `.app.json`, `.codex-plugin/plugin.json`, `skills/`, and this README.
+4. Create or update the personal marketplace file:
+   - Windows: `%USERPROFILE%\.agents\plugins\marketplace.json`
+   - macOS/Linux: `~/.agents/plugins/marketplace.json`
+5. Ensure its `plugins` array contains this entry:
 
-### Recommended: GitHub marketplace
+```json
+{
+  "name": "wp-agent-bridge-helper",
+  "source": {
+    "source": "local",
+    "path": "./.codex/plugins/wp-agent-bridge-helper"
+  },
+  "policy": {
+    "installation": "AVAILABLE",
+    "authentication": "ON_INSTALL"
+  },
+  "category": "Developer Tools"
+}
+```
 
-Add the repository marketplace once:
+A minimal personal marketplace containing only this plugin is:
 
-`codex plugin marketplace add takka-d/wp-agent-bridge --ref main`
+```json
+{
+  "name": "personal-plugins",
+  "interface": {
+    "displayName": "Personal Plugins"
+  },
+  "plugins": [
+    {
+      "name": "wp-agent-bridge-helper",
+      "source": {
+        "source": "local",
+        "path": "./.codex/plugins/wp-agent-bridge-helper"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
+```
 
-Then restart the ChatGPT desktop app or Codex, open Plugins, choose the WP Agent Bridge marketplace/source, and install WP Agent Bridge Helper.
+If `marketplace.json` already contains other plugins, do not overwrite it; add the WP Agent Bridge Helper entry to the existing `plugins` array.
 
-To refresh the marketplace later:
+6. Fully quit and restart the ChatGPT desktop app or Codex.
+7. Open Plugins, choose the personal marketplace, and install/enable WP Agent Bridge Helper.
+8. Connect the standard GitHub app when required.
 
-`codex plugin marketplace upgrade wp-agent-bridge`
+The plugin cannot bypass GitHub authorization, workspace policy, or provider permissions.
 
-### ZIP package
+## Updating
 
-The downloadable ZIP is a distribution/archive package, not a one-click installer for the normal local Codex plugin flow. A manual ZIP installation requires extracting the plugin files into a local plugin directory and exposing that directory through a personal or repository marketplace as described in OpenAI's local marketplace documentation.
-
-For most individual users, the GitHub marketplace command above is the simpler supported path. Workspace administrators can instead import the GitHub marketplace from Workspace settings > Plugins > Add > Import marketplace when that workspace feature is available.
-
-The GitHub app still has to be available to the current ChatGPT/Codex surface and authorized for the intended account/repositories. Plugin installation cannot bypass provider authorization or workspace restrictions.
+For a ZIP-based installation, replace the files in the same `wp-agent-bridge-helper` directory with the files from the newer ZIP, then fully restart ChatGPT desktop/Codex.
 
 Source: https://github.com/takka-d/wp-agent-bridge
