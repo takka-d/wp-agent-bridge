@@ -1,0 +1,21 @@
+{
+  "name": "wp-agent-bridge",
+  "description": "WP Agent Bridge client helpers for Claude (claude.ai, Cowork, Claude Code). The same plugin folder is also the ChatGPT/Codex helper.",
+  "owner": {
+    "name": "WP Agent Bridge",
+    "url": "https://github.com/takka-d/wp-agent-bridge"
+  },
+  "plugins": [
+    {
+      "name": "wp-agent-bridge-helper",
+      "source": "./plugins/wp-agent-bridge-helper",
+      "description": "Route WordPress work through a user-owned WP Agent Bridge GitHub Direct Runtime: pending-command publication, result verification, guarded writes, media chunk publication, and recovery rules.",
+      "category": "Developer Tools",
+      "tags": [
+        "wordpress",
+        "github",
+        "wp-agent-bridge"
+      ]
+    }
+  ]
+}

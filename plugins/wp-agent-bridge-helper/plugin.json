@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "wp-agent-bridge-helper",
-  "version": "0.2.2",
-  "description": "Keep ChatGPT and Codex using a user's WP Agent Bridge GitHub Direct Runtime consistently, and prevent false tool-unavailable conclusions before an actual GitHub dependency attempt.",
+  "version": "0.3.1",
+  "description": "Keep Claude, ChatGPT and Codex using a user's WP Agent Bridge GitHub Direct Runtime consistently, and prevent false tool-unavailable conclusions before an actual GitHub transport attempt.",
   "author": {
     "name": "WP Agent Bridge",
     "url": "https://github.com/takka-d/wp-agent-bridge"
@@ -13,6 +13,8 @@
     "wordpress",
     "chatgpt",
     "codex",
+    "claude",
+    "claude-code",
     "github",
     "wp-agent-bridge"
   ],
@@ -22,7 +24,7 @@
       "interface": {
         "displayName": "WP Agent Bridge Helper",
         "shortDescription": "Keep WordPress work routed through WP Agent Bridge and its required GitHub app.",
-        "longDescription": "Adds WP Agent Bridge workflow guidance for ChatGPT and Codex, including the required GitHub app, direct pending-command routing, result checks, and strict recovery rules that forbid claiming GitHub/WP Agent Bridge is unavailable before an actual dependency call or discovery attempt fails.",
+        "longDescription": "Adds WP Agent Bridge workflow guidance for ChatGPT/Codex and Claude (claude.ai, Cowork, Claude Code): direct pending-command routing on the runtime branch, result checks, guarded writes, media chunk publication, and strict recovery rules that forbid claiming GitHub/WP Agent Bridge is unavailable before an actual GitHub transport call or discovery attempt fails. ChatGPT/Codex use the required GitHub app; Claude uses the GitHub tool present in its session.",
         "developerName": "WP Agent Bridge",
         "category": "Developer Tools",
         "capabilities": [
