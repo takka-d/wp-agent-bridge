@@ -68,6 +68,18 @@ GitHub Appは利用者自身のGitHubアカウントに作成し、対象のpriv
 
 PAT、Webhook secret、private key、Bridge Key、GitHub Actions workflowを利用者が手入力することは想定していません。
 
+### クライアント用ヘルパー(ChatGPT / Codex / Claude 共通)
+
+`plugins/wp-agent-bridge-helper/` は1つのフォルダで ChatGPT desktop / Codex、Codex CLI、Claude Code、claude.ai、Cowork のすべてにインストールできるヘルパープラグインです。中身は共通の skill(`skills/wp-agent-bridge/SKILL.md`)と、クライアント別の GitHub 経路をまとめた `references/transports.md`、ターミナル系クライアント用の GitHub 転送スクリプト `scripts/wpab.py` です。WordPress側のWP Agent Bridgeや認証情報は含みません。
+
+| クライアント | 追加方法 | GitHub 経路 |
+| --- | --- | --- |
+| ChatGPT desktop / Codex | `codex plugin marketplace add takka-d/wp-agent-bridge --ref main` または ZIP | 必須指定の GitHub app |
+| Claude Code | `claude plugin marketplace add takka-d/wp-agent-bridge` → `claude plugin install wp-agent-bridge-helper@wp-agent-bridge` | 利用者自身の `gh auth login`(`scripts/wpab.py` が `gh api` を使用) |
+| claude.ai / Cowork | Customize > Plugins > Add で marketplace(このリポジトリURL)追加、または ZIP アップロード | デスクトップアプリ連携PCの `gh`、または Claude Code on the web でのリポジトリ接続 |
+
+いずれの経路でも、runtime repository・GitHub App・GitHub ログインはすべて利用者自身のものです。詳細は [`plugins/wp-agent-bridge-helper/README.md`](plugins/wp-agent-bridge-helper/README.md) を参照してください。
+
 ### チャットでGitHubを呼び出せない場合
 
 WP Agent BridgeはWordPress側のプラグインです。ChatGPT側で呼び出すのは、接続済みの**GitHubプラグイン**です。WordPressのConnected表示だけでは、現在のチャットに必要な読み書きツールが提供されているかは分かりません。

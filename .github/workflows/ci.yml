@@ -69,8 +69,11 @@ jobs:
       - name: Client media preparation preserves actual file bytes
         run: python3 tests/media-client-preparation-test.py
 
-      - name: Codex helper plugin package regression
+      - name: Helper plugin package regression (ChatGPT/Codex + Claude)
         run: python3 tests/codex-helper-package-test.py
+
+      - name: Helper transport script regression (wpab.py against an in-memory GitHub)
+        run: python3 -I tests/helper-wpab-transport-test.py
 
       - name: Workspace regression
         shell: bash
