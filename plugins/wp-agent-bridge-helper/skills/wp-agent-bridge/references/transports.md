@@ -13,7 +13,7 @@ The repository name is fixed by the WordPress admin screen (**Tools > WP Agent B
 | Codex (desktop app) | Same GitHub app | Same as ChatGPT. |
 | Codex CLI | `scripts/wpab.py` (uses `gh api`) or `gh api` directly | `gh auth status` must succeed for the user's own account. |
 | Claude Code (terminal, IDE, desktop Code tab) | `scripts/wpab.py` (uses `gh api`), `gh api`, or a configured GitHub MCP server | `${CLAUDE_SKILL_DIR}/scripts/wpab.py` resolves to this skill's folder. |
-| Claude Code on the web / cloud session | Attach the runtime repository with the session's repository tool (`add_repo`, access `push`) first, then `scripts/wpab.py` or `gh api` | Anonymous read-only access is not enough; the runtime repository is private and needs a write. |
+| Claude Code on the web / cloud session | Attach the runtime repository with the session's repository tool (`add_repo`, access `push`) first, then `scripts/wpab.py` | Anonymous read-only access is not enough; the runtime repository is private and needs a write. Verified 2026-11-08: the session proxy serves `gh api` reads and `git push`, but refuses Contents-API writes with HTTP 403 ("not permitted through this proxy"); `wpab.py` detects that and continues over `git push` automatically. |
 | claude.ai / Cowork with the desktop app linked to the user's computer | Device shell on the user's computer running `gh api` (or `wpab.py` copied once into a connected folder) | Uses the user's existing `gh auth` login; nothing is stored in the plugin. |
 | claude.ai chat only (web/mobile, no linked computer, no GitHub connector) | None available by default | Report the missing transport precisely and name one of the rows above. GitHub's hosted MCP server does not currently complete OAuth from claude.ai/Claude Desktop custom connectors, so do not promise that route. |
 
@@ -21,7 +21,13 @@ The user-owned principle is unchanged on every row: the runtime repository, the 
 
 ## `scripts/wpab.py` (shell-capable clients)
 
-Standard library only. Resolves the GitHub transport in this order: `gh api` (whenever `gh` is installed; gh honors the user's login or `GH_TOKEN`, and hosted sessions can serve `gh api` for an attached repository even when `gh auth status` reports no login) → `GITHUB_TOKEN` / `GH_TOKEN` environment variable with the REST API when `gh` is absent. The repository comes from `--repo owner/name` or the `WPAB_REPO` environment variable; the branch defaults to `wp-agent-bridge-runtime`.
+Standard library only. Two stores, chosen with `--via` (default `auto`, also `WPAB_VIA`):
+
+- **API store**: GitHub REST through `gh api` (whenever `gh` is installed; gh honors the user's login or `GH_TOKEN`, and hosted sessions can serve `gh api` for an attached repository even when `gh auth status` reports no login), or `GITHUB_TOKEN` / `GH_TOKEN` with the REST API when `gh` is absent. Single files use the Contents API; media batches use the Git Data API.
+- **git store**: a shallow single-branch clone of `wp-agent-bridge-runtime` (default `~/.cache/wp-agent-bridge/<owner>__<repo>`, or `--git-dir`), reset to the remote before every operation, with writes committed and pushed by `git push`. Credentials come from the user's own git credential helper or the session's git proxy; nothing is stored by the plugin.
+- `auto`: reads and writes start on the API store; the first write refused with HTTP 403 switches the rest of the run to the git store (this is what happens in Claude Code on the web). A 403 on a *read* is reported as an access error and never triggers the switch. `--via git` forces git from the start; `--via api` disables the fallback.
+
+The repository comes from `--repo owner/name` or the `WPAB_REPO` environment variable; the branch defaults to `wp-agent-bridge-runtime`. Every output JSON names the `transport` that performed the write.
 
 ```bash
 # Claude Code: ${CLAUDE_SKILL_DIR} is this skill's folder. Codex CLI: use the plugin path instead.
@@ -76,6 +82,17 @@ Atomic batch of prepared media chunk commands (Git Data API; `git-tree.json` fro
 ## Claude Code on the web / cloud sessions
 
 The session's git proxy serves anonymous reads of public repositories only. The runtime repository is private and must be written, so call the session's repository attach tool with push access for `OWNER/RUNTIME_REPO` before the first command. If the attach is refused by policy, report that exact category (repository access / session policy); it is not a WP Agent Bridge error, and no other transport in that session can substitute for it.
+
+Once attached, `gh api` reads work but Contents-API writes are refused by the proxy with HTTP 403; `wpab.py` switches to `git push` on its own. Pass `--git-dir /home/claude/<runtime-repo>` (or any empty directory) so the shallow clone lands in the session workspace. Without the script, the manual equivalent is:
+
+```bash
+git clone --depth 1 --single-branch --branch wp-agent-bridge-runtime https://github.com/OWNER/REPO /home/claude/REPO
+cd /home/claude/REPO && cp ID.json wordpress-bridge/commands/pending/ID.json
+git add wordpress-bridge/commands/pending/ID.json && git commit -m "WP Agent Bridge: publish command ID"
+git push origin HEAD:refs/heads/wp-agent-bridge-runtime
+```
+
+A rejected push (another chat pushed first) is not a WordPress error: fetch, reset to the remote branch, re-add the same file, push once more.
 
 ## claude.ai / Cowork with a linked computer
 

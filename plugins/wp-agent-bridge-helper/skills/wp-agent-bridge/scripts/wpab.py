@@ -2,9 +2,11 @@
 """WP Agent Bridge GitHub transport for shell-capable clients.
 
 Standard library only. Moves JSON files to and from the user's private runtime
-repository on branch wp-agent-bridge-runtime through `gh api` (preferred) or a
-GITHUB_TOKEN / GH_TOKEN environment variable. It never changes command semantics,
-never stores credentials, and never contacts WordPress directly.
+repository on branch wp-agent-bridge-runtime. Transport: GitHub REST through
+`gh api` (or GITHUB_TOKEN / GH_TOKEN), falling back to a shallow git clone plus
+`git push` when a hosted session refuses Contents-API writes (HTTP 403), or
+when `--via git` is given. It never changes command semantics, never stores
+credentials, and never contacts WordPress directly.
 
     wpab.py --repo OWNER/REPO connection
     wpab.py --repo OWNER/REPO capabilities [--operations]
@@ -12,6 +14,7 @@ never stores credentials, and never contacts WordPress directly.
     wpab.py --repo OWNER/REPO submit --file command.json
     wpab.py --repo OWNER/REPO result ID [--wait] [--full] [--head 80]
     wpab.py --repo OWNER/REPO publish-media PREPARED_DIR
+    wpab.py --repo OWNER/REPO --via git submit ...     # force the git transport
 
 Exit codes: 0 ok, 1 transport/argument error, 2 refused (unsafe or conflicting
 request), 3 result pending_or_unknown.
@@ -150,13 +153,21 @@ def resolve_transport(explicit=None):
     )
 
 
-# --------------------------------------------------------------------------- runtime client
+# --------------------------------------------------------------------------- stores
+#
+# A store reads and writes files on the runtime branch. Two implementations:
+#   ApiStore  - GitHub REST (Contents API for single files, Git Data API for batches)
+#   GitStore  - a shallow local clone of the runtime branch plus `git push`
+# Hosted sessions (for example Claude Code on the web) can serve API reads and
+# `git push` while refusing Contents-API writes through their proxy, so the
+# default FallbackStore starts on the API and moves to git when a write is
+# refused with HTTP 403.
 
 
-class Runtime:
-    def __init__(self, transport, repository, branch=RUNTIME_BRANCH):
-        if not REPO_PATTERN.fullmatch(repository or ""):
-            raise TransportError(0, "repository must be owner/name (use --repo or WPAB_REPO)")
+class ApiStore:
+    name = "api"
+
+    def __init__(self, transport, repository, branch):
         self.transport = transport
         self.repository = repository
         self.branch = branch
@@ -165,7 +176,6 @@ class Runtime:
         return "repos/{}/contents/{}".format(self.repository, path)
 
     def read_text(self, path):
-        """Return file text, or None on 404. Other errors propagate."""
         try:
             _, text = self.transport.request("GET", self._contents(path) + "?ref=" + self.branch, accept=RAW_ACCEPT)
             return text
@@ -221,6 +231,187 @@ class Runtime:
                 if error.status != 422:
                     raise
         raise TransportError(422, "runtime branch moved twice during publication; nothing was published: " + str(last_error))
+
+
+class GitStore:
+    """Shallow single-branch clone of the runtime branch; writes are commits pushed with git.
+
+    The clone is a disposable mirror: every operation first resets it to the
+    remote branch, so nothing the user has locally is ever mixed in. Only new
+    files are ever written (pending commands), so a rejected push is retried
+    once by re-syncing and re-applying the same files.
+    """
+
+    name = "git"
+    GIT_IDENTITY = ["-c", "user.name=WP Agent Bridge Helper",
+                    "-c", "user.email=wp-agent-bridge-helper@users.noreply.github.com"]
+
+    def __init__(self, repository, branch, directory=None, remote_url=None):
+        if shutil.which("git") is None:
+            raise TransportError(0, "git is not installed; the git transport is unavailable")
+        self.repository = repository
+        self.branch = branch
+        self.remote_url = remote_url or os.environ.get("WPAB_GIT_REMOTE") or "https://github.com/{}.git".format(repository)
+        self.directory = directory or os.environ.get("WPAB_GIT_DIR") or os.path.join(
+            os.path.expanduser("~"), ".cache", "wp-agent-bridge", repository.replace("/", "__"))
+        self._ready = False
+
+    def _git(self, *args, check=True, identity=False):
+        command = ["git"] + (self.GIT_IDENTITY if identity else []) + ["-C", self.directory] + list(args)
+        completed = subprocess.run(command, capture_output=True, text=True)
+        if check and completed.returncode != 0:
+            raise TransportError(0, "git {} failed: {}".format(args[0], completed.stderr.strip()[:400]))
+        return completed
+
+    def _ensure(self):
+        if self._ready:
+            return
+        probe = subprocess.run(["git", "-C", self.directory, "rev-parse", "--is-inside-work-tree"],
+                               capture_output=True, text=True) if os.path.isdir(self.directory) else None
+        if probe is None or probe.returncode != 0:
+            if os.path.isdir(self.directory) and os.listdir(self.directory):
+                raise TransportError(0, "git transport directory exists and is not a clone: " + self.directory)
+            os.makedirs(os.path.dirname(self.directory) or ".", exist_ok=True)
+            completed = subprocess.run(
+                ["git", "clone", "--quiet", "--depth", "1", "--single-branch", "--branch", self.branch,
+                 self.remote_url, self.directory], capture_output=True, text=True)
+            if completed.returncode != 0:
+                raise TransportError(0, "git clone of {} ({}) failed: {}".format(
+                    self.repository, self.branch, completed.stderr.strip()[:400]))
+        self._ready = True
+
+    def _sync(self):
+        self._ensure()
+        self._git("fetch", "--quiet", "--depth", "1", "origin", self.branch)
+        self._git("checkout", "--quiet", "-B", self.branch, "FETCH_HEAD")
+        self._git("reset", "--quiet", "--hard", "FETCH_HEAD")
+        self._git("clean", "--quiet", "-fd")
+
+    def read_text(self, path):
+        self._sync()
+        completed = self._git("show", "FETCH_HEAD:" + path, check=False)
+        if completed.returncode == 0:
+            return completed.stdout
+        stderr = completed.stderr
+        if "does not exist" in stderr or "exists on disk, but not in" in stderr or "invalid object name" in stderr.lower():
+            return None
+        raise TransportError(0, "git show failed: " + stderr.strip()[:400])
+
+    def _write(self, files):
+        for path, text in files.items():
+            target = os.path.join(self.directory, path)
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target, "w", encoding="utf-8", newline="\n") as handle:
+                handle.write(text)
+            self._git("add", "--", path)
+
+    def _before_push(self):
+        """Test hook."""
+
+    def _commit_and_push(self, files, message):
+        last_error = None
+        for _attempt in range(2):
+            self._sync()
+            self._write(files)
+            self._git("commit", "--quiet", "-m", message, identity=True)
+            sha = self._git("rev-parse", "HEAD").stdout.strip()
+            self._before_push()
+            pushed = self._git("push", "--quiet", "origin", "HEAD:refs/heads/" + self.branch, check=False)
+            if pushed.returncode == 0:
+                return sha
+            last_error = pushed.stderr.strip()
+            if not re.search(r"rejected|non-fast-forward|fetch first|cannot lock ref", last_error):
+                break
+        raise TransportError(0, "git push to {} rejected: {}".format(self.branch, (last_error or "")[:400]))
+
+    def put_text(self, path, text, message):
+        return {"commit": self._commit_and_push({path: text}, message)}
+
+    def push_tree(self, entries, message):
+        return self._commit_and_push({entry["path"]: entry["content"] for entry in entries}, message)
+
+
+class FallbackStore:
+    """API first; switch to git for the rest of the run after a write is refused with 403."""
+
+    def __init__(self, api, git_factory):
+        self.api = api
+        self.git_factory = git_factory
+        self.active = api
+        self.switched_reason = None
+
+    @property
+    def name(self):
+        return self.active.name
+
+    def _switch(self, error):
+        if self.active is not self.api or self.git_factory is None:
+            raise error
+        self.switched_reason = str(error)
+        self.active = self.git_factory()
+        sys.stderr.write("wpab: API write refused ({}); continuing with the git transport\n".format(
+            self.switched_reason[:160]))
+
+    def read_text(self, path):
+        return self.active.read_text(path)
+
+    def _write_with_fallback(self, operation):
+        try:
+            return operation(self.active)
+        except TransportError as error:
+            if error.status == 403:
+                self._switch(error)
+                return operation(self.active)
+            raise
+
+    def put_text(self, path, text, message):
+        return self._write_with_fallback(lambda store: store.put_text(path, text, message))
+
+    def push_tree(self, entries, message):
+        return self._write_with_fallback(lambda store: store.push_tree(entries, message))
+
+
+# --------------------------------------------------------------------------- runtime client
+
+
+class Runtime:
+    def __init__(self, store, repository, branch=RUNTIME_BRANCH):
+        if not REPO_PATTERN.fullmatch(repository or ""):
+            raise TransportError(0, "repository must be owner/name (use --repo or WPAB_REPO)")
+        self.store = store
+        self.repository = repository
+        self.branch = branch
+
+    def read_text(self, path):
+        """Return file text, or None when the path does not exist on the runtime branch."""
+        return self.store.read_text(path)
+
+    def put_text(self, path, text, message):
+        return self.store.put_text(path, text, message)
+
+    def push_tree(self, entries, message):
+        return self.store.push_tree(entries, message)
+
+
+def resolve_store(args, transport=None):
+    if not REPO_PATTERN.fullmatch(args.repo or ""):
+        raise TransportError(0, "repository must be owner/name (use --repo or WPAB_REPO)")
+
+    def git_factory():
+        return GitStore(args.repo, args.branch, directory=args.git_dir)
+
+    if args.via == "git":
+        return git_factory()
+    try:
+        api = ApiStore(resolve_transport(transport), args.repo, args.branch)
+    except TransportError:
+        if args.via == "api" or shutil.which("git") is None:
+            raise
+        sys.stderr.write("wpab: no GitHub API transport available; using the git transport\n")
+        return git_factory()
+    if args.via == "api":
+        return api
+    return FallbackStore(api, git_factory if shutil.which("git") else None)
 
 
 # --------------------------------------------------------------------------- commands
@@ -317,7 +508,7 @@ def cmd_submit(runtime, args):
     written = runtime.put_text(pending_path, text, "WP Agent Bridge: publish command " + command_id)
     emit({"ok": True, "stage": "published", "id": command_id, "pending_path": pending_path,
           "result_path": result_path, "branch": runtime.branch, "submitted_at": utc_now(),
-          "commit": written.get("commit"), "command": command,
+          "commit": written.get("commit"), "transport": runtime.store.name, "command": command,
           "next": "Read the result no earlier than {} seconds after submission (result --wait).".format(
               FIRST_OBSERVATION_SECONDS)})
     return EXIT_OK
@@ -421,6 +612,7 @@ def cmd_publish_media(runtime, args):
 
     emit({"ok": True, "stage": "published" if todo else "nothing_to_publish", "upload_id": manifest.get("upload_id"),
           "published": len(todo), "skipped_with_result": len(skipped), "commits": commits,
+          "transport": runtime.store.name,
           "final_result_path": manifest.get("final_result_path"),
           "note": "Prepared media is not uploaded media. Observe the final result path before using an attachment ID."})
     return EXIT_OK
@@ -433,6 +625,10 @@ def build_parser():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--repo", default=os.environ.get("WPAB_REPO"), help="owner/name of the runtime repository")
     parser.add_argument("--branch", default=RUNTIME_BRANCH)
+    parser.add_argument("--via", choices=["auto", "api", "git"], default=os.environ.get("WPAB_VIA", "auto"),
+                        help="auto (default): GitHub REST, switching to git when a write is refused with 403")
+    parser.add_argument("--git-dir", default=None,
+                        help="clone directory for the git transport (default ~/.cache/wp-agent-bridge/<owner>__<repo>)")
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("connection", help="read and validate the canonical runtime marker")
@@ -462,7 +658,7 @@ def build_parser():
 def main(argv=None, transport=None):
     args = build_parser().parse_args(argv)
     try:
-        runtime = Runtime(resolve_transport(transport), args.repo, args.branch)
+        runtime = Runtime(resolve_store(args, transport), args.repo, args.branch)
         handler = {
             "connection": cmd_connection,
             "capabilities": cmd_capabilities,

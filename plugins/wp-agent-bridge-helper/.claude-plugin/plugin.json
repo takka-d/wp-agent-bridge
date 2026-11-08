@@ -1,7 +1,7 @@
 {
   "name": "wp-agent-bridge-helper",
   "displayName": "WP Agent Bridge Helper",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Keep Claude, ChatGPT and Codex using a user's WP Agent Bridge GitHub Direct Runtime consistently: direct pending-command routing on the runtime branch, result-file verification, guarded writes, and strict recovery rules that forbid claiming GitHub or WP Agent Bridge is unavailable before an actual GitHub transport attempt fails.",
   "author": {
     "name": "WP Agent Bridge",

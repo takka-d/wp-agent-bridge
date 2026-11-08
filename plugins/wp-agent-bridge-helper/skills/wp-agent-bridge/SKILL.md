@@ -41,8 +41,8 @@ Follow this order exactly:
 Read `references/transports.md` once per conversation when you need the exact calls. Summary:
 
 - ChatGPT / Codex (app): the required GitHub app; `create_file` / file read with explicit `branch`/`ref`.
-- Codex CLI, Claude Code (terminal, desktop Code tab): `gh api` through the bundled `scripts/wpab.py`, or any GitHub MCP tool already configured. `wpab.py` is this plugin's deterministic GitHub transport for shell-capable clients; it only moves JSON files to and from the runtime branch and never changes command semantics.
-- Claude Code on the web / cloud sessions: attach the runtime repository with the session's repository tool using push access, then use `scripts/wpab.py` or `gh api`.
+- Codex CLI, Claude Code (terminal, desktop Code tab): the bundled `scripts/wpab.py` (GitHub REST through `gh api`, with an automatic `git push` fallback), or any GitHub MCP tool already configured. `wpab.py` is this plugin's deterministic GitHub transport for shell-capable clients; it only moves JSON files to and from the runtime branch and never changes command semantics.
+- Claude Code on the web / cloud sessions: attach the runtime repository with the session's repository tool using push access, then use `scripts/wpab.py --git-dir <workspace dir>`. The session proxy refuses Contents-API writes (HTTP 403) while serving reads and `git push`; the script switches to git on its own, so that 403 is not an access failure.
 - claude.ai / Cowork with the desktop app linked to the user's computer: run `scripts/wpab.py` (or `gh api`) through the device shell on the user's computer, where `gh auth` already holds the user's own GitHub login.
 - claude.ai chat without any GitHub write tool (web/mobile only, no linked computer, no GitHub connector): say precisely which transport is missing and which of the above would supply it. That is a client transport limit, not a WP Agent Bridge failure.
 

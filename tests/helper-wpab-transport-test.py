@@ -80,10 +80,10 @@ class FakeGitHub:
         raise AssertionError("unexpected call {} {}".format(method, path))
 
 
-def run(github, *argv):
+def run(github, *argv, via="api"):
     out = io.StringIO()
     with redirect_stdout(out):
-        code = wpab.main(["--repo", REPO, *argv], transport=github)
+        code = wpab.main(["--repo", REPO, "--via", via, *argv], transport=github)
     text = out.getvalue()
     first = json.loads(text.splitlines()[0])
     return code, first, text
@@ -225,5 +225,128 @@ class Forbidden:
 
 code, out, _ = run(Forbidden(), "capabilities")
 check(code == wpab.EXIT_ERROR and out["code"] == "access_error" and out["http_status"] == 403, "403 reported as access error")
+
+
+# --- git transport against a local bare repository -------------------------------
+def git(*args, cwd=None):
+    completed = subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
+                               cwd=cwd, capture_output=True, text=True)
+    if completed.returncode != 0:
+        raise SystemExit("git {} failed: {}".format(args, completed.stderr))
+    return completed.stdout.strip()
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    bare = Path(tmp) / "origin.git"
+    seed = Path(tmp) / "seed"
+    git("init", "--bare", "-q", str(bare))
+    git("init", "-q", "-b", "main", str(seed))
+    (seed / "README.md").write_text("default branch mirror\n", encoding="utf-8")
+    git("add", ".", cwd=seed); git("commit", "-q", "-m", "default", cwd=seed)
+    git("checkout", "-q", "-b", BRANCH, cwd=seed)
+    (seed / "wordpress-bridge").mkdir()
+    (seed / "wordpress-bridge" / "RUNTIME_CAPABILITIES.json").write_text(
+        json.dumps({"bridge_version": "1.1.41", "routes": {"operations": {"operations": ["health"]}}}), encoding="utf-8")
+    git("add", ".", cwd=seed); git("commit", "-q", "-m", "runtime", cwd=seed)
+    git("remote", "add", "origin", str(bare), cwd=seed)
+    git("push", "-q", "origin", "main", BRANCH, cwd=seed)
+
+    clone_dir = Path(tmp) / "clone"
+    store = wpab.GitStore(REPO, BRANCH, directory=str(clone_dir), remote_url=str(bare))
+    check(store.read_text("wordpress-bridge/RUNTIME_CAPABILITIES.json") is not None, "git read of existing file")
+    check(store.read_text("wordpress-bridge/results/nope.json") is None, "git read of missing file is None")
+
+    sha = store.put_text("wordpress-bridge/commands/pending/g-1.json", '{"id":"g-1"}\n', "publish g-1")["commit"]
+    check(len(sha) == 40, "git put returns a commit sha")
+    check(git("show", BRANCH + ":wordpress-bridge/commands/pending/g-1.json", cwd=bare) == '{"id":"g-1"}',
+          "pushed file is on the runtime branch in origin")
+    check(git("rev-parse", "main", cwd=bare) == git("rev-parse", "main", cwd=seed), "default branch untouched by git transport")
+
+    # Rejected push: a competing commit lands between our commit and our push; the store must re-sync and retry once.
+    class Racing(wpab.GitStore):
+        raced = False
+
+        def _before_push(self):
+            if not self.raced:
+                self.raced = True
+                git("fetch", "-q", "origin", BRANCH, cwd=seed)
+                git("reset", "-q", "--hard", "FETCH_HEAD", cwd=seed)
+                (seed / "wordpress-bridge" / "results").mkdir(exist_ok=True)
+                (seed / "wordpress-bridge" / "results" / "other.json").write_text("{}", encoding="utf-8")
+                git("add", ".", cwd=seed); git("commit", "-q", "-m", "other chat", cwd=seed)
+                git("push", "-q", "origin", BRANCH, cwd=seed)
+
+    racing = Racing(REPO, BRANCH, directory=str(clone_dir), remote_url=str(bare))
+    entries = [{"path": "wordpress-bridge/commands/pending/m.chunk.%04d.json" % i, "mode": "100644", "type": "blob",
+                "content": '{"i":%d}\n' % i} for i in range(3)]
+    sha = racing.push_tree(entries, "publish chunks")
+    check(racing.raced and len(sha) == 40, "rejected push retried after re-sync")
+    for i in range(3):
+        check(git("show", BRANCH + ":wordpress-bridge/commands/pending/m.chunk.%04d.json" % i, cwd=bare) == '{"i":%d}' % i,
+              "batch file %d present after retry" % i)
+    check(git("show", BRANCH + ":wordpress-bridge/results/other.json", cwd=bare) == "{}", "competing commit preserved")
+
+    # Whole CLI through the git transport.
+    out = io.StringIO()
+    with redirect_stdout(out):
+        code = wpab.main(["--repo", REPO, "--via", "git", "--git-dir", str(clone_dir), "submit", "--id", "g-2",
+                          "--operation", "health"], transport=None)
+    first = json.loads(out.getvalue().splitlines()[0])
+    check(code == 0 and first["transport"] == "git" and first["stage"] == "published", "CLI submit via git: %s" % first)
+    check(json.loads(git("show", BRANCH + ":wordpress-bridge/commands/pending/g-2.json", cwd=bare))["operation"] == "health",
+          "CLI-submitted command is in origin")
+
+# --- fallback: API write refused with 403 switches to git for the rest of the run ----
+class WriteForbidden(FakeGitHub):
+    def request(self, method, path, body=None, accept=wpab.JSON_ACCEPT):
+        if method in ("PUT", "POST", "PATCH"):
+            raise wpab.TransportError(403, "gh: Write access to this GitHub API path is not permitted through this proxy. (HTTP 403)")
+        return super().request(method, path, body, accept)
+
+
+class MemoryGit:
+    name = "git"
+
+    def __init__(self):
+        self.files = {}
+
+    def read_text(self, path):
+        return self.files.get(path)
+
+    def put_text(self, path, text, message):
+        self.files[path] = text
+        return {"commit": "g" * 40}
+
+    def push_tree(self, entries, message):
+        for entry in entries:
+            self.files[entry["path"]] = entry["content"]
+        return "g" * 40
+
+
+forbidden = WriteForbidden()
+memory_git = MemoryGit()
+store = wpab.FallbackStore(wpab.ApiStore(forbidden, REPO, BRANCH), lambda: memory_git)
+runtime = wpab.Runtime(store, REPO, BRANCH)
+check(runtime.read_text("wordpress-bridge/results/x.json") is None and store.name == "api", "reads stay on the API")
+written = runtime.put_text("wordpress-bridge/commands/pending/f-1.json", "{}\n", "publish f-1")
+check(store.name == "git" and memory_git.files["wordpress-bridge/commands/pending/f-1.json"] == "{}\n",
+      "403 on write switches to git and completes the write")
+check("not permitted through this proxy" in store.switched_reason, "switch reason recorded")
+runtime.push_tree([{"path": "wordpress-bridge/commands/pending/f-2.json", "mode": "100644", "type": "blob", "content": "{}\n"}], "m")
+check("wordpress-bridge/commands/pending/f-2.json" in memory_git.files, "later writes stay on git")
+
+store = wpab.FallbackStore(wpab.ApiStore(Forbidden(), REPO, BRANCH), lambda: MemoryGit())
+try:
+    store.read_text("wordpress-bridge/RUNTIME_CAPABILITIES.json")
+    check(False, "read 403 must propagate")
+except wpab.TransportError as error:
+    check(error.status == 403 and store.name == "api", "a read 403 is an access error, not a reason to switch transports")
+
+store = wpab.FallbackStore(wpab.ApiStore(WriteForbidden(), REPO, BRANCH), None)
+try:
+    store.put_text("wordpress-bridge/commands/pending/f-3.json", "{}\n", "m")
+    check(False, "without git the 403 must propagate")
+except wpab.TransportError as error:
+    check(error.status == 403, "no git available: 403 reported as-is")
 
 print("helper-wpab-transport-test: ok")

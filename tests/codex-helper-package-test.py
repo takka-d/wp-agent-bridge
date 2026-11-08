@@ -12,7 +12,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "plugins" / "wp-agent-bridge-helper"
-VERSION = "0.3.0"
+VERSION = "0.3.1"
 ZIP = ROOT / "downloads" / "wp-agent-bridge-helper-{}.zip".format(VERSION)
 
 required = [
@@ -136,7 +136,7 @@ for marker in [
         raise SystemExit(f"WP Agent Bridge Helper skill missing marker: {marker}")
 
 transports = (SOURCE / "skills/wp-agent-bridge/references/transports.md").read_text(encoding="utf-8")
-for marker in ["ChatGPT", "Codex CLI", "Claude Code", "claude.ai", "add_repo", "gh api", "git/trees", "wp-agent-bridge-runtime"]:
+for marker in ["ChatGPT", "Codex CLI", "Claude Code", "claude.ai", "add_repo", "gh api", "git/trees", "wp-agent-bridge-runtime", "git push", "--via"]:
     if marker not in transports:
         raise SystemExit(f"transports.md missing marker: {marker}")
 
@@ -150,7 +150,8 @@ stdlib_only = {"argparse", "base64", "datetime", "json", "os", "re", "shutil", "
 if not imports <= stdlib_only:
     raise SystemExit(f"wpab.py must stay standard-library only: {sorted(imports - stdlib_only)}")
 for marker in ['RUNTIME_BRANCH = "wp-agent-bridge-runtime"', "MAX_COMMANDS_PER_PUSH = 20",
-               "FIRST_OBSERVATION_SECONDS = 5", "SECOND_OBSERVATION_SECONDS = 10", "result_exists", "pending_conflict"]:
+               "FIRST_OBSERVATION_SECONDS = 5", "SECOND_OBSERVATION_SECONDS = 10", "result_exists", "pending_conflict",
+               "class ApiStore", "class GitStore", "class FallbackStore", '"--via"', "--single-branch"]:
     if marker not in script:
         raise SystemExit(f"wpab.py missing marker: {marker}")
 if re.search(r"ghp_[A-Za-z0-9]{10,}|github_pat_[A-Za-z0-9_]{10,}", script):

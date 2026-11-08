@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "wp-agent-bridge-helper",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Keep Claude, ChatGPT and Codex using a user's WP Agent Bridge GitHub Direct Runtime consistently, and prevent false tool-unavailable conclusions before an actual GitHub transport attempt.",
   "author": {
     "name": "WP Agent Bridge",
