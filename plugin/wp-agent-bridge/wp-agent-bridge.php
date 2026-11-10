@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: WP Agent Bridge
- * Description: Secure WordPress management bridge for ChatGPT using GitHub App connectivity, guarded writes, previews, and rollback.
- * Version: 1.1.42
+ * Description: Secure WordPress management bridge for ChatGPT, Codex, and Claude using GitHub App connectivity, guarded writes, previews, and rollback.
+ * Version: 1.1.43
  * Author: WP Agent Bridge
  * Requires at least: 6.9
  * Requires PHP: 7.4

@@ -101,7 +101,7 @@ final class WP_Agent_Bridge_Onboarding
                 <p><strong>Repository:</strong> <code><?php echo esc_html((string) $connection['repository']); ?></code></p>
                 <p><strong>Runtime branch:</strong> <code><?php echo esc_html((string) ($connection['runtime_branch'] ?? self::RUNTIME_BRANCH)); ?></code></p>
                 <p><strong>GitHub App:</strong> <code><?php echo esc_html((string) ($app['slug'] ?? '')); ?></code></p>
-                <p><strong>Normal runtime:</strong> ChatGPT &rarr; GitHub &rarr; this WordPress &rarr; GitHub &rarr; ChatGPT.</p>
+                <p><strong>Normal runtime:</strong> ChatGPT / Codex / Claude &rarr; GitHub &rarr; this WordPress &rarr; GitHub &rarr; the same client.</p>
                 <p>No operator-owned relay server or per-command GitHub Actions workflow is used by this transport.</p>
                 <h2>ChatGPTで操作を始める・再開する</h2>
                 <p>上のConnectedは、このWordPressとGitHubの接続状態です。現在のチャットでGitHubツールを利用できるかは別に確認します。</p>
@@ -115,6 +115,7 @@ final class WP_Agent_Bridge_Onboarding
                     (string) ($connection['runtime_branch'] ?? self::RUNTIME_BRANCH),
                     (string) wp_parse_url(home_url('/'), PHP_URL_HOST)
                 )); ?></textarea>
+                <p><strong>Claudeで使う場合：</strong>WP Agent Bridge Helper(任意の補助プラグイン)をClaudeに追加し、上の指示を貼り付けます。GitHubへの書き込みには、Claude Codeやデスクトップアプリ連携PCでは利用者自身の<code>gh</code>ログインを、Claude Code on the webでは対象リポジトリの接続を使います。PCと連携していないclaude.aiのチャットだけでは書き込み経路がありません。</p>
                 <p>GitHubが候補に出ない場合は、ChatGPT側の既存プラグインの利用状態を確認してください。候補に出ないことだけを理由に、このWordPressの接続を作り直す必要はありません。</p>
             <?php else : ?>
                 <p><strong>Status:</strong> Not connected</p>

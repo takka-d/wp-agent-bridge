@@ -189,7 +189,7 @@ final class WP_Agent_Bridge_Runtime_Guidance
             . "Branch: `{$branch}`\n\n"
             . "Runtime clients must explicitly pass this branch/ref on every GitHub read and write. Omitting ref may read the repository default branch, whose mirrored bootstrap files are read-only discovery aids. The repository/branch binding in this document is authoritative for normal work: do not require a RUNTIME_CONNECTION.json preflight read before publishing a requested pending command.\n\n"
             . "Installed Bridge: `{$version}`\n\n"
-            . "Normal transport: ChatGPT → user-owned private runtime repository → site-specific GitHub App signed Webhook → WordPress/WP Agent Bridge → same runtime repository → ChatGPT.\n\n"
+            . "Normal transport: AI client (ChatGPT, Codex, or Claude) → user-owned private runtime repository → site-specific GitHub App signed Webhook → WordPress/WP Agent Bridge → same runtime repository → the same client.\n\n"
             . "GitHub Actions is not a command worker in this path. It belongs to source CI/package/release only.\n\n"
             . "Machine-readable routing contract: `wordpress-bridge/RUNTIME_CAPABILITIES.json`. Common operations use `/wpab-v099/v1/operate`; its policy layer bounds post reads, blocks unguarded content replacement, validates the small-media path, and normalizes read-only batch aliases.\n\n"
             . "Pending recovery age uses command metadata/ID first and the exact pending file's latest GitHub commit timestamp as a fallback; only when both are unavailable is execution skipped.\n\n"

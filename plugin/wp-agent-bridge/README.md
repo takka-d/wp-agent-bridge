@@ -1,12 +1,12 @@
 # WP Agent Bridge
 
-ChatGPTからWordPressを更新するためのWordPressプラグインです。
+ChatGPT・Codex・ClaudeからWordPressを更新するためのWordPressプラグインです。
 
 通常のWordPress操作は、**利用者自身が所有するprivate GitHub runtime repository**と、**そのWordPress専用のsite-specific private GitHub App**を使って実行します。
 
 通常経路:
 
-`ChatGPT → user-owned private runtime repository → site-specific GitHub App signed Webhook → WordPress → same runtime repository → ChatGPT`
+`AI client (ChatGPT / Codex / Claude) → user-owned private runtime repository → site-specific GitHub App signed Webhook → WordPress → same runtime repository → AI client`
 
 通常処理に運営者所有のruntime repository / relay server、GitHub Actions worker、旧Bridge Key、`legacy operator-owned runtime repository`、WPVibeは使用しません。
 
@@ -18,14 +18,14 @@ ChatGPTからWordPressを更新するためのWordPressプラグインです。
 4. **Connect GitHub** を押し、GitHub App manifestからこのWordPress専用のprivate GitHub Appを作成する。
 5. GitHub Appのインストール時に **Only select repositories** を選び、専用runtime repositoryだけを選択する。
 6. WP Agent Bridgeが`wp-agent-bridge-runtime` branch、canonical marker、command/result/mediaディレクトリを初期化する。
-7. 同じGitHubアカウントをChatGPTへ接続し、そのruntime repositoryを利用できることを確認する。
-8. ChatGPTにWordPress操作を依頼する。
+7. 使うAIから、そのruntime repositoryを読み書きできることを確認する。ChatGPT / CodexはGitHubアプリ、Claudeは利用者自身の`gh`ログイン(デスクトップアプリ連携PC・Claude Code)またはリポジトリ接続(Claude Code on the web)を使う。
+8. ChatGPT・Codex・ClaudeにWordPress操作を依頼する。
 
 PAT、private key、Webhook secret、Bridge Key、GitHub Actions workflowを利用者が手入力することは想定していません。GitHub Appのprivate keyとWebhook secretは接続先WordPress内へ暗号化保存します。
 
 ### チャットでGitHubを呼び出せない場合
 
-WP Agent BridgeはWordPress側のプラグインです。ChatGPT側で呼び出すのは、接続済みの**GitHubプラグイン**です。WordPressのConnected表示だけでは、現在のチャットに必要な読み書きツールが提供されているかは分かりません。
+WP Agent BridgeはWordPress側のプラグインです。ChatGPT側で呼び出すのは、接続済みの**GitHubプラグイン**です(Claudeでは、WP Agent Bridge HelperがGitHubへの書き込み経路を案内します)。WordPressのConnected表示だけでは、現在のチャットに必要な読み書きツールが提供されているかは分かりません。
 
 1. 操作するチャットの入力欄で `@GitHub` と入力し、候補のGitHubプラグインを選択します。文字として名前を書くだけでは、明示選択にはなりません。
 2. **ツール > WP Agent Bridge** の「このサイト用の開始・復旧用指示」を同じチャットに貼り付けます。サイト名と接続先はそのWordPressの設定から生成されます。

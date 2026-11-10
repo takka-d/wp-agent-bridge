@@ -3,15 +3,15 @@ Contributors:
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.1.14
+Stable tag: 1.1.43
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
-Secure WordPress management bridge for ChatGPT using a user-owned private GitHub runtime repository and a site-specific signed GitHub App webhook.
+Secure WordPress management bridge for ChatGPT, Codex, and Claude using a user-owned private GitHub runtime repository and a site-specific signed GitHub App webhook.
 
 == Description ==
 
-WP Agent Bridge exposes a deliberately bounded WordPress management surface for ChatGPT.
+WP Agent Bridge exposes a deliberately bounded WordPress management surface for AI clients that can read and write the user's GitHub repository: ChatGPT and Codex through the GitHub app, and Claude (Claude Code, claude.ai, Cowork) through the user's own GitHub login with the optional WP Agent Bridge Helper.
 
 Normal command execution is self-contained: the user owns the private GitHub runtime repository and the site-specific GitHub App. GitHub sends the signed push Webhook directly to the user's WordPress, and WordPress writes the result back to that same user-owned repository.
 
@@ -46,8 +46,8 @@ The project is designed around these principles:
 5. Choose "Connect GitHub". GitHub creates a private site-specific GitHub App from the manifest supplied by your WordPress.
 6. When installing the GitHub App, choose "Only select repositories" and select only that private runtime repository.
 7. WP Agent Bridge initializes the `wp-agent-bridge-runtime` branch and canonical runtime marker.
-8. Connect your own GitHub account to ChatGPT and verify that ChatGPT can access your runtime repository.
-9. Ask ChatGPT to update WordPress.
+8. Connect your own GitHub account to your AI client and verify that it can read and write your runtime repository: the GitHub app for ChatGPT / Codex, or your own `gh` login (desktop app linked computer, Claude Code) or an attached repository (Claude Code on the web) for Claude.
+9. Ask ChatGPT, Codex, or Claude to update WordPress.
 
 PATs, manual Webhook secrets, private keys, Bridge Keys, and GitHub Actions workflow configuration are not part of the ordinary setup.
 
@@ -106,6 +106,10 @@ This is a custom proprietary/source-available license, not an open-source licens
 High-impact writes remain subject to the Bridge's preview, confirmation, state-hash, plan-hash, impact-hash, active-theme/plugin, and sensitive-key protections.
 
 == Changelog ==
+
+= 1.1.43 =
+* Stable public release. Includes every change since 1.1.14, including the bounded post content diff excerpt and compacted oversized runtime results from 1.1.42.
+* Describe Claude (Claude Code, claude.ai, Cowork) alongside ChatGPT and Codex as supported clients in the plugin header, readme, and Tools > WP Agent Bridge screen.
 
 = 1.1.42 =
 * Bound the diff excerpt returned by post content patch and batch previews to head and tail windows when the changed span is large, so replace_all and widely separated edits no longer echo almost the whole post.

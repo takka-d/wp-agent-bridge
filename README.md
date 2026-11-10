@@ -1,6 +1,6 @@
 # WP Agent Bridge
 
-ChatGPTからWordPressの記事・ページ・設定などを更新するためのWordPressプラグインです。
+ChatGPT・Codex・ClaudeからWordPressの記事・ページ・設定などを更新するためのWordPressプラグインです。
 
 通常のWordPress操作は、**利用者自身が所有するprivate GitHub runtime repository**と、**そのWordPress専用のprivate GitHub App**を使って実行します。WP Agent Bridge運営者のruntime repository、relay server、GitHub Actions workerを通常経路として使用しません。
 
@@ -14,7 +14,7 @@ ChatGPTからWordPressの記事・ページ・設定などを更新するため�
 
 ```mermaid
 flowchart LR
-    C["ChatGPT"]
+    C["ChatGPT / Codex / Claude"]
 
     subgraph GH["利用者のGitHub"]
         R["private runtime repository"]
@@ -63,8 +63,8 @@ GitHub Appは利用者自身のGitHubアカウントに作成し、対象のpriv
 4. **Connect GitHub** を押す。GitHub App manifestにより、このWordPress専用のprivate GitHub Appを利用者自身のGitHub側に作成する。
 5. GitHub Appのインストール時に **Only select repositories** を選び、手順3のruntime repositoryだけを選択する。
 6. WP Agent Bridgeが`wp-agent-bridge-runtime` branch、runtime marker、command/result/media用ディレクトリを初期化する。
-7. ChatGPTのGitHub接続から、その利用者自身のruntime repositoryを利用できることを確認する。
-8. ChatGPTにWordPress操作を依頼する。
+7. 使うAIから、その利用者自身のruntime repositoryを読み書きできることを確認する(ChatGPT / CodexはGitHubアプリ、Claudeは下の「クライアント用ヘルパー」の経路)。
+8. ChatGPT・Codex・ClaudeにWordPress操作を依頼する。
 
 PAT、Webhook secret、private key、Bridge Key、GitHub Actions workflowを利用者が手入力することは想定していません。
 
