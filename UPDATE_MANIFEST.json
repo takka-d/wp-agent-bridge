@@ -1,11 +1,11 @@
 {
   "schema": 1,
   "repository": "takka-d/wp-agent-bridge",
-  "version": "1.1.41",
-  "source_commit": "171620a144d6189151b433d3b3a047eb4f9aa545",
-  "plugin_manifest_sha256": "ba87878094f75617249645fb480115f8f51aec7bd228489290a381ae72236d34",
+  "version": "1.1.42",
+  "source_commit": "79b61301cb4889e70bac8f66482ebfad1ca3a3d9",
+  "plugin_manifest_sha256": "5750dff7c58412aa05d6fd5aa8733dcaa55474ceb1c33b85cb8111cabf56b6bc",
   "plugin_file_count": 93,
-  "plugin_decoded_bytes": 1359098,
+  "plugin_decoded_bytes": 1365316,
   "self_update_action": "bridge.self_update.apply",
   "source_mode_minimum_version": "1.1.7",
   "legacy_1_1_5_migration": "tools/legacy-self-update/README.md"
