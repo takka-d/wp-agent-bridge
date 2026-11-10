@@ -107,6 +107,10 @@ High-impact writes remain subject to the Bridge's preview, confirmation, state-h
 
 == Changelog ==
 
+= 1.1.42 =
+* Bound the diff excerpt returned by post content patch and batch previews to head and tail windows when the changed span is large, so replace_all and widely separated edits no longer echo almost the whole post.
+* Publish a compacted result instead of leaving a command pending when a result exceeds the Direct Runtime journal limit; the outcome is still taken from the complete result.
+
 = 1.1.26 =
 * Determines pending-command age from command metadata, timestamp-bearing IDs, or exact pending-file GitHub commit history.
 * Skips recovery only when all age evidence is unavailable; records the evidence source for expired-command quarantine.

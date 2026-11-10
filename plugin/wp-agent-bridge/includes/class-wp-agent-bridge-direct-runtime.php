@@ -25,6 +25,7 @@ final class WP_Agent_Bridge_Direct_Runtime
     private const COMMAND_JOURNAL_PREFIX = 'wpab_direct_command_journal_';
     private const COMMAND_JOURNAL_STALE_SECONDS = 86400;
     private const MAX_COMMAND_JOURNAL_BYTES = 2097152;
+    private const RESULT_STRING_OMIT_BYTES = 65536;
     private const BOOKKEEPING_MAX_ATTEMPTS = 3;
 
     private const V04_ACTIONS = [
@@ -294,6 +295,18 @@ final class WP_Agent_Bridge_Direct_Runtime
                     return self::command_error($path, $id, 'Could not encode result JSON.');
                 }
                 $result_json .= "\n";
+                if (strlen($result_json) > self::MAX_COMMAND_JOURNAL_BYTES) {
+                    // An oversized result can neither be journaled nor published, which
+                    // would leave the command pending with no visible outcome. Publish a
+                    // compacted result instead; the outcome above was taken from the
+                    // complete result.
+                    $output = self::compact_oversized_output($output, strlen($result_json));
+                    $result_json = wp_json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                    if (!is_string($result_json)) {
+                        return self::command_error($path, $id, 'Could not encode compacted result JSON.');
+                    }
+                    $result_json .= "\n";
+                }
 
                 $stored = self::store_command_journal($request_id, $id, $command_sha256, $result_json);
                 if (is_wp_error($stored)) {
@@ -852,6 +865,45 @@ final class WP_Agent_Bridge_Direct_Runtime
         }
         if (is_string($value) && strlen($value) > 1000000) {
             return substr($value, 0, 1000000) . '\n[truncated]';
+        }
+        return $value;
+    }
+
+    private static function compact_oversized_output(array $output, int $original_bytes): array
+    {
+        $result = isset($output['result']) && is_array($output['result']) ? $output['result'] : [];
+        $output['result'] = self::omit_large_result_strings($result);
+        $output['result_compacted'] = [
+            'reason' => 'result_exceeds_journal_limit',
+            'original_bytes' => $original_bytes,
+            'journal_limit_bytes' => self::MAX_COMMAND_JOURNAL_BYTES,
+            'omitted_string_min_bytes' => self::RESULT_STRING_OMIT_BYTES,
+            'result_omitted' => false,
+        ];
+        $encoded = wp_json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        if (is_string($encoded) && strlen($encoded) + 1 <= self::MAX_COMMAND_JOURNAL_BYTES) {
+            return $output;
+        }
+        $output['result'] = [
+            'ok' => !empty($result['ok']),
+            'status' => isset($result['status']) ? (int) $result['status'] : 0,
+            'statusText' => isset($result['statusText']) ? (string) $result['statusText'] : '',
+            'result_omitted' => true,
+        ];
+        $output['result_compacted']['result_omitted'] = true;
+        return $output;
+    }
+
+    private static function omit_large_result_strings($value)
+    {
+        if (is_array($value)) {
+            foreach ($value as $key => $child) {
+                $value[$key] = self::omit_large_result_strings($child);
+            }
+            return $value;
+        }
+        if (is_string($value) && strlen($value) > self::RESULT_STRING_OMIT_BYTES) {
+            return ['omitted' => true, 'bytes' => strlen($value), 'sha256' => hash('sha256', $value)];
         }
         return $value;
     }
