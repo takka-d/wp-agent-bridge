@@ -1,0 +1,8 @@
+{
+  "tag": "v1.1.43",
+  "version": "1.1.43",
+  "channel": "stable",
+  "plugin_zip_sha256": "6cf545da9d800e54ddd80d92e37bfce9eb82f40ae5c89d3af8a26833b448b5e7",
+  "stable": true,
+  "prerelease": false
+}
