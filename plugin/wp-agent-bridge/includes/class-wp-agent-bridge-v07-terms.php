@@ -42,7 +42,8 @@ final class WP_Agent_Bridge_V07_Terms
         if (isset($params['slug']) && is_string($params['slug'])) $args['slug'] = sanitize_title($params['slug']);
         if (isset($params['description']) && is_string($params['description'])) $args['description'] = sanitize_textarea_field($params['description']);
         if ($taxonomy->hierarchical && isset($params['parent'])) $args['parent'] = absint($params['parent']);
-        $created = wp_insert_term($name, $taxonomy->name, $args);
+        // wp_insert_term() unslashes the name and description; keep literal backslashes.
+        $created = wp_insert_term(wp_slash($name), $taxonomy->name, wp_slash($args));
         if (is_wp_error($created)) return $created;
         return rest_ensure_response(['ok' => true, 'term' => self::data(get_term((int) $created['term_id'], $taxonomy->name))]);
     }
@@ -65,7 +66,8 @@ final class WP_Agent_Bridge_V07_Terms
             $args['parent'] = $parent;
         }
         if (!$args) return new WP_Error('wpab_term_no_changes', 'No supported term fields were provided.', ['status' => 400]);
-        $updated = wp_update_term((int) $term->term_id, $taxonomy->name, $args);
+        // wp_update_term() unslashes the name and description; keep literal backslashes.
+        $updated = wp_update_term((int) $term->term_id, $taxonomy->name, wp_slash($args));
         if (is_wp_error($updated)) return $updated;
         return rest_ensure_response(['ok' => true, 'term' => self::data(get_term((int) $term->term_id, $taxonomy->name))]);
     }

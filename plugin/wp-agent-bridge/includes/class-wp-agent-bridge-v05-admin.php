@@ -79,7 +79,8 @@ final class WP_Agent_Bridge_V05_Admin
         if (is_wp_error($name)) {
             return $name;
         }
-        $id = wp_create_nav_menu($name);
+        // Nav menu functions expect slashed data, as in the core admin screens.
+        $id = wp_create_nav_menu(wp_slash($name));
         if (is_wp_error($id)) {
             return $id;
         }
@@ -106,7 +107,7 @@ final class WP_Agent_Bridge_V05_Admin
         if (!$args) {
             return new WP_Error('wpab_menu_no_changes', 'No menu fields were provided.', ['status' => 400]);
         }
-        $result = wp_update_nav_menu_object($menu->term_id, $args);
+        $result = wp_update_nav_menu_object($menu->term_id, wp_slash($args));
         if (is_wp_error($result)) {
             return $result;
         }
@@ -170,7 +171,7 @@ final class WP_Agent_Bridge_V05_Admin
             $args['menu-item-object'] = sanitize_key($params['object']);
             $args['menu-item-object-id'] = absint($params['object_id']);
         }
-        $result = wp_update_nav_menu_item($menu->term_id, $item_id, $args);
+        $result = wp_update_nav_menu_item($menu->term_id, $item_id, wp_slash($args));
         if (is_wp_error($result)) {
             return $result;
         }

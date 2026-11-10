@@ -11,6 +11,7 @@ on:
       - 'tests/theme-patch-wp-integration.php'
       - 'tests/post-update-concurrency-wp-integration.php'
       - 'tests/post-reliability-wp-integration.php'
+      - 'tests/write-slash-preservation-wp-integration.php'
       - '.github/workflows/operation-router-integration.yml'
   push:
     branches: [main]
@@ -21,6 +22,7 @@ on:
       - 'tests/theme-patch-wp-integration.php'
       - 'tests/post-update-concurrency-wp-integration.php'
       - 'tests/post-reliability-wp-integration.php'
+      - 'tests/write-slash-preservation-wp-integration.php'
       - '.github/workflows/operation-router-integration.yml'
 
 permissions:
@@ -132,3 +134,9 @@ jobs:
         run: |
           set -euo pipefail
           /tmp/wp eval-file "$GITHUB_WORKSPACE/tests/post-reliability-wp-integration.php" --path=/tmp/wpab-operation-test
+
+      - name: Write slash preservation regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          /tmp/wp eval-file "$GITHUB_WORKSPACE/tests/write-slash-preservation-wp-integration.php" --path=/tmp/wpab-operation-test

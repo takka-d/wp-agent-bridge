@@ -44,7 +44,8 @@ final class WP_Agent_Bridge_V07_Users
             if (isset($params[$field]) && is_string($params[$field])) $data[$field] = sanitize_text_field($params[$field]);
         }
         if (isset($params['user_url']) && is_string($params['user_url'])) $data['user_url'] = esc_url_raw($params['user_url']);
-        $id = wp_insert_user($data);
+        // wp_insert_user() expects slashed data, as in the core REST users controller.
+        $id = wp_insert_user(wp_slash($data));
         if (is_wp_error($id)) return $id;
         $notify = !array_key_exists('send_notification', $params) || !empty($params['send_notification']);
         if ($notify) wp_send_new_user_notifications((int) $id, 'user');
@@ -76,7 +77,8 @@ final class WP_Agent_Bridge_V07_Users
         if (isset($params['user_url']) && is_string($params['user_url'])) $data['user_url'] = esc_url_raw($params['user_url']);
         if (count($data) === 1) return new WP_Error('wpab_user_no_changes', 'No supported user fields were provided.', ['status' => 400]);
         if ($sensitive && empty($params['confirm_sensitive'])) return new WP_Error('wpab_sensitive_confirmation_required', 'Changing email requires confirm_sensitive=true.', ['status' => 400]);
-        $id = wp_update_user($data);
+        // wp_update_user() expects slashed data, as in the core REST users controller.
+        $id = wp_update_user(wp_slash($data));
         if (is_wp_error($id)) return $id;
         return rest_ensure_response(['ok' => true, 'user' => self::public_user(get_userdata((int) $id))]);
     }

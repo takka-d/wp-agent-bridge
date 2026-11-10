@@ -57,10 +57,12 @@ final class WP_Agent_Bridge_V085_Content_Batch
             ]);
         }
 
-        $updated = wp_update_post([
+        // wp_update_post() unslashes its input; slash it so literal backslashes
+        // (JS/JSON escapes, Windows paths) are stored exactly as planned.
+        $updated = wp_update_post(wp_slash([
             'ID' => (int) $plan['post_id'],
             'post_content' => $plan['_after_content'],
-        ], true);
+        ]), true);
         if (is_wp_error($updated)) return $updated;
 
         $post = get_post((int) $plan['post_id']);
