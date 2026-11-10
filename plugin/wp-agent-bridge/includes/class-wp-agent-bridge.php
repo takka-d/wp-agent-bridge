@@ -543,7 +543,8 @@ final class WP_Agent_Bridge
         }
 
         $before = get_post_meta($post_id, $key, true);
-        update_post_meta($post_id, $key, $params['value']);
+        // update_post_meta() unslashes the key and value; keep literal backslashes.
+        update_post_meta($post_id, wp_slash($key), wp_slash($params['value']));
         $after = get_post_meta($post_id, $key, true);
 
         return rest_ensure_response([
@@ -612,7 +613,7 @@ final class WP_Agent_Bridge
         }
 
         if (!empty($params['alt_text'])) {
-            update_post_meta($attachment_id, '_wp_attachment_image_alt', sanitize_text_field((string) $params['alt_text']));
+            update_post_meta($attachment_id, '_wp_attachment_image_alt', wp_slash(sanitize_text_field((string) $params['alt_text'])));
         }
 
         return rest_ensure_response([

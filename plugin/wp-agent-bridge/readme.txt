@@ -3,7 +3,7 @@ Contributors:
 Tags: automation, rest-api, github, administration, ai
 Requires at least: 6.9
 Tested up to: 7.1
-Stable tag: 1.1.43
+Stable tag: 1.1.44
 Requires PHP: 7.4
 License: WP Agent Bridge License 1.0
 
@@ -107,8 +107,12 @@ High-impact writes remain subject to the Bridge's preview, confirmation, state-h
 
 == Changelog ==
 
+= 1.1.44 =
+* Stable public release. Includes every change since 1.1.14.
+* Keep literal backslashes in Bridge writes. WordPress write functions unslash their input, so post content batch apply, post and user meta writes, user create/update, term create/update, nav menu changes, and media alt text now slash request data first, as the core REST controllers do. Previously, for example, Windows paths and JavaScript or JSON escapes lost their backslashes on batch apply, and the post-write check reported the mismatch after the change had been saved.
+
 = 1.1.43 =
-* Stable public release. Includes every change since 1.1.14, including the bounded post content diff excerpt and compacted oversized runtime results from 1.1.42.
+* Includes every change since 1.1.14, including the bounded post content diff excerpt and compacted oversized runtime results from 1.1.42.
 * Describe Claude (Claude Code, claude.ai, Cowork) alongside ChatGPT and Codex as supported clients in the plugin header, readme, and Tools > WP Agent Bridge screen.
 
 = 1.1.42 =

@@ -141,10 +141,12 @@ final class WP_Agent_Bridge_V083_Post_Meta
 
         $before = get_post_meta($context['post_id'], $key, false);
         $before_hash = hash('sha256', maybe_serialize($before));
+        // add_post_meta()/update_post_meta() unslash the key and value; slash them
+        // so literal backslashes (for example JSON escapes) are stored as sent.
         if ($mode === 'add') {
-            $result = add_post_meta($context['post_id'], $key, $params['value'], !empty($params['unique']));
+            $result = add_post_meta($context['post_id'], wp_slash($key), wp_slash($params['value']), !empty($params['unique']));
         } else {
-            $result = update_post_meta($context['post_id'], $key, $params['value']);
+            $result = update_post_meta($context['post_id'], wp_slash($key), wp_slash($params['value']));
         }
         if ($result === false) {
             return new WP_Error('wpab_post_meta_write_failed', 'Post meta write failed or made no change.', ['status' => 409]);

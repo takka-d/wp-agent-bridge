@@ -403,7 +403,7 @@ final class WP_Agent_Bridge_Direct_Media
             return $attachment_id;
         }
         if (isset($params['alt_text']) && is_string($params['alt_text'])) {
-            update_post_meta($attachment_id, '_wp_attachment_image_alt', sanitize_text_field($params['alt_text']));
+            update_post_meta($attachment_id, '_wp_attachment_image_alt', wp_slash(sanitize_text_field($params['alt_text'])));
         }
         $post_update = ['ID' => $attachment_id];
         foreach (['title' => 'post_title', 'caption' => 'post_excerpt', 'description' => 'post_content'] as $input => $field) {

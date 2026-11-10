@@ -84,9 +84,10 @@ final class WP_Agent_Bridge_V07_User_Meta
         }
         $serialized = maybe_serialize($params['value']);
         if (!is_string($serialized) || strlen($serialized) > self::MAX_VALUE_BYTES) return new WP_Error('wpab_user_meta_value_size', 'User meta value is too large.', ['status' => 413]);
+        // add_user_meta()/update_user_meta() unslash the key and value; keep literal backslashes.
         $result = $mode === 'add'
-            ? add_user_meta((int) $user->ID, $key, $params['value'], !empty($params['unique']))
-            : update_user_meta((int) $user->ID, $key, $params['value']);
+            ? add_user_meta((int) $user->ID, wp_slash($key), wp_slash($params['value']), !empty($params['unique']))
+            : update_user_meta((int) $user->ID, wp_slash($key), wp_slash($params['value']));
         return rest_ensure_response(['ok' => $result !== false, 'user_id' => (int) $user->ID, 'key' => $key]);
     }
 

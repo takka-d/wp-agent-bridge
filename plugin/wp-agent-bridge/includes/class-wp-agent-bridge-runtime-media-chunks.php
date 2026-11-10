@@ -363,7 +363,7 @@ final class WP_Agent_Bridge_Runtime_Media_Chunks
         }
 
         if ((string) ($meta['alt_text'] ?? '') !== '') {
-            update_post_meta($attachment_id, '_wp_attachment_image_alt', sanitize_text_field((string) $meta['alt_text']));
+            update_post_meta($attachment_id, '_wp_attachment_image_alt', wp_slash(sanitize_text_field((string) $meta['alt_text'])));
         }
         $post_update = ['ID' => $attachment_id];
         foreach (['title' => 'post_title', 'caption' => 'post_excerpt', 'description' => 'post_content'] as $input => $field) {
