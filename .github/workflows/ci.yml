@@ -117,12 +117,14 @@ jobs:
           set -euo pipefail
           php tests/operation-policy-test.php
           php tests/runtime-result-summary-test.php
+          php tests/runtime-result-compaction-test.php
 
       - name: Bounded post content range regression
         shell: bash
         run: |
           set -euo pipefail
           php tests/post-content-range-test.php
+          php tests/post-content-diff-excerpt-test.php
 
       - name: Read-only batch regression
         shell: bash

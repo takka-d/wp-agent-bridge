@@ -10,6 +10,8 @@ final class WP_Agent_Bridge_V084_Post_Content
     private const MAX_QUERY_BYTES = 4096;
     private const MAX_REPLACEMENT_BYTES = 262144;
     private const MAX_SEARCH_RESULTS = 20;
+    private const DIFF_EXCERPT_CONTEXT_BYTES = 360;
+    private const DIFF_EXCERPT_MAX_BYTES = 16384;
     private const MAX_CONTEXT_CHARS = 1200;
     private const MAX_READ_RANGE_LINES = 1000;
     private const MAX_READ_RANGE_BYTES = 262144;
@@ -351,16 +353,40 @@ final class WP_Agent_Bridge_V084_Post_Content
             $after_suffix--;
         }
 
-        $context = 360;
+        $context = self::DIFF_EXCERPT_CONTEXT_BYTES;
         $before_start = max(0, $prefix - $context);
         $after_start = max(0, $prefix - $context);
         $before_end = min(strlen($before), $before_suffix + $context);
         $after_end = min(strlen($after), $after_suffix + $context);
-        return [
-            'before' => (string) wp_check_invalid_utf8(substr($before, $before_start, $before_end - $before_start), true),
-            'after' => (string) wp_check_invalid_utf8(substr($after, $after_start, $after_end - $after_start), true),
+        $excerpt = [
             'prefix_omitted' => $before_start > 0,
             'suffix_omitted' => $before_end < strlen($before) || $after_end < strlen($after),
+        ];
+        $window = self::DIFF_EXCERPT_MAX_BYTES;
+        if ($before_end - $before_start <= $window && $after_end - $after_start <= $window) {
+            return [
+                'before' => (string) wp_check_invalid_utf8(substr($before, $before_start, $before_end - $before_start), true),
+                'after' => (string) wp_check_invalid_utf8(substr($after, $after_start, $after_end - $after_start), true),
+            ] + $excerpt;
+        }
+
+        // Changes far apart in a large post (for example replace_all across the
+        // whole document) would otherwise echo almost the entire post twice and
+        // overflow the Direct Runtime result journal, leaving the command without
+        // a visible result. Keep bounded head and tail windows of the changed span.
+        $half = intdiv($window, 2);
+        $before_length = $before_end - $before_start;
+        $after_length = $after_end - $after_start;
+        return [
+            'before' => (string) wp_check_invalid_utf8(substr($before, $before_start, min($half, $before_length)), true),
+            'after' => (string) wp_check_invalid_utf8(substr($after, $after_start, min($half, $after_length)), true),
+        ] + $excerpt + [
+            'middle_omitted' => true,
+            'before_tail' => $before_length > $half ? (string) wp_check_invalid_utf8(substr($before, $before_end - $half, $half), true) : '',
+            'after_tail' => $after_length > $half ? (string) wp_check_invalid_utf8(substr($after, $after_end - $half, $half), true) : '',
+            'changed_before_bytes' => $before_suffix - $prefix,
+            'changed_after_bytes' => $after_suffix - $prefix,
+            'window_bytes' => $half,
         ];
     }
 }
